@@ -1,0 +1,55 @@
+export const TEAM_FLAGS = {
+  'Mexico': '🇲🇽',
+  'South Africa': '🇿🇦',
+  'South Korea': '🇰🇷',
+  'Czechia': '🇨🇿',
+  'Canada': '🇨🇦',
+  'Switzerland': '🇨🇭',
+  'Qatar': '🇶🇦',
+  'Bosnia-Herzegovina': '🇧🇦',
+  'Brazil': '🇧🇷',
+  'Morocco': '🇲🇦',
+  'Haiti': '🇭🇹',
+  'Scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+  'USA': '🇺🇸',
+  'Paraguay': '🇵🇾',
+  'Australia': '🇦🇺',
+  'Turkiye': '🇹🇷',
+  'Germany': '🇩🇪',
+  'Curacao': '🇨🇼',
+  'Portugal': '🇵🇹',
+  'DR Congo': '🇨🇩',
+  'Japan': '🇯🇵',
+  'Senegal': '🇸🇳',
+  'Colombia': '🇨🇴',
+  'Serbia': '🇷🇸',
+  'Belgium': '🇧🇪',
+  'Egypt': '🇪🇬',
+  'Iran': '🇮🇷',
+  'New Zealand': '🇳🇿',
+  'Spain': '🇪🇸',
+  'Cape Verde': '🇨🇻',
+  'Saudi Arabia': '🇸🇦',
+  'Uruguay': '🇺🇾',
+  'France': '🇫🇷',
+  'Norway': '🇳🇴',
+  'Argentina': '🇦🇷',
+  'Algeria': '🇩🇿',
+  'Austria': '🇦🇹',
+  'Jordan': '🇯🇴',
+  'Netherlands': '🇳🇱',
+  'Peru': '🇵🇪',
+  'England': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+  'Croatia': '🇭🇷',
+  'Ghana': '🇬🇭',
+  'Panama': '🇵🇦',
+  'TBD': '🏳️',
+}
+
+export function getFlag(teamName) {
+  return TEAM_FLAGS[teamName] || '🏳️'
+}
+
+export function getTeamDisplay(teamName) {
+  return `${getFlag(teamName)} ${teamName}`
+}
