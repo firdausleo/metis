@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Inter:wght@400;500&display=swap');
+
+:root {
+  --color-bg: #0a0a0a;
+  --color-bg-secondary: #141414;
+  --color-bg-card: #1a1a1a;
+  --color-border: rgba(255,255,255,0.08);
+  --color-border-hover: rgba(255,255,255,0.15);
+  --color-text-primary: #f0f0f0;
+  --color-text-secondary: #888;
+  --color-text-muted: #555;
+  --color-accent: #00e5a0;
+  --color-accent-dim: rgba(0,229,160,0.12);
+  --color-danger: #ff4d4d;
+  --color-danger-dim: rgba(255,77,77,0.12);
+  --color-warning: #ffb547;
+  --color-warning-dim: rgba(255,181,71,0.12);
+  --color-success: #00e5a0;
+  --color-success-dim: rgba(0,229,160,0.12);
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-ui: 'Inter', sans-serif;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --touch-target: 44px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+}
