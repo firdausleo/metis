@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTeamStats } from '../hooks/useTeamStats'
@@ -6,6 +6,8 @@ import { useTranslation } from '../lib/i18n'
 import { getFlag } from '../lib/teamFlags'
 import { toBeijingTime } from '../lib/dateUtils'
 import { supabase } from '../lib/supabase'
+import { runModels, capProb, SCORE_MAX } from '../lib/poisson'
+import { formatProb } from '../lib/evEngine'
 
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
@@ -427,130 +429,558 @@ function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManua
   )
 }
 
-// ── Placeholder tabs ──────────────────────────────────────────────────────
+// ── Score matrix (live Poisson) ──────────────────────────────────────────
 
-// Static preview intensities for matrix placeholder (avoids impure Math.random in render)
-const MATRIX_PREVIEW = [
-  0.14,0.09,0.03,0.01,0.00,0.00,
-  0.11,0.12,0.05,0.02,0.00,0.00,
-  0.05,0.07,0.08,0.03,0.01,0.00,
-  0.02,0.03,0.04,0.04,0.01,0.00,
-  0.00,0.01,0.01,0.02,0.01,0.00,
-  0.00,0.00,0.00,0.00,0.00,0.00,
-]
+const EDGE_COLOURS = {
+  green: 'var(--color-edge-green)',
+  amber: 'var(--color-edge-amber)',
+  red:   'var(--color-edge-red)',
+}
 
-function TabMatrix() {
+// Single score-matrix cell — colour intensity based on probability
+function MatrixCell({ value, isMax }) {
+  const intensity = Math.min(value * 12, 0.9)
+  return (
+    <div style={{
+      height: 40,
+      borderRadius: 4,
+      background: isMax
+        ? `rgba(0,229,160,${intensity + 0.1})`
+        : `rgba(0,229,160,${intensity})`,
+      border: isMax
+        ? '1px solid var(--color-accent)'
+        : '0.5px solid var(--color-border)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 9, color: isMax ? 'var(--color-accent)' : 'var(--color-text-muted)',
+      fontWeight: isMax ? 700 : 400,
+      transition: 'background 0.2s',
+    }}>
+      {(value * 100).toFixed(1)}
+    </div>
+  )
+}
+
+// Full score matrix grid with axis labels
+function ScoreMatrix({ matrix, homeTeam, awayTeam, label, colour }) {
+  const size = SCORE_MAX + 1
+  const flat = matrix.flat()
+  const maxVal = Math.max(...flat)
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
+          color: colour, padding: '2px 8px',
+          background: 'var(--color-bg)',
+          border: `0.5px solid ${colour}`,
+          borderRadius: 'var(--radius-full)',
+        }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+          rows = {homeTeam} goals · cols = {awayTeam} goals
+        </span>
+      </div>
+
+      {/* Column headers (away goals) */}
+      <div style={{ display: 'grid', gridTemplateColumns: `28px repeat(${size}, 1fr)`, gap: 3, marginBottom: 3 }}>
+        <div />
+        {Array.from({ length: size }, (_, j) => (
+          <div key={j} style={{ textAlign: 'center', fontSize: 9, color: 'var(--color-text-muted)', fontWeight: 600 }}>
+            {j}
+          </div>
+        ))}
+      </div>
+
+      {/* Rows */}
+      {matrix.map((row, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: `28px repeat(${size}, 1fr)`, gap: 3, marginBottom: 3 }}>
+          {/* Row header (home goals) */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--color-text-muted)', fontWeight: 600 }}>
+            {i}
+          </div>
+          {row.map((v, j) => (
+            <MatrixCell key={j} value={v} isMax={v === maxVal} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Result probability bar row
+function ProbBar({ label, v1, v2, colour }) {
+  const pct1 = capProb(v1) * 100
+  const pct2 = v2 != null ? capProb(v2) * 100 : null
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+        <span style={{ fontSize: 12, color: 'var(--color-text-primary)', fontWeight: 600 }}>{label}</span>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <span style={{ fontSize: 12, color: 'var(--color-accent)', fontWeight: 700 }}>V1 {pct1.toFixed(1)}%</span>
+          {pct2 != null && (
+            <span style={{ fontSize: 12, color: 'var(--color-info)', fontWeight: 700 }}>V2 {pct2.toFixed(1)}%</span>
+          )}
+        </div>
+      </div>
+      {/* V1 bar */}
+      <div style={{ height: 8, background: 'var(--color-bg)', borderRadius: 'var(--radius-full)', overflow: 'hidden', border: '0.5px solid var(--color-border)', marginBottom: 3 }}>
+        <div style={{ width: `${pct1}%`, height: '100%', background: colour || 'var(--color-accent)', borderRadius: 'var(--radius-full)', transition: 'width 0.4s ease' }} />
+      </div>
+      {/* V2 bar */}
+      {pct2 != null && (
+        <div style={{ height: 5, background: 'var(--color-bg)', borderRadius: 'var(--radius-full)', overflow: 'hidden', border: '0.5px solid var(--color-border)' }}>
+          <div style={{ width: `${pct2}%`, height: '100%', background: 'var(--color-info)', borderRadius: 'var(--radius-full)', opacity: 0.7, transition: 'width 0.4s ease' }} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Total goals lines table
+function TotalGoalsTable({ goalsV1, goalsV2 }) {
   return (
     <div style={{
       background: 'var(--color-bg-card)',
       border: '0.5px solid var(--color-border)',
       borderRadius: 'var(--radius-md)',
-      padding: 24,
-      textAlign: 'center',
+      overflow: 'hidden',
     }}>
-      <p style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--color-text-muted)', marginBottom: 8 }}>
-        Score Matrix
-      </p>
-      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 16 }}>
-        Poisson V1 + V2 probability heatmap — Stage 3
-      </p>
-      <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', maxWidth: 300, margin: '0 auto 6px' }}>
-        <span style={{ fontSize: 9, color: 'var(--color-text-muted)' }}>← Away goals 0–5</span>
-        <span style={{ fontSize: 9, color: 'var(--color-text-muted)' }}>Home 0–5 ↓</span>
-      </div>
+      {/* Header */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(6, 1fr)',
-        gap: 4,
-        maxWidth: 300,
-        margin: '0 auto',
+        display: 'grid', gridTemplateColumns: '60px 1fr 1fr 1fr 1fr',
+        padding: '8px 12px',
+        background: 'var(--color-bg-elevated)',
+        borderBottom: '0.5px solid var(--color-border)',
       }}>
-        {MATRIX_PREVIEW.map((v, i) => (
-          <div key={i} style={{
-            height: 36,
-            borderRadius: 4,
-            background: `rgba(0,229,160,${v * 4})`,
-            border: '0.5px solid var(--color-border)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 9, color: 'var(--color-text-muted)',
-          }}>
-            {v.toFixed(2)}
-          </div>
+        {['Line', 'V1 Over', 'V1 Under', 'V2 Over', 'V2 Under'].map(h => (
+          <span key={h} style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 700, letterSpacing: '0.05em', textAlign: 'center' }}>{h}</span>
         ))}
       </div>
-      <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 12 }}>
-        Preview only — real matrix requires team stats (5-game window · MT06)
-      </p>
+      {/* Rows */}
+      {goalsV1.map((row, i) => {
+        const v2row = goalsV2?.[i]
+        return (
+          <div key={row.line} style={{
+            display: 'grid', gridTemplateColumns: '60px 1fr 1fr 1fr 1fr',
+            padding: '10px 12px',
+            borderBottom: '0.5px solid var(--color-border)',
+            background: row.anchor ? 'var(--color-accent-dim)' : 'transparent',
+            alignItems: 'center',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600, color: row.anchor ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
+                {row.line}
+              </span>
+              {row.anchor && (
+                <span style={{ fontSize: 9, color: 'var(--color-accent)', fontWeight: 700, letterSpacing: '0.06em' }}>ANCHOR</span>
+              )}
+            </div>
+            <span style={{ fontSize: 13, color: 'var(--color-accent)', fontWeight: 700, textAlign: 'center' }}>{formatProb(row.over)}</span>
+            <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'center' }}>{formatProb(row.under)}</span>
+            <span style={{ fontSize: 13, color: 'var(--color-info)', fontWeight: 700, textAlign: 'center' }}>{v2row ? formatProb(v2row.over) : '—'}</span>
+            <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'center' }}>{v2row ? formatProb(v2row.under) : '—'}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-function TabValue() {
+// Dixon-Coles toggle — MT21 labelled, default OFF
+function DixonColesToggle({ enabled, onChange }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <button
+        onClick={() => onChange(!enabled)}
+        style={{
+          minHeight: 28, padding: '0 10px',
+          background: enabled ? 'var(--color-info-dim)' : 'transparent',
+          border: `0.5px solid ${enabled ? 'var(--color-info)' : 'var(--color-border)'}`,
+          borderRadius: 'var(--radius-sm)',
+          color: enabled ? 'var(--color-info)' : 'var(--color-text-muted)',
+          fontFamily: 'var(--font-ui)',
+          fontSize: 11, fontWeight: enabled ? 700 : 400,
+          cursor: 'pointer',
+        }}
+      >
+        {enabled ? '✓ Dixon-Coles ON' : 'Dixon-Coles correction'}
+      </button>
+      <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
+        (corrects low-score bias · default OFF · MT21)
+      </span>
+    </div>
+  )
+}
+
+// Full Matrix tab — live Poisson
+function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
+  const model = useMemo(() => {
+    if (!stats?.home || !stats?.away) return null
+    try {
+      return runModels(stats.home, stats.away, { dixonColes })
+    } catch {
+      return null
+    }
+  }, [stats, dixonColes])
+
+  const noStats = !stats?.home || !stats?.away
+
+  if (noStats) {
+    return (
+      <div style={{
+        background: 'var(--color-bg-card)',
+        border: '0.5px solid var(--color-border)',
+        borderRadius: 'var(--radius-md)',
+        padding: 24, textAlign: 'center',
+      }}>
+        <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+          Both teams need stats before the matrix can be calculated (MT06 — 5-game window required)
+        </p>
+      </div>
+    )
+  }
+
+  if (!model) {
+    return (
+      <div style={{
+        background: 'var(--color-danger-dim)',
+        border: '0.5px solid var(--color-danger)',
+        borderRadius: 'var(--radius-md)',
+        padding: 16,
+      }}>
+        <p style={{ fontSize: 13, color: 'var(--color-danger)' }}>
+          Model error — check that both teams have goals_scored_avg and goals_conceded_avg.
+        </p>
+      </div>
+    )
+  }
+
+  const { v1, v2, divergence } = model
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* Dixon-Coles toggle — MT21 */}
+      <DixonColesToggle enabled={dixonColes} onChange={onToggleDixon} />
+
+      {/* Lambda row */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '1fr auto 1fr',
+        gap: 12, alignItems: 'center',
+        background: 'var(--color-bg-card)',
+        border: '0.5px solid var(--color-accent-border)',
+        borderRadius: 'var(--radius-md)',
+        padding: '12px 16px',
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ fontSize: 10, color: 'var(--color-text-muted)', letterSpacing: '0.05em', marginBottom: 2 }}>λ HOME</p>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, color: 'var(--color-accent)' }}>
+            {v1.lambdaHome.toFixed(3)}
+          </p>
+          <p style={{ fontSize: 10, color: 'var(--color-info)' }}>V2: {v2.lambdaHome.toFixed(3)}</p>
+        </div>
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, color: 'var(--color-text-muted)' }}>vs</span>
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ fontSize: 10, color: 'var(--color-text-muted)', letterSpacing: '0.05em', marginBottom: 2 }}>λ AWAY</p>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, color: 'var(--color-accent)' }}>
+            {v1.lambdaAway.toFixed(3)}
+          </p>
+          <p style={{ fontSize: 10, color: 'var(--color-info)' }}>V2: {v2.lambdaAway.toFixed(3)} <span style={{ color: 'var(--color-text-muted)' }}>({v2.awayFactorNote})</span></p>
+        </div>
+      </div>
+
+      {/* Divergence warning — MT07 */}
+      {divergence.flagged && (
+        <div style={{
+          background: 'var(--color-warning-dim)',
+          border: '0.5px solid var(--color-warning)',
+          borderRadius: 'var(--radius-md)',
+          padding: '10px 14px',
+        }}>
+          <p style={{ fontSize: 12, color: 'var(--color-warning)', fontWeight: 700 }}>
+            ⚠ V1/V2 divergence: {divergence.note}
+          </p>
+          <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+            Use V2 as primary when away-factor correction is significant (MT07)
+          </p>
+        </div>
+      )}
+
+      {/* Result probability bars */}
+      <div style={{
+        background: 'var(--color-bg-card)',
+        border: '0.5px solid var(--color-border)',
+        borderRadius: 'var(--radius-md)',
+        padding: '16px',
+      }}>
+        <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 14 }}>
+          RESULT PROBABILITIES (MT08: capped 5–95%)
+        </p>
+        <ProbBar label={`${match.home_team} Win`} v1={v1.probs.home} v2={v2.probs.home} colour="var(--color-accent)" />
+        <ProbBar label="Draw"                     v1={v1.probs.draw} v2={v2.probs.draw} colour="var(--color-warning)" />
+        <ProbBar label={`${match.away_team} Win`} v1={v1.probs.away} v2={v2.probs.away} colour="var(--color-info)" />
+        {(!v1.probsVerified.valid) && (
+          <p style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 8 }}>
+            ⚠ V1 sum = {(v1.probsVerified.sum * 100).toFixed(2)}% (should be 100%)
+          </p>
+        )}
+      </div>
+
+      {/* Score matrices — V1 */}
+      <ScoreMatrix
+        matrix={v1.matrix}
+        homeTeam={match.home_team_code}
+        awayTeam={match.away_team_code}
+        label="V1 MATRIX"
+        colour="var(--color-accent)"
+      />
+
+      {/* Score matrices — V2 */}
+      <ScoreMatrix
+        matrix={v2.matrix}
+        homeTeam={match.home_team_code}
+        awayTeam={match.away_team_code}
+        label="V2 MATRIX"
+        colour="var(--color-info)"
+      />
+
+      {/* Total Goals anchor table */}
+      <div>
+        <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
+          TOTAL GOALS — V1 + V2 (anchor = closest to 50/50)
+        </p>
+        <TotalGoalsTable goalsV1={v1.totalGoals} goalsV2={v2.totalGoals} />
+      </div>
+
+    </div>
+  )
+}
+
+// Value tab — shows model probabilities, prompts for odds entry
+function TabValue({ stats, match }) {
+  const model = useMemo(() => {
+    if (!stats?.home || !stats?.away) return null
+    try { return runModels(stats.home, stats.away) } catch { return null }
+  }, [stats])
+
+  const OUTCOME_LABELS = {
+    home: `${match?.home_team || 'Home'} Win`,
+    draw: 'Draw',
+    away: `${match?.away_team || 'Away'} Win`,
+  }
+  const OUTCOME_COLOURS = {
+    home: 'var(--color-accent)',
+    draw: 'var(--color-warning)',
+    away: 'var(--color-info)',
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {['Home Win', 'Draw', 'Away Win'].map(outcome => (
-        <div key={outcome} style={{
+
+      {/* Model probabilities (no odds yet) */}
+      {model ? (
+        <>
+          <div style={{
+            background: 'var(--color-bg-card)',
+            border: '0.5px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: '14px 16px',
+          }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 12 }}>
+              MODEL PROBABILITIES (V1 · V2)
+            </p>
+            {['home', 'draw', 'away'].map(key => (
+              <div key={key} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginBottom: 10,
+              }}>
+                <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>
+                  {OUTCOME_LABELS[key]}
+                </span>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: OUTCOME_COLOURS[key], fontFamily: 'var(--font-display)' }}>
+                    {formatProb(model.v1.probs[key])}
+                  </span>
+                  <span style={{ fontSize: 12, color: 'var(--color-info)' }}>
+                    {formatProb(model.v2.probs[key])}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Anchor total goals line */}
+          {(() => {
+            const anchor = model.v1.totalGoals.find(l => l.anchor)
+            if (!anchor) return null
+            return (
+              <div style={{
+                background: 'var(--color-accent-dim)',
+                border: '0.5px solid var(--color-accent-border)',
+                borderRadius: 'var(--radius-md)',
+                padding: '12px 16px',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <div>
+                  <p style={{ fontSize: 10, color: 'var(--color-accent)', fontWeight: 700, letterSpacing: '0.06em' }}>ANCHOR LINE</p>
+                  <p style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    {anchor.line} Goals
+                  </p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <p style={{ fontSize: 12, color: 'var(--color-accent)' }}>Over {formatProb(anchor.over)}</p>
+                  <p style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>Under {formatProb(anchor.under)}</p>
+                </div>
+              </div>
+            )
+          })()}
+        </>
+      ) : (
+        <div style={{
+          background: 'var(--color-bg-card)',
+          border: '0.5px solid var(--color-border)',
+          borderRadius: 'var(--radius-md)',
+          padding: 16, textAlign: 'center',
+          color: 'var(--color-text-muted)', fontSize: 13,
+        }}>
+          Stats required to calculate model probabilities (MT06)
+        </div>
+      )}
+
+      {/* Odds entry prompt */}
+      <div style={{
+        background: 'var(--color-bg-card)',
+        border: '0.5px solid var(--color-border)',
+        borderRadius: 'var(--radius-md)',
+        padding: '14px 16px',
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}>
+        <span style={{ fontSize: 20 }}>📋</span>
+        <div>
+          <p style={{ fontSize: 13, color: 'var(--color-text-primary)', fontWeight: 600, marginBottom: 2 }}>
+            Enter bookmaker odds to unlock EV analysis
+          </p>
+          <p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+            Vig stripped automatically (MT22) · Edge ≥ 5% = recommend (MT23) · Kelly ×0.25 (MT24)
+          </p>
+        </div>
+      </div>
+
+      {/* Edge legend */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {[
+          { colour: EDGE_COLOURS.green, label: '≥ 5% — Bet', token: 'green' },
+          { colour: EDGE_COLOURS.amber, label: '0–4.9% — Marginal', token: 'amber' },
+          { colour: EDGE_COLOURS.red,   label: '< 0% — Skip', token: 'red' },
+        ].map(({ colour, label }) => (
+          <span key={label} style={{
+            fontSize: 11, fontWeight: 700,
+            padding: '3px 10px',
+            borderRadius: 'var(--radius-full)',
+            background: `${colour}22`,
+            color: colour,
+            border: `0.5px solid ${colour}`,
+          }}>
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Portfolio tab — Kelly formula reference + placeholder
+function TabPortfolio({ stats }) {
+  const model = useMemo(() => {
+    if (!stats?.home || !stats?.away) return null
+    try { return runModels(stats.home, stats.away) } catch { return null }
+  }, [stats])
+
+  const anchor = model?.v1.totalGoals.find(l => l.anchor)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Model summary card */}
+      {model && (
+        <div style={{
           background: 'var(--color-bg-card)',
           border: '0.5px solid var(--color-border)',
           borderRadius: 'var(--radius-md)',
           padding: '14px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
         }}>
-          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 14, color: 'var(--color-text-primary)' }}>
-            {outcome}
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-              Odds — · Edge —
-            </span>
-            <span style={{
-              fontSize: 11, fontWeight: 700,
-              padding: '3px 8px',
-              borderRadius: 'var(--radius-full)',
-              background: 'var(--color-bg-elevated)',
-              color: 'var(--color-text-muted)',
-            }}>
-              No odds
-            </span>
+          <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
+            MODEL SUMMARY
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {[
+              { label: 'λ Home (V1)', value: model.v1.lambdaHome.toFixed(2) },
+              { label: 'λ Away (V1)', value: model.v1.lambdaAway.toFixed(2) },
+              { label: 'λ Away (V2)', value: model.v2.lambdaAway.toFixed(2) },
+              { label: 'Anchor line', value: anchor ? `${anchor.line}` : '—' },
+            ].map(({ label, value }) => (
+              <div key={label} style={{
+                flex: '1 0 120px',
+                background: 'var(--color-bg)',
+                border: '0.5px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '8px 10px',
+                textAlign: 'center',
+              }}>
+                <p style={{ fontSize: 10, color: 'var(--color-text-muted)', marginBottom: 2 }}>{label}</p>
+                <p style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--color-accent)' }}>{value}</p>
+              </div>
+            ))}
           </div>
         </div>
-      ))}
-      <p style={{ fontSize: 12, color: 'var(--color-text-muted)', textAlign: 'center', marginTop: 8 }}>
-        Enter odds via the Odds tab to see EV analysis (MT22 — vig stripped before edge calculation)
-      </p>
-    </div>
-  )
-}
+      )}
 
-function TabPortfolio() {
-  return (
-    <div style={{
-      background: 'var(--color-bg-card)',
-      border: '0.5px solid var(--color-border)',
-      borderRadius: 'var(--radius-md)',
-      padding: 24,
-      textAlign: 'center',
-    }}>
-      <p style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--color-text-muted)', marginBottom: 8 }}>
-        Portfolio Builder
-      </p>
-      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 16 }}>
-        Fractional Kelly sizing · bankroll exposure · correlated-bet guard — Stage 5
-      </p>
+      {/* Kelly formula reference */}
       <div style={{
-        background: 'var(--color-bg)',
-        borderRadius: 'var(--radius-sm)',
-        padding: '12px 16px',
-        fontSize: 12,
-        color: 'var(--color-text-muted)',
-        textAlign: 'left',
+        background: 'var(--color-bg-card)',
         border: '0.5px solid var(--color-border)',
+        borderRadius: 'var(--radius-md)',
+        padding: '14px 16px',
       }}>
-        <p>f* = (b×p − q) / b  <span style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>(Full Kelly)</span></p>
-        <p>stake = f* × 0.25 × bankroll  <span style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>(Fractional ×0.25)</span></p>
-        <p>hard cap = 5% bankroll  <span style={{ color: 'var(--color-accent)', fontSize: 11 }}>(MT24)</span></p>
+        <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
+          KELLY SIZING RULES
+        </p>
+        {[
+          { label: 'Full Kelly',    formula: 'f* = (b×p − q) / b',          note: 'b = odds−1, q = 1−p' },
+          { label: 'Fractional',   formula: 'stake = f* × 0.25 × bankroll', note: 'always fractional' },
+          { label: 'Hard cap',     formula: 'max 5% of bankroll',            note: 'MT24', accent: true },
+          { label: 'Min threshold',formula: '< 1% → skip or min stake',      note: 'not worth placing' },
+        ].map(({ label, formula, note, accent }) => (
+          <div key={label} style={{
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+            padding: '8px 0',
+            borderBottom: '0.5px solid var(--color-border)',
+          }}>
+            <span style={{ fontSize: 11, color: 'var(--color-text-muted)', minWidth: 90 }}>{label}</span>
+            <span style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 13, flex: 1,
+              color: accent ? 'var(--color-accent)' : 'var(--color-text-primary)',
+            }}>
+              {formula}
+            </span>
+            <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{note}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Coming Stage 5 */}
+      <div style={{
+        background: 'var(--color-bg-card)',
+        border: '0.5px solid var(--color-border)',
+        borderRadius: 'var(--radius-md)',
+        padding: '14px 16px',
+        textAlign: 'center',
+        color: 'var(--color-text-muted)', fontSize: 12,
+      }}>
+        Interactive stake calculator, portfolio builder, and stress-test table — Stage 5
       </div>
     </div>
   )
@@ -568,6 +998,7 @@ export default function MatchAnalysis() {
   const [matchLoading, setMatchLoading] = useState(true)
   const [matchError, setMatchError] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [dixonColes, setDixonColes] = useState(false)  // MT21 default OFF
 
   const isAdmin = user?.id === ADMIN_UUID
 
@@ -844,13 +1275,13 @@ export default function MatchAnalysis() {
         )}
 
         {/* TAB 2: Matrix */}
-        {activeTab === 'matrix' && <TabMatrix />}
+        {activeTab === 'matrix' && <TabMatrix stats={stats} match={match} dixonColes={dixonColes} onToggleDixon={setDixonColes} />}
 
         {/* TAB 3: Value */}
-        {activeTab === 'value' && <TabValue />}
+        {activeTab === 'value' && <TabValue stats={stats} match={match} />}
 
         {/* TAB 4: Portfolio */}
-        {activeTab === 'portfolio' && <TabPortfolio />}
+        {activeTab === 'portfolio' && <TabPortfolio stats={stats} />}
 
       </div>
     </div>
