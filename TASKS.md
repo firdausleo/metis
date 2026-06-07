@@ -16,42 +16,20 @@
 | 5A — Match list screen /matches | ⚠️ | ba8170a |
 | 5B — CF Worker /api/sync-stats | ⚠️ | ba8170a |
 | 5C — Match analysis shell /matches/:id | ⚠️ | ba8170a |
+| 6A — src/lib/poisson.js (V1 + V2 engine) | ⚠️ | 1160737 |
+| 6B — src/lib/evEngine.js (EV + Kelly) | ⚠️ | 1160737 |
+| 6C — Matrix tab live + total goals anchor | ⚠️ | 1160737 |
 
-## Stage 2 — Data Pipeline ✅ COMPLETE
-| # | Task | Status |
-|---|------|--------|
-| 1 | CF Worker footystats scraper | ✅ sync-stats.js |
-| 2 | Rolling window calculator | ✅ in sync-stats.js |
-| 3 | team_stats auto-population | ✅ upsert via Worker |
-| 4 | Match list screen /matches | ✅ form dots + stats badge |
-| 5 | Match cards with flags + stats | ✅ FormDots + StatsBadge |
-| 6 | Confidence indicator | ✅ MatchAnalysis header |
-| 7 | Manual stats override (admin) | ✅ ManualInputForm |
+## Stage 3 — Core Algorithm ✅ COMPLETE
 
-## Stage 3 — Core Algorithm  ← NEXT
+## Stage 4 — AI Roles  ← NEXT
 | # | Task | Priority | Risk |
 |---|------|----------|------|
-| 8  | src/lib/poisson.js | 🔴 | ⚠️ |
-| 9  | src/lib/evEngine.js | 🔴 | ⚠️ |
-| 10 | V1 + V2 matrix generation | 🔴 | ⚠️ |
-| 11 | Match analysis screen (4 tabs) | 🔴 | ⚠️ |
-| 12 | Probability heatmap component | 🔴 | ⚠️ |
-| 13 | Total goals anchor + scenarios | 🔴 | ⚠️ |
-| 14 | Dixon-Coles toggle | 🟡 | ✅ |
-| 15 | Confidence display | 🔴 | ✅ |
-
-## Stage 4 — AI Roles
-| # | Task | Priority | Risk |
-|---|------|----------|------|
-| 16 | ai_roles + role_skills tables | 🔴 | ⛔ |
-| 17 | Role 1: Statistical Validator | 🔴 | ⚠️ |
-| 18 | Role 2: Form Intelligence | 🔴 | ⚠️ |
-| 19 | Role 4: Tournament Context | 🔴 | ⚠️ |
-| 20 | Role 6: Risk Manager | 🔴 | ⚠️ |
-| 21 | CF Worker /api/analyze | 🔴 | ⛔ |
-| 22 | Role 3: Deep Analysis (Claude) | 🟡 | ⚠️ |
-| 23 | Role 5: Market Intelligence | 🔴 | ⚠️ |
-| 24 | Admin roles screen | 🟡 | ✅ |
+| 16 | ai_roles + role_skills + role_outputs SQL | 🔴 | ⛔ |
+| 17 | CF Worker /api/analyze (11 roles) | 🔴 | ⛔ |
+| 18 | Role output schema + prompt templates | 🔴 | ⚠️ |
+| 19 | Analysis screen — AI tab (role cards) | 🔴 | ⚠️ |
+| 20 | Composite score display (Role 10) | 🔴 | ⚠️ |
 
 ## Stage 5 — Odds + Portfolio
 | # | Task | Priority | Risk |
@@ -84,6 +62,6 @@
 | 42 | Role 11: Learning loop | 🟢 | ⚠️ |
 
 ## Risk Notes
-⛔ Tasks 16, 21, 38, 39: Leo must be present
-⚠️ Algorithm tasks 8-15: test each before next
+⛔ Tasks 16, 17, 38, 39: Leo must be present
+⚠️ Algorithm tasks: test each before next
 Never combine HIGH risk with other work
