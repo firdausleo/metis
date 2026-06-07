@@ -49,3 +49,30 @@ export async function settleMatch(matchId, homeScore, awayScore) {
 
   return response.json()
 }
+
+/**
+ * Admin: trigger bulk sync of all upcoming match stats via CF Worker.
+ * POST /api/sync-stats
+ * Optional: pass matchIds array to sync specific matches only.
+ */
+export async function syncAllStats(matchIds) {
+  const token = await getAuthToken()
+  if (!token) throw new Error('Not authenticated')
+
+  const body = matchIds?.length ? { match_ids: matchIds } : {}
+
+  const response = await fetch('/api/sync-stats', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Sync failed: ${response.status}`)
+  }
+
+  return response.json()
+}

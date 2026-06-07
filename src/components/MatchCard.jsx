@@ -11,7 +11,57 @@ const STAGE_LABELS = {
   final: 'FINAL',
 }
 
-export default function MatchCard({ match, onAnalyze, compact = false, isAnalyzed = false }) {
+// Render a W/D/L form string as coloured dots
+function FormDots({ formString }) {
+  if (!formString) return null
+  const chars = formString.slice(0, 5).split('')
+  const colour = { W: 'var(--color-success)', D: 'var(--color-warning)', L: 'var(--color-danger)' }
+  return (
+    <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>
+      {chars.map((c, i) => (
+        <span
+          key={i}
+          title={c === 'W' ? 'Win' : c === 'D' ? 'Draw' : 'Loss'}
+          style={{
+            width: 7, height: 7,
+            borderRadius: '50%',
+            background: colour[c] || 'var(--color-text-muted)',
+            display: 'inline-block',
+            flexShrink: 0,
+          }}
+        />
+      ))}
+    </span>
+  )
+}
+
+// Small stats badge: shows scoring avg when available
+function StatsBadge({ homeStats, awayStats }) {
+  if (!homeStats && !awayStats) return null
+  const both = homeStats && awayStats
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 600,
+      padding: '2px 6px',
+      borderRadius: 'var(--radius-sm)',
+      background: both ? 'var(--color-success-dim)' : 'var(--color-warning-dim)',
+      color: both ? 'var(--color-success)' : 'var(--color-warning)',
+      letterSpacing: '0.04em',
+      whiteSpace: 'nowrap',
+    }}>
+      {both ? '📊 Stats' : '📊 Partial'}
+    </span>
+  )
+}
+
+export default function MatchCard({
+  match,
+  onAnalyze,
+  compact = false,
+  isAnalyzed = false,
+  homeStats = null,   // optional: team_stats row for home team
+  awayStats = null,   // optional: team_stats row for away team
+}) {
   const { t } = useTranslation()
 
   const isTBD = match.home_team === 'TBD' || match.away_team === 'TBD'
@@ -26,10 +76,10 @@ export default function MatchCard({ match, onAnalyze, compact = false, isAnalyze
   const timeStr = toBeijingTime(match.match_date, 'time')
 
   const statusMap = {
-    upcoming:  { key: 'match.upcoming',  bg: 'var(--color-info-dim)',    color: 'var(--color-info)',         pulse: false },
-    live:      { key: 'match.live',      bg: 'var(--color-danger-dim)',  color: 'var(--color-danger)',       pulse: true  },
-    completed: { key: 'match.completed', bg: 'var(--color-bg-hover)',    color: 'var(--color-text-muted)',   pulse: false },
-    finished:  { key: 'match.completed', bg: 'var(--color-bg-hover)',    color: 'var(--color-text-muted)',   pulse: false },
+    upcoming:  { key: 'match.upcoming',  bg: 'var(--color-info-dim)',    color: 'var(--color-info)',        pulse: false },
+    live:      { key: 'match.live',      bg: 'var(--color-danger-dim)',  color: 'var(--color-danger)',      pulse: true  },
+    completed: { key: 'match.completed', bg: 'var(--color-bg-hover)',    color: 'var(--color-text-muted)',  pulse: false },
+    finished:  { key: 'match.completed', bg: 'var(--color-bg-hover)',    color: 'var(--color-text-muted)',  pulse: false },
   }
   const status = statusMap[match.status] || statusMap.upcoming
 
@@ -76,33 +126,51 @@ export default function MatchCard({ match, onAnalyze, compact = false, isAnalyze
         )}
       </div>
 
-      {/* Teams */}
+      {/* Teams with inline form dots */}
       <div style={{ marginBottom: compact ? 8 : 12 }}>
+        {/* Home team */}
         <div style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: compact ? 15 : 17,
-          fontWeight: 500,
-          color: match.home_team === 'TBD' ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
-          marginBottom: 3,
-          lineHeight: 1.3,
+          display: 'flex', alignItems: 'center', gap: 8,
+          marginBottom: 4,
         }}>
-          {getFlag(match.home_team)}{' '}
-          {match.home_team === 'TBD' ? t('match.tbdTeam') : match.home_team}
+          <span style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: compact ? 15 : 17,
+            fontWeight: 500,
+            color: match.home_team === 'TBD' ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
+            lineHeight: 1.3,
+            flex: 1, minWidth: 0,
+          }}>
+            {getFlag(match.home_team)}{' '}
+            {match.home_team === 'TBD' ? t('match.tbdTeam') : match.home_team}
+          </span>
+          {!compact && homeStats?.form_string && (
+            <FormDots formString={homeStats.form_string} />
+          )}
         </div>
+        {/* Away team */}
         <div style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: compact ? 15 : 17,
-          fontWeight: 500,
-          color: match.away_team === 'TBD' ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
-          lineHeight: 1.3,
+          display: 'flex', alignItems: 'center', gap: 8,
         }}>
-          {getFlag(match.away_team)}{' '}
-          {match.away_team === 'TBD' ? t('match.tbdTeam') : match.away_team}
+          <span style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: compact ? 15 : 17,
+            fontWeight: 500,
+            color: match.away_team === 'TBD' ? 'var(--color-text-muted)' : 'var(--color-text-primary)',
+            lineHeight: 1.3,
+            flex: 1, minWidth: 0,
+          }}>
+            {getFlag(match.away_team)}{' '}
+            {match.away_team === 'TBD' ? t('match.tbdTeam') : match.away_team}
+          </span>
+          {!compact && awayStats?.form_string && (
+            <FormDots formString={awayStats.form_string} />
+          )}
         </div>
       </div>
 
-      {/* Bottom row: status badge + analyzed badge + analyze button */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {/* Bottom row: status badge + stats badge + analyzed badge + analyze button */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         <span
           className={status.pulse ? 'badge-live' : undefined}
           style={{
@@ -115,6 +183,9 @@ export default function MatchCard({ match, onAnalyze, compact = false, isAnalyze
         >
           {t(status.key)}
         </span>
+
+        {/* Stats availability indicator */}
+        {!compact && <StatsBadge homeStats={homeStats} awayStats={awayStats} />}
 
         {isAnalyzed && (
           <span style={{
