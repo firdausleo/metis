@@ -2,8 +2,17 @@ name = "metis"
 compatibility_date = "2024-09-23"
 pages_build_output_dir = "dist"
 
+# ── Plain (non-secret) variables ──────────────────────────────────────────
+# These are safe to commit — no secrets here (MT04)
 [vars]
-SUPABASE_URL = ""
-SUPABASE_ANON_KEY = ""
-# SUPABASE_SERVICE_ROLE_KEY — set as Secret in CF Pages dashboard
-# Settings > Environment Variables > Add Secret (never in this file)
+SUPABASE_URL = "https://wmxhcwellqtagpndpyhk.supabase.co"
+
+# ── Secrets — NEVER put values here ───────────────────────────────────────
+# Set these once via CF Pages dashboard → Settings → Environment Variables
+# (Add as "Secret" type — encrypted, not visible after saving):
+#
+#   VITE_SUPABASE_URL         = https://wmxhcwellqtagpndpyhk.supabase.co
+#   VITE_SUPABASE_ANON_KEY    = sb_publishable_...
+#   SUPABASE_ANON_KEY         = sb_publishable_...
+#   SUPABASE_SERVICE_ROLE_KEY = your_service_role_key
+#   ANTHROPIC_API_KEY         = sk-ant-...   (Stage 4 — for /api/analyze)
