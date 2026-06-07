@@ -1,9 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
 import { useTranslation } from '../lib/i18n'
 import { useMatchesByGroup, getTodaysMatches } from '../hooks/useMatches'
 import MatchCard from '../components/MatchCard'
 import { getFlag } from '../lib/teamFlags'
+import { fetchTeamStats } from '../lib/statsApi'
+import { supabase } from '../lib/supabase'
+
+const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
 const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
 
@@ -148,12 +153,62 @@ function SidebarNav({ filter }) {
 
 export default function Matches() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const { t } = useTranslation()
   const { matchesByGroup, matches, loading, error, refetch } = useMatchesByGroup()
   const [filter, setFilter] = useState('all')
+  const [refreshingAll, setRefreshingAll] = useState(false)
+  const [refreshMsg, setRefreshMsg] = useState('')
+
+  const isAdmin = user?.id === ADMIN_UUID
 
   function onAnalyze(matchId) {
     navigate(`/matches/${matchId}`)
+  }
+
+  async function handleRefreshAll() {
+    setRefreshingAll(true)
+    setRefreshMsg('')
+    try {
+      const upcoming = matches.filter(m => m.status === 'upcoming' && m.home_team !== 'TBD' && m.away_team !== 'TBD')
+      const teams = [...new Set(upcoming.flatMap(m => [
+        { name: m.home_team, code: m.home_team_code },
+        { name: m.away_team, code: m.away_team_code },
+      ]).map(t => JSON.stringify(t))).values()].map(s => JSON.parse(s))
+
+      const statsCache = {}
+      await Promise.allSettled(teams.map(async ({ name, code }) => {
+        try {
+          const data = await fetchTeamStats(name)
+          statsCache[code] = data
+        } catch { /* skip failed teams */ }
+      }))
+
+      const rows = upcoming.flatMap(m => {
+        const result = []
+        const buildRow = (code, data, matchId) => ({
+          team_code: code, match_id: matchId,
+          xgf_per_game: data.xgf && data.matches_played ? Number((data.xgf / data.matches_played).toFixed(3)) : null,
+          xga_per_game: data.xga && data.matches_played ? Number((data.xga / data.matches_played).toFixed(3)) : null,
+          goals_scored_avg: data.scored && data.matches_played ? Number((data.scored / data.matches_played).toFixed(3)) : null,
+          goals_conceded_avg: data.conceded && data.matches_played ? Number((data.conceded / data.matches_played).toFixed(3)) : null,
+          games_window: data.matches_played || 0,
+          wc_games_in_window: 0,
+          updated_at: new Date().toISOString(),
+        })
+        if (statsCache[m.home_team_code]) result.push(buildRow(m.home_team_code, statsCache[m.home_team_code], m.id))
+        if (statsCache[m.away_team_code]) result.push(buildRow(m.away_team_code, statsCache[m.away_team_code], m.id))
+        return result
+      })
+
+      if (rows.length) {
+        await supabase.from('team_stats').upsert(rows, { onConflict: 'team_code,match_id' })
+      }
+      setRefreshMsg(`Updated ${Object.keys(statsCache).length} teams`)
+    } catch (err) {
+      setRefreshMsg('Refresh failed: ' + err.message)
+    }
+    setRefreshingAll(false)
   }
 
   const today = getTodaysMatches(matches)
@@ -217,14 +272,40 @@ export default function Matches() {
       <div>
         {/* Sticky header */}
         <div className="matches-sticky-header">
-          <h1 style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 24, fontWeight: 600,
-            color: 'var(--color-text-primary)',
-            marginBottom: 12,
-          }}>
-            {t('matches.title')}
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h1 style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 24, fontWeight: 600,
+              color: 'var(--color-text-primary)',
+            }}>
+              {t('matches.title')}
+            </h1>
+            {isAdmin && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {refreshMsg && (
+                  <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{refreshMsg}</span>
+                )}
+                <button
+                  onClick={handleRefreshAll}
+                  disabled={refreshingAll}
+                  style={{
+                    minHeight: 32,
+                    padding: '0 12px',
+                    background: refreshingAll ? 'transparent' : 'var(--color-accent-dim)',
+                    border: '0.5px solid var(--color-accent-border)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--color-accent)',
+                    fontFamily: 'var(--font-ui)',
+                    fontSize: 12,
+                    cursor: refreshingAll ? 'not-allowed' : 'pointer',
+                    opacity: refreshingAll ? 0.6 : 1,
+                  }}
+                >
+                  {refreshingAll ? t('common.loading') : `↻ ${t('analysis.refreshAll')}`}
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Filter chips */}
           <div style={{ display: 'flex', gap: 8 }}>

@@ -78,6 +78,47 @@ create table if not exists public.bets (
   created_at  timestamptz not null default now()
 );
 
+-- ════════════════════════════════════
+-- 3.5 TEAM STATS TABLE
+-- ════════════════════════════════════
+-- One row per team per match context.
+-- Populated by CF Worker scraper or manual admin input.
+
+create table if not exists public.team_stats (
+  id                   uuid primary key default gen_random_uuid(),
+  team_code            text not null,
+  match_id             uuid not null references public.matches(id) on delete cascade,
+  games_window         int  default 5,
+  goals_scored_avg     numeric(5,3),
+  goals_conceded_avg   numeric(5,3),
+  home_goals_avg       numeric(5,3),
+  away_goals_avg       numeric(5,3),
+  xgf_per_game         numeric(5,3),
+  xga_per_game         numeric(5,3),
+  wc_games_in_window   int  default 0,  -- WC-specific games in rolling window
+  form_string          text,             -- 'WWDLL' latest first
+  updated_at           timestamptz not null default now(),
+  unique(team_code, match_id)
+);
+
+create index if not exists team_stats_match_idx on public.team_stats (match_id);
+create index if not exists team_stats_team_idx  on public.team_stats (team_code);
+
+alter table public.team_stats enable row level security;
+
+drop policy if exists "team_stats_public_read" on public.team_stats;
+create policy "team_stats_public_read"
+  on public.team_stats for select using (true);
+
+drop policy if exists "team_stats_admin_write" on public.team_stats;
+create policy "team_stats_admin_write"
+  on public.team_stats for all
+  using (auth.uid() = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'::uuid);
+
+-- ════════════════════════════════════
+-- 4. BETS TABLE (scaffold for later)
+-- ════════════════════════════════════
+
 alter table public.bets enable row level security;
 
 drop policy if exists "bets_owner_read" on public.bets;
