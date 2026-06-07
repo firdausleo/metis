@@ -13,19 +13,22 @@
 | Auth + NavBar + Dashboard | ⚠️ | feat: auth |
 | Seed 104 WC2026 fixtures | ✅ | c428f30 |
 | Complete Metis Bible | ✅ | docs: bible |
+| 5A — Match list screen /matches | ⚠️ | ba8170a |
+| 5B — CF Worker /api/sync-stats | ⚠️ | ba8170a |
+| 5C — Match analysis shell /matches/:id | ⚠️ | ba8170a |
 
-## Stage 2 — Data Pipeline
-| # | Task | Priority | Risk |
-|---|------|----------|------|
-| 1 | CF Worker footystats scraper | 🔴 | ⚠️ |
-| 2 | Rolling window calculator | 🔴 | ⚠️ |
-| 3 | team_stats auto-population | 🔴 | ⚠️ |
-| 4 | Match list screen /matches | 🔴 | ⚠️ |
-| 5 | Match cards with flags + stats | 🔴 | ✅ |
-| 6 | Confidence indicator | 🔴 | ✅ |
-| 7 | Manual stats override (admin) | 🟡 | ✅ |
+## Stage 2 — Data Pipeline ✅ COMPLETE
+| # | Task | Status |
+|---|------|--------|
+| 1 | CF Worker footystats scraper | ✅ sync-stats.js |
+| 2 | Rolling window calculator | ✅ in sync-stats.js |
+| 3 | team_stats auto-population | ✅ upsert via Worker |
+| 4 | Match list screen /matches | ✅ form dots + stats badge |
+| 5 | Match cards with flags + stats | ✅ FormDots + StatsBadge |
+| 6 | Confidence indicator | ✅ MatchAnalysis header |
+| 7 | Manual stats override (admin) | ✅ ManualInputForm |
 
-## Stage 3 — Core Algorithm
+## Stage 3 — Core Algorithm  ← NEXT
 | # | Task | Priority | Risk |
 |---|------|----------|------|
 | 8  | src/lib/poisson.js | 🔴 | ⚠️ |
