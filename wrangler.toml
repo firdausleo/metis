@@ -1,2 +1,9 @@
 name = "metis"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "dist"
+
+[vars]
+SUPABASE_URL = ""
+SUPABASE_ANON_KEY = ""
+# SUPABASE_SERVICE_ROLE_KEY — set as Secret in CF Pages dashboard
+# Settings > Environment Variables > Add Secret (never in this file)
