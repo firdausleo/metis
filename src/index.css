@@ -37,3 +37,24 @@ body {
   font-family: var(--font-ui);
   min-height: 100vh;
 }
+
+/* NavBar responsive visibility */
+.navbar-desktop { display: none !important; }
+.navbar-mobile  { display: flex !important; }
+
+@media (min-width: 768px) {
+  .navbar-desktop { display: flex !important; }
+  .navbar-mobile  { display: none !important; }
+}
+
+/* App content padding to avoid nav overlap */
+.app-content {
+  padding-bottom: 80px;
+}
+
+@media (min-width: 768px) {
+  .app-content {
+    padding-bottom: 0;
+    padding-top: 56px;
+  }
+}
