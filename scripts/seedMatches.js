@@ -4,10 +4,12 @@ import { createClient } from '@supabase/supabase-js'
 
 dotenv.config({ path: '.env.local' })
 
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_ANON_KEY
-)
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn('⚠️  SUPABASE_SERVICE_ROLE_KEY not set — falling back to anon key (will fail if RLS is enabled)')
+}
+
+const supabase = createClient(process.env.VITE_SUPABASE_URL, key)
 
 const matches = [
 
