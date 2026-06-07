@@ -55,7 +55,7 @@ export default function Auth() {
       </button>
 
       <div style={{ width: '100%', maxWidth: 400, padding: '32px 28px', background: 'var(--color-bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, marginBottom: 4, color: 'var(--color-accent)', letterSpacing: '0.05em' }}>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 600, marginBottom: 4, color: 'var(--color-accent)', letterSpacing: '0.05em' }}>
           METIS
         </h1>
         <p style={{ color: 'var(--color-text-secondary)', marginBottom: 28, fontSize: 13 }}>
@@ -130,7 +130,7 @@ export default function Auth() {
               minHeight: 'var(--touch-target)',
               padding: '0 16px',
               background: submitting ? 'var(--color-accent-dim)' : 'var(--color-accent)',
-              color: submitting ? 'var(--color-accent)' : '#000',
+              color: '#000000',
               fontWeight: 600,
               fontSize: 15,
               border: 'none',

@@ -1,58 +1,75 @@
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600&family=DM+Sans:wght@400;500&display=swap');
 
 :root {
-  /* Backgrounds */
-  --color-bg:          #0a0a0a;
-  --color-bg-secondary:#141414;
-  --color-bg-card:     #1a1a1a;
-  --color-bg-elevated: #222222;
-  --color-bg-overlay:  rgba(0,0,0,0.7);
+  /* ── Base backgrounds ── */
+  --color-bg:              #080b0f;
+  --color-bg-secondary:    #0f1318;
+  --color-bg-card:         #141920;
+  --color-bg-hover:        #1a2028;
 
-  /* Borders */
-  --color-border:        rgba(255,255,255,0.08);
-  --color-border-hover:  rgba(255,255,255,0.15);
-  --color-border-strong: rgba(255,255,255,0.25);
+  /* ── Borders ── */
+  --color-border:          rgba(255,255,255,0.07);
+  --color-border-hover:    rgba(255,255,255,0.12);
+  --color-border-active:   rgba(255,255,255,0.20);
 
-  /* Text */
-  --color-text-primary:   #f0f0f0;
-  --color-text-secondary: #888888;
-  --color-text-muted:     #555555;
-  --color-text-inverse:   #0a0a0a;
+  /* ── Text ── */
+  --color-text-primary:    #f0f4f8;
+  --color-text-secondary:  #7a8a9a;
+  --color-text-muted:      #3d4d5c;
 
-  /* Accent */
-  --color-accent:       #00e5a0;
-  --color-accent-dim:   rgba(0,229,160,0.12);
-  --color-accent-hover: #00c98a;
+  /* ── Accent — Electric Teal ── */
+  --color-accent:          #00d4aa;
+  --color-accent-dim:      rgba(0,212,170,0.10);
+  --color-accent-border:   rgba(0,212,170,0.25);
 
-  /* Semantic */
-  --color-success:     #00e5a0;
-  --color-success-dim: rgba(0,229,160,0.12);
-  --color-danger:      #ff4d4d;
-  --color-danger-dim:  rgba(255,77,77,0.12);
-  --color-warning:     #ffb547;
-  --color-warning-dim: rgba(255,181,71,0.12);
-  --color-info:        #4db8ff;
-  --color-info-dim:    rgba(77,184,255,0.12);
+  /* ── Semantic ── */
+  --color-success:         #00d4aa;
+  --color-success-dim:     rgba(0,212,170,0.10);
+  --color-danger:          #ff5252;
+  --color-danger-dim:      rgba(255,82,82,0.10);
+  --color-warning:         #ffb547;
+  --color-warning-dim:     rgba(255,181,71,0.10);
+  --color-info:            #4d9fff;
+  --color-info-dim:        rgba(77,159,255,0.10);
 
-  /* Edge traffic lights */
-  --color-edge-green: #00e5a0;
-  --color-edge-amber: #ffb547;
-  --color-edge-red:   #ff4d4d;
+  /* ── Probability heatmap ── */
+  --color-prob-high:       #00d4aa;
+  --color-prob-mid:        #ffb547;
+  --color-prob-low:        #2a3540;
 
-  /* Typography */
+  /* ── Edge traffic light ── */
+  --color-edge-strong:     #00d4aa;
+  --color-edge-moderate:   #ffb547;
+  --color-edge-fair:       #3d4d5c;
+  --color-edge-weak:       #ff5252;
+  --color-edge-avoid:      #cc0000;
+
+  /* ── V1/V2 agreement ── */
+  --color-agree:           #00d4aa;
+  --color-diverge:         #ffb547;
+  --color-conflict:        #ff5252;
+
+  /* ── Typography ── */
   --font-display: 'Barlow Condensed', sans-serif;
   --font-ui:      'DM Sans', sans-serif;
 
-  /* Shape */
-  --radius-sm:   6px;
-  --radius-md:   10px;
-  --radius-lg:   16px;
-  --radius-full: 9999px;
+  /* ── Font sizes ── */
+  --text-xs:   11px;
+  --text-sm:   13px;
+  --text-base: 15px;
+  --text-lg:   17px;
+  --text-xl:   20px;
+  --text-2xl:  24px;
+  --text-3xl:  32px;
+  --text-4xl:  48px;
 
-  /* Layout */
-  --touch-target:      44px;
-  --nav-height-top:    56px;
-  --nav-height-bottom: 64px;
+  /* ── Layout ── */
+  --radius-sm:          6px;
+  --radius-md:          10px;
+  --radius-lg:          16px;
+  --touch-target:       44px;
+  --nav-height-top:     56px;
+  --nav-height-bottom:  64px;
 }
 
 * {

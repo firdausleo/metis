@@ -32,13 +32,13 @@ export default function NavBar() {
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
         height: 56,
         background: 'var(--color-bg-secondary)',
-        borderBottom: '1px solid var(--color-border)',
+        borderBottom: '0.5px solid var(--color-border)',
         display: 'flex',
         alignItems: 'center',
         padding: '0 24px',
         gap: 8,
       }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 18, color: 'var(--color-accent)', letterSpacing: '0.05em', marginRight: 16 }}>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 20, color: 'var(--color-accent)', letterSpacing: '0.05em', marginRight: 16 }}>
           METIS
         </span>
 
@@ -55,6 +55,7 @@ export default function NavBar() {
                 fontFamily: 'var(--font-ui)',
                 fontSize: 14,
                 fontWeight: 500,
+                minHeight: 'var(--touch-target)',
                 color: isActive(item.path, location.pathname) ? 'var(--color-accent)' : 'var(--color-text-secondary)',
                 background: isActive(item.path, location.pathname) ? 'var(--color-accent-dim)' : 'transparent',
                 transition: 'color 0.15s, background 0.15s',
@@ -75,6 +76,7 @@ export default function NavBar() {
               padding: '6px 10px',
               borderRadius: 'var(--radius-sm)',
               fontSize: 16,
+              minHeight: 'var(--touch-target)',
               color: isActive('/settings', location.pathname) ? 'var(--color-accent)' : 'var(--color-text-secondary)',
             }}
             title={t('nav.settings')}
@@ -90,7 +92,7 @@ export default function NavBar() {
             onClick={handleSignOut}
             style={{
               background: 'none',
-              border: '1px solid var(--color-border)',
+              border: '0.5px solid var(--color-border)',
               cursor: 'pointer',
               padding: '5px 12px',
               borderRadius: 'var(--radius-sm)',
@@ -108,7 +110,7 @@ export default function NavBar() {
       <nav className="navbar-mobile" style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
         background: 'var(--color-bg-secondary)',
-        borderTop: '1px solid var(--color-border)',
+        borderTop: '0.5px solid var(--color-border)',
         paddingBottom: 'env(safe-area-inset-bottom)',
         display: 'flex',
       }}>
@@ -134,7 +136,7 @@ export default function NavBar() {
               }}
             >
               <span style={{ fontSize: 20, lineHeight: 1 }}>{item.icon}</span>
-              <span style={{ fontSize: 10, fontFamily: 'var(--font-ui)', fontWeight: active ? 600 : 400 }}>
+              <span style={{ fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: active ? 600 : 400 }}>
                 {t(item.key)}
               </span>
             </button>
