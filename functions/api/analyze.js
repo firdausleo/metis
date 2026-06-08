@@ -247,9 +247,9 @@ ${phase1Context}`
 export async function onRequestPost(context) {
   const { request, env } = context
 
-  // MT25: 28s timeout
+  // MT25: 55s timeout (CF Pages Functions limit = 60s)
   const controller = new AbortController()
-  const timeout    = setTimeout(() => controller.abort(), 28_000)
+  const timeout    = setTimeout(() => controller.abort(), 55_000)
 
   try {
     // Auth check — admin only
@@ -344,10 +344,16 @@ export async function onRequestPost(context) {
       )
       const userMsg = `Synthesise all role outputs into a composite confidence score.`
 
+      // Role 10 gets its own 15s controller — independent of main timeout
+      const r10controller = new AbortController()
+      const r10timeout = setTimeout(() => r10controller.abort(), 15_000)
+
       try {
-        role10Output = await callClaude(env, HAIKU_MODEL, system, userMsg, controller.signal)
+        role10Output = await callClaude(env, HAIKU_MODEL, system, userMsg, r10controller.signal)
+        clearTimeout(r10timeout)
         await upsertOutput(env, match_id, roleByNumber[10].id, role10Output, role10Output.confidence)
       } catch (err) {
+        clearTimeout(r10timeout)
         role10Output = {
           role: 10, summary: `Composite Scorer failed: ${err.message}`,
           signals: [], confidence: null, recommendation: null, flags: ['call_error'],
