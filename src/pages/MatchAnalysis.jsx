@@ -37,12 +37,12 @@ function StatCard({ label, value, highlight }) {
       flex: 1,
       minWidth: 0,
     }}>
-      <p style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 600, letterSpacing: '0.05em', marginBottom: 4 }}>
+      <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', fontWeight: 700, letterSpacing: '0.05em', marginBottom: 4 }}>
         {label}
       </p>
       <p style={{
         fontFamily: 'var(--font-display)',
-        fontSize: 22, fontWeight: 600,
+        fontSize: 23, fontWeight: 600,
         color: highlight ? 'var(--color-accent)' : (value == null ? 'var(--color-text-muted)' : 'var(--color-text-primary)'),
       }}>
         {value ?? '—'}
@@ -54,14 +54,14 @@ function StatCard({ label, value, highlight }) {
 // W/D/L form dots
 function FormRow({ formString }) {
   if (!formString) return (
-    <p style={{ fontSize: 11, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>No form data</p>
+    <p style={{ fontSize: 15, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>No form data</p>
   )
   const chars = formString.slice(0, 5).split('')
   const colour = { W: 'var(--color-success)', D: 'var(--color-warning)', L: 'var(--color-danger)' }
   const label  = { W: 'Win', D: 'Draw', L: 'Loss' }
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 10, color: 'var(--color-text-muted)', letterSpacing: '0.05em', fontWeight: 600 }}>
+      <span style={{ fontSize: 14, color: 'var(--color-text-muted)', letterSpacing: '0.05em', fontWeight: 600 }}>
         FORM
       </span>
       {chars.map((c, i) => (
@@ -75,14 +75,14 @@ function FormRow({ formString }) {
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 10, fontWeight: 700,
+            fontSize: 14, fontWeight: 700,
             color: '#000',
           }}
         >
           {c}
         </span>
       ))}
-      <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>(latest → oldest)</span>
+      <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>(latest → oldest)</span>
     </div>
   )
 }
@@ -98,8 +98,8 @@ function SplitBar({ label, homeVal, awayVal }) {
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-        <span style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 600 }}>{label}</span>
-        <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
+        <span style={{ fontSize: 14, color: 'var(--color-text-muted)', fontWeight: 600 }}>{label}</span>
+        <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
           H {h?.toFixed(2)} / A {a?.toFixed(2)}
         </span>
       </div>
@@ -119,8 +119,8 @@ function SplitBar({ label, homeVal, awayVal }) {
         }} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
-        <span style={{ fontSize: 9, color: 'var(--color-text-muted)' }}>Home {homePct}%</span>
-        <span style={{ fontSize: 9, color: 'var(--color-text-muted)' }}>Away {100 - homePct}%</span>
+        <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>Home {homePct}%</span>
+        <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>Away {100 - homePct}%</span>
       </div>
     </div>
   )
@@ -136,18 +136,18 @@ function LambdaBlock({ label, value, dimLabel }) {
       padding: '12px',
       textAlign: 'center',
     }}>
-      <p style={{ fontSize: 10, color: 'var(--color-text-muted)', letterSpacing: '0.05em', marginBottom: 4 }}>
+      <p style={{ fontSize: 14, color: 'var(--color-text-muted)', letterSpacing: '0.05em', marginBottom: 4 }}>
         {label}
       </p>
       <p style={{
         fontFamily: 'var(--font-display)',
-        fontSize: 28, fontWeight: 600,
+        fontSize: 36, fontWeight: 600,
         color: value != null ? 'var(--color-accent)' : 'var(--color-text-muted)',
       }}>
         λ = {value != null ? value : '—'}
       </p>
       {dimLabel && (
-        <p style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2 }}>{dimLabel}</p>
+        <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginTop: 2 }}>{dimLabel}</p>
       )}
     </div>
   )
@@ -211,14 +211,14 @@ function ManualInputForm({ teamCode, teamName, onSave, t }) {
       borderRadius: 'var(--radius-md)',
       border: '0.5px solid var(--color-border)',
     }}>
-      <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 10, fontWeight: 600 }}>
+      <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 10, fontWeight: 600 }}>
         {getFlag(teamName)} {teamName} — Manual Input
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
         {fields.map(f => (
           <div key={f.key}>
-            <label style={{ display: 'block', fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>
+            <label style={{ display: 'block', fontSize: 15, color: 'var(--color-text-muted)', marginBottom: 4 }}>
               {f.label}
             </label>
             <input
@@ -236,7 +236,7 @@ function ManualInputForm({ teamCode, teamName, onSave, t }) {
 
       {/* Form string input */}
       <div style={{ marginBottom: 12 }}>
-        <label style={{ display: 'block', fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>
+        <label style={{ display: 'block', fontSize: 15, color: 'var(--color-text-muted)', marginBottom: 4 }}>
           Form String (e.g. WWDLL — latest first)
         </label>
         <input
@@ -261,7 +261,7 @@ function ManualInputForm({ teamCode, teamName, onSave, t }) {
           borderRadius: 'var(--radius-sm)',
           color: 'var(--color-accent)',
           fontFamily: 'var(--font-ui)',
-          fontSize: 14, fontWeight: 500,
+          fontSize: 16, fontWeight: 500,
           cursor: saving ? 'not-allowed' : 'pointer',
           opacity: saving ? 0.7 : 1,
         }}
@@ -289,7 +289,7 @@ function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManua
         }}>
           {getFlag(teamName)} {teamName}
         </p>
-        <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+        <p style={{ fontSize: 15, color: 'var(--color-text-muted)', marginTop: 2 }}>
           {isHome ? 'Home' : 'Away'} · {teamCode}
         </p>
       </div>
@@ -314,7 +314,7 @@ function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManua
           {/* Home / Away split — feeds V2 model */}
           {(teamStats.home_goals_avg != null || teamStats.away_goals_avg != null) && (
             <div style={{ marginTop: 10 }}>
-              <p style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 600, letterSpacing: '0.05em', marginBottom: 8 }}>
+              <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', fontWeight: 700, letterSpacing: '0.05em', marginBottom: 8 }}>
                 HOME / AWAY SPLIT (V2)
               </p>
               <SplitBar
@@ -331,7 +331,7 @@ function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManua
           </div>
 
           {/* WC window */}
-          <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8 }}>
+          <p style={{ fontSize: 15, color: 'var(--color-text-muted)', marginTop: 8 }}>
             {teamStats.wc_games_in_window || 0} WC game{teamStats.wc_games_in_window !== 1 ? 's' : ''} in window
             {(teamStats.games_window || 0) < 5 && (
               <span style={{ color: 'var(--color-warning)', marginLeft: 6 }}>
@@ -350,7 +350,7 @@ function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManua
           textAlign: 'center',
           marginBottom: 8,
         }}>
-          <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: isAdmin ? 12 : 0 }}>
+          <p style={{ fontSize: 15, color: 'var(--color-text-muted)', marginBottom: isAdmin ? 12 : 0 }}>
             {t('analysis.noStats')}
           </p>
           {isAdmin && (
@@ -366,7 +366,7 @@ function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManua
                   borderRadius: 'var(--radius-sm)',
                   color: 'var(--color-accent)',
                   fontFamily: 'var(--font-ui)',
-                  fontSize: 13,
+                  fontSize: 15,
                   cursor: refreshing ? 'not-allowed' : 'pointer',
                   opacity: refreshing ? 0.7 : 1,
                 }}
@@ -383,7 +383,7 @@ function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManua
                   borderRadius: 'var(--radius-sm)',
                   color: 'var(--color-text-secondary)',
                   fontFamily: 'var(--font-ui)',
-                  fontSize: 13,
+                  fontSize: 15,
                   cursor: 'pointer',
                 }}
               >
@@ -407,7 +407,7 @@ function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManua
             borderRadius: 'var(--radius-sm)',
             color: 'var(--color-text-muted)',
             fontFamily: 'var(--font-ui)',
-            fontSize: 11,
+            fontSize: 15,
             cursor: 'pointer',
             width: '100%',
           }}
@@ -440,19 +440,26 @@ const EDGE_COLOURS = {
 // Single score-matrix cell — colour intensity based on probability
 function MatrixCell({ value, isMax }) {
   const intensity = Math.min(value * 12, 0.9)
+  // High intensity cells need dark text, low intensity cells need light text
+  const textColor = intensity > 0.5
+    ? '#000000'
+    : intensity > 0.25
+      ? '#1a2a1a'
+      : 'var(--color-text-secondary)'
   return (
     <div style={{
-      height: 40,
+      height: 44,
       borderRadius: 4,
       background: isMax
-        ? `rgba(0,229,160,${intensity + 0.1})`
+        ? `rgba(0,229,160,${intensity + 0.15})`
         : `rgba(0,229,160,${intensity})`,
       border: isMax
-        ? '1px solid var(--color-accent)'
-        : '0.5px solid var(--color-border)',
+        ? '2px solid var(--color-accent)'
+        : '0.5px solid rgba(255,255,255,0.08)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 9, color: isMax ? 'var(--color-accent)' : 'var(--color-text-muted)',
-      fontWeight: isMax ? 700 : 400,
+      fontSize: 13, 
+      color: isMax ? '#000' : textColor,
+      fontWeight: isMax ? 800 : intensity > 0.3 ? 600 : 400,
       transition: 'background 0.2s',
     }}>
       {(value * 100).toFixed(1)}
@@ -470,7 +477,7 @@ function ScoreMatrix({ matrix, homeTeam, awayTeam, label, colour }) {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <span style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
+          fontSize: 14, fontWeight: 700, letterSpacing: '0.06em',
           color: colour, padding: '2px 8px',
           background: 'var(--color-bg)',
           border: `0.5px solid ${colour}`,
@@ -478,7 +485,7 @@ function ScoreMatrix({ matrix, homeTeam, awayTeam, label, colour }) {
         }}>
           {label}
         </span>
-        <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+        <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
           rows = {homeTeam} goals · cols = {awayTeam} goals
         </span>
       </div>
@@ -487,7 +494,7 @@ function ScoreMatrix({ matrix, homeTeam, awayTeam, label, colour }) {
       <div style={{ display: 'grid', gridTemplateColumns: `28px repeat(${size}, 1fr)`, gap: 3, marginBottom: 3 }}>
         <div />
         {Array.from({ length: size }, (_, j) => (
-          <div key={j} style={{ textAlign: 'center', fontSize: 9, color: 'var(--color-text-muted)', fontWeight: 600 }}>
+          <div key={j} style={{ textAlign: 'center', fontSize: 14, color: 'var(--color-text-primary)', fontWeight: 700 }}>
             {j}
           </div>
         ))}
@@ -497,7 +504,7 @@ function ScoreMatrix({ matrix, homeTeam, awayTeam, label, colour }) {
       {matrix.map((row, i) => (
         <div key={i} style={{ display: 'grid', gridTemplateColumns: `28px repeat(${size}, 1fr)`, gap: 3, marginBottom: 3 }}>
           {/* Row header (home goals) */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--color-text-muted)', fontWeight: 600 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: 'var(--color-text-muted)', fontWeight: 600 }}>
             {i}
           </div>
           {row.map((v, j) => (
@@ -516,11 +523,11 @@ function ProbBar({ label, v1, v2, colour }) {
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-        <span style={{ fontSize: 12, color: 'var(--color-text-primary)', fontWeight: 600 }}>{label}</span>
+        <span style={{ fontSize: 14, color: 'var(--color-text-primary)', fontWeight: 600 }}>{label}</span>
         <div style={{ display: 'flex', gap: 12 }}>
-          <span style={{ fontSize: 12, color: 'var(--color-accent)', fontWeight: 700 }}>V1 {pct1.toFixed(1)}%</span>
+          <span style={{ fontSize: 14, color: 'var(--color-accent)', fontWeight: 700 }}>V1 {pct1.toFixed(1)}%</span>
           {pct2 != null && (
-            <span style={{ fontSize: 12, color: 'var(--color-info)', fontWeight: 700 }}>V2 {pct2.toFixed(1)}%</span>
+            <span style={{ fontSize: 14, color: 'var(--color-info)', fontWeight: 700 }}>V2 {pct2.toFixed(1)}%</span>
           )}
         </div>
       </div>
@@ -555,7 +562,7 @@ function TotalGoalsTable({ goalsV1, goalsV2 }) {
         borderBottom: '0.5px solid var(--color-border)',
       }}>
         {['Line', 'V1 Over', 'V1 Under', 'V2 Over', 'V2 Under'].map(h => (
-          <span key={h} style={{ fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 700, letterSpacing: '0.05em', textAlign: 'center' }}>{h}</span>
+          <span key={h} style={{ fontSize: 14, color: 'var(--color-text-secondary)', fontWeight: 700, letterSpacing: '0.05em', textAlign: 'center' }}>{h}</span>
         ))}
       </div>
       {/* Rows */}
@@ -570,17 +577,17 @@ function TotalGoalsTable({ goalsV1, goalsV2 }) {
             alignItems: 'center',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600, color: row.anchor ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: row.anchor ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
                 {row.line}
               </span>
               {row.anchor && (
-                <span style={{ fontSize: 9, color: 'var(--color-accent)', fontWeight: 700, letterSpacing: '0.06em' }}>ANCHOR</span>
+                <span style={{ fontSize: 14, color: 'var(--color-accent)', fontWeight: 700, letterSpacing: '0.06em' }}>ANCHOR</span>
               )}
             </div>
-            <span style={{ fontSize: 13, color: 'var(--color-accent)', fontWeight: 700, textAlign: 'center' }}>{formatProb(row.over)}</span>
-            <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'center' }}>{formatProb(row.under)}</span>
-            <span style={{ fontSize: 13, color: 'var(--color-info)', fontWeight: 700, textAlign: 'center' }}>{v2row ? formatProb(v2row.over) : '—'}</span>
-            <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', textAlign: 'center' }}>{v2row ? formatProb(v2row.under) : '—'}</span>
+            <span style={{ fontSize: 15, color: 'var(--color-accent)', fontWeight: 700, textAlign: 'center' }}>{formatProb(row.over)}</span>
+            <span style={{ fontSize: 15, color: 'var(--color-text-secondary)', textAlign: 'center' }}>{formatProb(row.under)}</span>
+            <span style={{ fontSize: 15, color: 'var(--color-info)', fontWeight: 700, textAlign: 'center' }}>{v2row ? formatProb(v2row.over) : '—'}</span>
+            <span style={{ fontSize: 15, color: 'var(--color-text-secondary)', textAlign: 'center' }}>{v2row ? formatProb(v2row.under) : '—'}</span>
           </div>
         )
       })}
@@ -599,15 +606,15 @@ function DixonColesToggle({ enabled, onChange }) {
           background: enabled ? 'var(--color-info-dim)' : 'transparent',
           border: `0.5px solid ${enabled ? 'var(--color-info)' : 'var(--color-border)'}`,
           borderRadius: 'var(--radius-sm)',
-          color: enabled ? 'var(--color-info)' : 'var(--color-text-muted)',
+          color: enabled ? 'var(--color-info)' : 'var(--color-text-secondary)',
           fontFamily: 'var(--font-ui)',
-          fontSize: 11, fontWeight: enabled ? 700 : 400,
+          fontSize: 15, fontWeight: enabled ? 700 : 400,
           cursor: 'pointer',
         }}
       >
         {enabled ? '✓ Dixon-Coles ON' : 'Dixon-Coles correction'}
       </button>
-      <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
+      <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
         (corrects low-score bias · default OFF · MT21)
       </span>
     </div>
@@ -638,7 +645,7 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
         borderRadius: 'var(--radius-md)',
         padding: 24, textAlign: 'center',
       }}>
-        <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+        <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>
           Both teams need stats before the matrix can be calculated.
         </p>
       </div>
@@ -653,10 +660,10 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
         borderRadius: 'var(--radius-md)',
         padding: 16,
       }}>
-        <p style={{ fontSize: 13, color: 'var(--color-danger)', marginBottom: 6 }}>
+        <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-danger)', marginBottom: 6 }}>
           Model error
         </p>
-        <p style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+        <p style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
           {modelError || 'Check that both teams have goals_scored_avg and goals_conceded_avg.'}
         </p>
       </div>
@@ -681,19 +688,19 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
         padding: '12px 16px',
       }}>
         <div style={{ textAlign: 'center' }}>
-          <p style={{ fontSize: 10, color: 'var(--color-text-muted)', letterSpacing: '0.05em', marginBottom: 2 }}>λ HOME</p>
-          <p style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, color: 'var(--color-accent)' }}>
+          <p style={{ fontSize: 14, color: 'var(--color-text-muted)', letterSpacing: '0.05em', marginBottom: 2 }}>λ HOME</p>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 600, color: 'var(--color-accent)' }}>
             {v1.lambdaHome.toFixed(3)}
           </p>
-          <p style={{ fontSize: 10, color: 'var(--color-info)' }}>V2: {v2.lambdaHome.toFixed(3)}</p>
+          <p style={{ fontSize: 14, color: 'var(--color-info)' }}>V2: {v2.lambdaHome.toFixed(3)}</p>
         </div>
-        <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, color: 'var(--color-text-muted)' }}>vs</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: 21, color: 'var(--color-text-muted)' }}>vs</span>
         <div style={{ textAlign: 'center' }}>
-          <p style={{ fontSize: 10, color: 'var(--color-text-muted)', letterSpacing: '0.05em', marginBottom: 2 }}>λ AWAY</p>
-          <p style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 600, color: 'var(--color-accent)' }}>
+          <p style={{ fontSize: 14, color: 'var(--color-text-muted)', letterSpacing: '0.05em', marginBottom: 2 }}>λ AWAY</p>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 600, color: 'var(--color-accent)' }}>
             {v1.lambdaAway.toFixed(3)}
           </p>
-          <p style={{ fontSize: 10, color: 'var(--color-info)' }}>V2: {v2.lambdaAway.toFixed(3)} <span style={{ color: 'var(--color-text-muted)' }}>({v2.awayFactorNote})</span></p>
+          <p style={{ fontSize: 14, color: 'var(--color-info)' }}>V2: {v2.lambdaAway.toFixed(3)} <span style={{ color: 'var(--color-text-muted)' }}>({v2.awayFactorNote})</span></p>
         </div>
       </div>
 
@@ -705,10 +712,10 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
           borderRadius: 'var(--radius-md)',
           padding: '10px 14px',
         }}>
-          <p style={{ fontSize: 12, color: 'var(--color-warning)', fontWeight: 700 }}>
+          <p style={{ fontSize: 14, color: 'var(--color-warning)', fontWeight: 700 }}>
             ⚠ V1/V2 divergence: {divergence.note}
           </p>
-          <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+          <p style={{ fontSize: 15, color: 'var(--color-text-muted)', marginTop: 2 }}>
             Use V2 as primary when away-factor correction is significant (MT07)
           </p>
         </div>
@@ -721,14 +728,14 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
         borderRadius: 'var(--radius-md)',
         padding: '16px',
       }}>
-        <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 14 }}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 14 }}>
           RESULT PROBABILITIES (MT08: capped 5–95%)
         </p>
         <ProbBar label={`${match.home_team} Win`} v1={v1.probs.home} v2={v2.probs.home} colour="var(--color-accent)" />
         <ProbBar label="Draw"                     v1={v1.probs.draw} v2={v2.probs.draw} colour="var(--color-warning)" />
         <ProbBar label={`${match.away_team} Win`} v1={v1.probs.away} v2={v2.probs.away} colour="var(--color-info)" />
         {(!v1.probsVerified.valid) && (
-          <p style={{ fontSize: 11, color: 'var(--color-danger)', marginTop: 8 }}>
+          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-danger)', marginTop: 8 }}>
             ⚠ V1 sum = {(v1.probsVerified.sum * 100).toFixed(2)}% (should be 100%)
           </p>
         )}
@@ -754,7 +761,7 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
 
       {/* Total Goals anchor table */}
       <div>
-        <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
           TOTAL GOALS — V1 + V2 (anchor = closest to 50/50)
         </p>
         <TotalGoalsTable goalsV1={v1.totalGoals} goalsV2={v2.totalGoals} />
@@ -794,7 +801,7 @@ function TabValue({ stats, match }) {
             borderRadius: 'var(--radius-md)',
             padding: '14px 16px',
           }}>
-            <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 12 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 12 }}>
               MODEL PROBABILITIES (V1 · V2)
             </p>
             {['home', 'draw', 'away'].map(key => (
@@ -802,14 +809,14 @@ function TabValue({ stats, match }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 marginBottom: 10,
               }}>
-                <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>
+                <span style={{ fontSize: 15, color: 'var(--color-text-primary)' }}>
                   {OUTCOME_LABELS[key]}
                 </span>
                 <div style={{ display: 'flex', gap: 10 }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: OUTCOME_COLOURS[key], fontFamily: 'var(--font-display)' }}>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: OUTCOME_COLOURS[key], fontFamily: 'var(--font-display)' }}>
                     {formatProb(model.v1.probs[key])}
                   </span>
-                  <span style={{ fontSize: 12, color: 'var(--color-info)' }}>
+                  <span style={{ fontSize: 14, color: 'var(--color-info)' }}>
                     {formatProb(model.v2.probs[key])}
                   </span>
                 </div>
@@ -830,14 +837,14 @@ function TabValue({ stats, match }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               }}>
                 <div>
-                  <p style={{ fontSize: 10, color: 'var(--color-accent)', fontWeight: 700, letterSpacing: '0.06em' }}>ANCHOR LINE</p>
-                  <p style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                  <p style={{ fontSize: 14, color: 'var(--color-accent)', fontWeight: 700, letterSpacing: '0.06em' }}>ANCHOR LINE</p>
+                  <p style={{ fontFamily: 'var(--font-display)', fontSize: 23, fontWeight: 600, color: 'var(--color-text-primary)' }}>
                     {anchor.line} Goals
                   </p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <p style={{ fontSize: 12, color: 'var(--color-accent)' }}>Over {formatProb(anchor.over)}</p>
-                  <p style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>Under {formatProb(anchor.under)}</p>
+                  <p style={{ fontSize: 14, color: 'var(--color-accent)' }}>Over {formatProb(anchor.over)}</p>
+                  <p style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Under {formatProb(anchor.under)}</p>
                 </div>
               </div>
             )
@@ -849,7 +856,7 @@ function TabValue({ stats, match }) {
           border: '0.5px solid var(--color-border)',
           borderRadius: 'var(--radius-md)',
           padding: 16, textAlign: 'center',
-          color: 'var(--color-text-muted)', fontSize: 13,
+          color: 'var(--color-text-muted)', fontSize: 15,
         }}>
           Stats required to calculate model probabilities (MT06)
         </div>
@@ -863,12 +870,12 @@ function TabValue({ stats, match }) {
         padding: '14px 16px',
         display: 'flex', alignItems: 'center', gap: 12,
       }}>
-        <span style={{ fontSize: 20 }}>📋</span>
+        <span style={{ fontSize: 21 }}>📋</span>
         <div>
-          <p style={{ fontSize: 13, color: 'var(--color-text-primary)', fontWeight: 600, marginBottom: 2 }}>
+          <p style={{ fontSize: 15, color: 'var(--color-text-primary)', fontWeight: 600, marginBottom: 2 }}>
             Enter bookmaker odds to unlock EV analysis
           </p>
-          <p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+          <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>
             Vig stripped automatically (MT22) · Edge ≥ 5% = recommend (MT23) · Kelly ×0.25 (MT24)
           </p>
         </div>
@@ -882,7 +889,7 @@ function TabValue({ stats, match }) {
           { colour: EDGE_COLOURS.red,   label: '< 0% — Skip', token: 'red' },
         ].map(({ colour, label }) => (
           <span key={label} style={{
-            fontSize: 11, fontWeight: 700,
+            fontSize: 15, fontWeight: 700,
             padding: '3px 10px',
             borderRadius: 'var(--radius-full)',
             background: `${colour}22`,
@@ -917,7 +924,7 @@ function TabPortfolio({ stats }) {
           borderRadius: 'var(--radius-md)',
           padding: '14px 16px',
         }}>
-          <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
             MODEL SUMMARY
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -935,8 +942,8 @@ function TabPortfolio({ stats }) {
                 padding: '8px 10px',
                 textAlign: 'center',
               }}>
-                <p style={{ fontSize: 10, color: 'var(--color-text-muted)', marginBottom: 2 }}>{label}</p>
-                <p style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--color-accent)' }}>{value}</p>
+                <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginBottom: 2 }}>{label}</p>
+                <p style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 600, color: 'var(--color-accent)' }}>{value}</p>
               </div>
             ))}
           </div>
@@ -950,7 +957,7 @@ function TabPortfolio({ stats }) {
         borderRadius: 'var(--radius-md)',
         padding: '14px 16px',
       }}>
-        <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
           KELLY SIZING RULES
         </p>
         {[
@@ -964,15 +971,15 @@ function TabPortfolio({ stats }) {
             padding: '8px 0',
             borderBottom: '0.5px solid var(--color-border)',
           }}>
-            <span style={{ fontSize: 11, color: 'var(--color-text-muted)', minWidth: 90 }}>{label}</span>
+            <span style={{ fontSize: 15, color: 'var(--color-text-muted)', minWidth: 90 }}>{label}</span>
             <span style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 13, flex: 1,
+              fontSize: 15, flex: 1,
               color: accent ? 'var(--color-accent)' : 'var(--color-text-primary)',
             }}>
               {formula}
             </span>
-            <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{note}</span>
+            <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>{note}</span>
           </div>
         ))}
       </div>
@@ -984,7 +991,7 @@ function TabPortfolio({ stats }) {
         borderRadius: 'var(--radius-md)',
         padding: '14px 16px',
         textAlign: 'center',
-        color: 'var(--color-text-muted)', fontSize: 12,
+        color: 'var(--color-text-muted)', fontSize: 14,
       }}>
         Interactive stake calculator, portfolio builder, and stress-test table — Stage 5
       </div>
@@ -1019,7 +1026,7 @@ const REC_COLOURS = {
 }
 
 function ConfidenceBar({ value }) {
-  if (value == null) return <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>—</span>
+  if (value == null) return <span style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>—</span>
   const pct   = Math.round(value * 100)
   const color = pct >= 70 ? 'var(--color-success)' : pct >= 45 ? 'var(--color-warning)' : 'var(--color-danger)'
   return (
@@ -1031,7 +1038,7 @@ function ConfidenceBar({ value }) {
       }}>
         <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 'var(--radius-full)', transition: 'width 0.4s ease' }} />
       </div>
-      <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 34 }}>{pct}%</span>
+      <span style={{ fontSize: 14, fontWeight: 700, color, minWidth: 34 }}>{pct}%</span>
     </div>
   )
 }
@@ -1064,15 +1071,15 @@ function RoleCard({ roleOutput }) {
           display: 'flex', alignItems: 'center', gap: 10,
         }}
       >
-        <span style={{ fontSize: 20, flexShrink: 0 }}>{meta.icon}</span>
+        <span style={{ fontSize: 21, flexShrink: 0 }}>{meta.icon}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)' }}>
               {meta.name}
             </span>
             {meta.sonnet && (
               <span style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
+                fontSize: 14, fontWeight: 700, letterSpacing: '0.06em',
                 color: 'var(--color-info)', padding: '1px 5px',
                 border: '0.5px solid var(--color-info)',
                 borderRadius: 'var(--radius-full)',
@@ -1082,7 +1089,7 @@ function RoleCard({ roleOutput }) {
             )}
             {hasError && (
               <span style={{
-                fontSize: 9, fontWeight: 700, color: 'var(--color-danger)',
+                fontSize: 14, fontWeight: 700, color: 'var(--color-danger)',
                 padding: '1px 5px', border: '0.5px solid var(--color-danger)',
                 borderRadius: 'var(--radius-full)',
               }}>ERROR</span>
@@ -1092,7 +1099,7 @@ function RoleCard({ roleOutput }) {
         </div>
         {rec && rec !== 'null' && (
           <span style={{
-            fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
+            fontSize: 15, fontWeight: 700, letterSpacing: '0.04em',
             color: recColor, padding: '3px 8px',
             background: `${recColor}22`,
             border: `0.5px solid ${recColor}`,
@@ -1102,7 +1109,7 @@ function RoleCard({ roleOutput }) {
             {rec?.replace(/_/g, ' ').toUpperCase()}
           </span>
         )}
-        <span style={{ color: 'var(--color-text-muted)', fontSize: 12, flexShrink: 0 }}>
+        <span style={{ color: 'var(--color-text-muted)', fontSize: 14, flexShrink: 0 }}>
           {expanded ? '▲' : '▼'}
         </span>
       </button>
@@ -1115,7 +1122,7 @@ function RoleCard({ roleOutput }) {
         }}>
           {/* Summary */}
           <p style={{
-            fontSize: 13, color: 'var(--color-text-secondary)',
+            fontSize: 15, color: 'var(--color-text-secondary)',
             lineHeight: 1.6, marginTop: 12, marginBottom: 10,
           }}>
             {roleOutput.summary}
@@ -1136,13 +1143,13 @@ function RoleCard({ roleOutput }) {
                     marginBottom: 4,
                   }}>
                     <span style={{
-                      fontSize: 11,
+                      fontSize: 15,
                       color: isPositive ? 'var(--color-success)' : 'var(--color-warning)',
                       flexShrink: 0, marginTop: 1,
                     }}>
                       {isPositive ? '✓' : '⚠'}
                     </span>
-                    <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                    <span style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>
                       {sig}
                     </span>
                   </div>
@@ -1156,7 +1163,7 @@ function RoleCard({ roleOutput }) {
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
               {roleOutput.flags.map(flag => (
                 <span key={flag} style={{
-                  fontSize: 10, fontWeight: 700,
+                  fontSize: 14, fontWeight: 700,
                   padding: '2px 6px',
                   borderRadius: 'var(--radius-sm)',
                   background: 'var(--color-warning-dim)',
@@ -1194,19 +1201,19 @@ function CompositeScore({ output }) {
       textAlign: 'center',
       marginBottom: 20,
     }}>
-      <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.08em', marginBottom: 8 }}>
+      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.08em', marginBottom: 8 }}>
         🎯 COMPOSITE CONFIDENCE
       </p>
       <p style={{
         fontFamily: 'var(--font-display)',
-        fontSize: 56, fontWeight: 700,
+        fontSize: 72, fontWeight: 700,
         color,
         lineHeight: 1,
         marginBottom: 6,
       }}>
         {score ?? '—'}
       </p>
-      <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>out of 100</p>
+      <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginBottom: 12 }}>out of 100</p>
 
       {rec && rec !== 'null' && (
         <div style={{
@@ -1217,14 +1224,14 @@ function CompositeScore({ output }) {
           borderRadius: 'var(--radius-full)',
           marginBottom: 12,
         }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: REC_COLOURS[rec] || 'var(--color-text-muted)' }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: REC_COLOURS[rec] || 'var(--color-text-muted)' }}>
             {rec.replace(/_/g, ' ').toUpperCase()}
           </span>
         </div>
       )}
 
       {output.summary && (
-        <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.6, maxWidth: 400, margin: '0 auto' }}>
+        <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.6, maxWidth: 400, margin: '0 auto' }}>
           {output.summary}
         </p>
       )}
@@ -1353,15 +1360,15 @@ function TabAI({ match, isAdmin }) {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
         }}>
           <div>
-            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 2 }}>
+            <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 2 }}>
               {hasAnyOutput ? 'Re-run AI Analysis' : 'Run AI Analysis'}
             </p>
             {lastRun && (
-              <p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Last run: {lastRun} 北京</p>
+              <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>Last run: {lastRun} 北京</p>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {runMsg && <span style={{ fontSize: 11, color: 'var(--color-success)' }}>{runMsg}</span>}
+            {runMsg && <span style={{ fontSize: 15, color: 'var(--color-success)' }}>{runMsg}</span>}
             <button
               onClick={handleRunAnalysis}
               disabled={running}
@@ -1373,7 +1380,7 @@ function TabAI({ match, isAdmin }) {
                 borderRadius: 'var(--radius-sm)',
                 color: 'var(--color-accent)',
                 fontFamily: 'var(--font-ui)',
-                fontSize: 13, fontWeight: 500,
+                fontSize: 15, fontWeight: 500,
                 cursor: running ? 'not-allowed' : 'pointer',
                 opacity: running ? 0.6 : 1,
                 whiteSpace: 'nowrap',
@@ -1393,7 +1400,7 @@ function TabAI({ match, isAdmin }) {
           borderRadius: 'var(--radius-md)',
           padding: '10px 14px',
         }}>
-          <p style={{ fontSize: 13, color: 'var(--color-danger)' }}>{error}</p>
+          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-danger)' }}>{error}</p>
         </div>
       )}
 
@@ -1404,7 +1411,7 @@ function TabAI({ match, isAdmin }) {
           border: '0.5px solid var(--color-border)',
           borderRadius: 'var(--radius-md)',
           padding: 24, textAlign: 'center',
-          color: 'var(--color-text-muted)', fontSize: 13,
+          color: 'var(--color-text-muted)', fontSize: 15,
         }}>
           AI analysis not yet run for this match
         </div>
@@ -1427,7 +1434,7 @@ function TabAI({ match, isAdmin }) {
 
       {/* Phase 1 roles (1,2,4,5,6,7,8,9) */}
       <div>
-        <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 8 }}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 8 }}>
           SPECIALIST ROLES
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1527,7 +1534,7 @@ export default function MatchAnalysis() {
         </button>
 
         {/* Stage + venue */}
-        <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 8, marginBottom: 4 }}>
+        <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginTop: 8, marginBottom: 4 }}>
           {STAGE_LABELS[match.stage] || match.stage}
           {match.group_name ? ` · Group ${match.group_name}` : ''}
           {match.venue ? ` · ${match.venue}` : ''}
@@ -1535,7 +1542,7 @@ export default function MatchAnalysis() {
         </p>
 
         {/* Time (MT14 — Beijing always) */}
-        <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
+        <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
           {toBeijingTime(match.match_date, 'full')} 北京
         </p>
 
@@ -1552,19 +1559,19 @@ export default function MatchAnalysis() {
             <p style={{ fontSize: 36, lineHeight: 1 }}>{getFlag(match.home_team)}</p>
             <p style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 18, fontWeight: 600,
+              fontSize: 19, fontWeight: 600,
               color: 'var(--color-text-primary)',
               marginTop: 4,
             }}>
               {match.home_team}
             </p>
-            <p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Home</p>
+            <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>Home</p>
           </div>
 
           <div style={{ textAlign: 'center', flexShrink: 0 }}>
             <p style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 18, fontWeight: 400,
+              fontSize: 19, fontWeight: 400,
               color: 'var(--color-text-muted)',
             }}>
               {match.home_score !== null ? `${match.home_score} – ${match.away_score}` : 'vs'}
@@ -1575,20 +1582,20 @@ export default function MatchAnalysis() {
             <p style={{ fontSize: 36, lineHeight: 1 }}>{getFlag(match.away_team)}</p>
             <p style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 18, fontWeight: 600,
+              fontSize: 19, fontWeight: 600,
               color: 'var(--color-text-primary)',
               marginTop: 4,
             }}>
               {match.away_team}
             </p>
-            <p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Away</p>
+            <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>Away</p>
           </div>
         </div>
 
         {/* Confidence badge + last updated */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 16, flexWrap: 'wrap' }}>
           <span style={{
-            fontSize: 12, fontWeight: 600,
+            fontSize: 14, fontWeight: 600,
             color: confCfg.color,
             background: 'var(--color-bg-card)',
             border: `0.5px solid ${confCfg.color}`,
@@ -1597,11 +1604,11 @@ export default function MatchAnalysis() {
           }}>
             {confCfg.label}
           </span>
-          <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+          <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
             {confCfg.desc}
           </span>
           {lastUpdated && (
-            <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+            <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
               · Updated {new Date(lastUpdated).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}
             </span>
           )}
@@ -1625,7 +1632,7 @@ export default function MatchAnalysis() {
                   ? 'var(--color-accent)'
                   : 'var(--color-text-muted)',
                 fontFamily: 'var(--font-ui)',
-                fontSize: 13, fontWeight: activeTab === tab ? 600 : 400,
+                fontSize: 15, fontWeight: activeTab === tab ? 600 : 400,
                 cursor: 'pointer',
                 padding: '8px 4px',
               }}
@@ -1643,7 +1650,7 @@ export default function MatchAnalysis() {
         {activeTab === 'stats' && (
           <div>
             {statsError && (
-              <p style={{ color: 'var(--color-danger)', fontSize: 13, marginBottom: 12 }}>
+              <p style={{ color: 'var(--color-danger)', fontSize: 15, marginBottom: 12 }}>
                 {statsError}
               </p>
             )}
@@ -1661,7 +1668,7 @@ export default function MatchAnalysis() {
                     borderRadius: 'var(--radius-sm)',
                     color: 'var(--color-accent)',
                     fontFamily: 'var(--font-ui)',
-                    fontSize: 12,
+                    fontSize: 14,
                     cursor: refreshing ? 'not-allowed' : 'pointer',
                     opacity: refreshing ? 0.7 : 1,
                   }}
@@ -1691,12 +1698,12 @@ export default function MatchAnalysis() {
                     flexWrap: 'wrap',
                   }}>
                     <div style={{ flex: 1, minWidth: 120 }}>
-                      <p style={{ fontSize: 10, color: 'var(--color-accent)', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }}>V1 MODEL</p>
-                      <p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Overall stats — home + away combined</p>
+                      <p style={{ fontSize: 14, color: 'var(--color-accent)', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }}>V1 MODEL</p>
+                      <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>Overall stats — home + away combined</p>
                     </div>
                     <div style={{ flex: 1, minWidth: 120 }}>
-                      <p style={{ fontSize: 10, color: 'var(--color-info)', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }}>V2 MODEL</p>
-                      <p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Away-factor correction applied</p>
+                      <p style={{ fontSize: 14, color: 'var(--color-info)', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }}>V2 MODEL</p>
+                      <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>Away-factor correction applied</p>
                     </div>
                   </div>
                 )}
@@ -1726,7 +1733,7 @@ export default function MatchAnalysis() {
 
                 {/* Data source note */}
                 {hasAnyStats && (
-                  <p style={{ fontSize: 11, color: 'var(--color-text-muted)', textAlign: 'center', marginTop: 16 }}>
+                  <p style={{ fontSize: 15, color: 'var(--color-text-secondary)', textAlign: 'center', marginTop: 16 }}>
                     Source: footystats.org · {stats.home?.games_window || 0}-game window (MT06 requires 5)
                   </p>
                 )}
@@ -1757,7 +1764,7 @@ const backBtnStyle = {
   border: 'none',
   color: 'var(--color-text-secondary)',
   fontFamily: 'var(--font-ui)',
-  fontSize: 14,
+  fontSize: 16,
   cursor: 'pointer',
   padding: '0',
   minHeight: 'var(--touch-target)',

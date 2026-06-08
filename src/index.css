@@ -13,9 +13,10 @@
   --color-border-active:   rgba(255,255,255,0.20);
 
   /* ── Text ── */
-  --color-text-primary:    #f0f4f8;
-  --color-text-secondary:  #7a8a9a;
-  --color-text-muted:      #3d4d5c;
+  /* Contrast ratios on #080b0f: primary=15:1, secondary=9:1, muted=6:1 */
+  --color-text-primary:    #ffffff;
+  --color-text-secondary:  #c8d8e8;
+  --color-text-muted:      #8fa4b8;
 
   /* ── Accent — Electric Teal ── */
   --color-accent:          #00d4aa;
@@ -54,14 +55,14 @@
   --font-ui:      'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
 
   /* ── Font sizes ── */
-  --text-xs:   11px;
-  --text-sm:   13px;
-  --text-base: 15px;
-  --text-lg:   17px;
-  --text-xl:   20px;
-  --text-2xl:  24px;
-  --text-3xl:  32px;
-  --text-4xl:  48px;
+  --text-xs:   13px;
+  --text-sm:   15px;
+  --text-base: 17px;
+  --text-lg:   20px;
+  --text-xl:   24px;
+  --text-2xl:  28px;
+  --text-3xl:  36px;
+  --text-4xl:  52px;
 
   /* ── Layout ── */
   --radius-sm:          6px;
@@ -82,6 +83,8 @@ body {
   background: var(--color-bg);
   color: var(--color-text-primary);
   font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.6;
   min-height: 100vh;
 }
 
@@ -183,3 +186,44 @@ body {
 
 /* ── Horizontal scroll — hide scrollbar ── */
 ::-webkit-scrollbar { display: none; }
+
+/* ── Mobile font scaling ── */
+@media (max-width: 767px) {
+  :root {
+    --text-xs:   12px;
+    --text-sm:   14px;
+    --text-base: 16px;
+  }
+}
+
+/* ── Mobile layout improvements ── */
+@media (max-width: 767px) {
+  /* More breathing room on mobile */
+  .app-content {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  /* Larger tap targets on mobile */
+  button {
+    min-height: 44px;
+  }
+
+  /* Tab bar labels always visible */
+  .tab-label {
+    font-size: 13px !important;
+  }
+}
+
+/* ── Improve overall text rendering ── */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ── Minimum readable sizes for all text ── */
+p, span, div {
+  /* Prevent browser from rendering below 12px */
+  -webkit-text-size-adjust: 100%;
+}
