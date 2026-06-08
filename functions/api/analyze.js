@@ -134,19 +134,46 @@ async function callClaude(env, model, systemPrompt, userContent, signal) {
   const data = await res.json()
   const text = data.content?.[0]?.text || ''
 
-  // Parse JSON from response — extract JSON object from anywhere in the text
+  // Parse JSON from response — multiple strategies in order of preference
+  function tryParse(str) {
+    const start = str.indexOf('{')
+    const end   = str.lastIndexOf('}')
+    if (start === -1 || end === -1 || end <= start) return null
+    try { return JSON.parse(str.slice(start, end + 1)) } catch { return null }
+  }
+
   try {
-    // Strategy: find the first { and last } and parse what's between them
-    const jsonStart = text.indexOf('{')
-    const jsonEnd   = text.lastIndexOf('}')
-    if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON object found')
-    const extracted = text.slice(jsonStart, jsonEnd + 1)
-    return JSON.parse(extracted)
+    // Strategy 1: parse the raw text directly
+    let result = tryParse(text)
+
+    // Strategy 2: Claude sometimes wraps in ```json ... ```
+    if (!result || result.role === 0) {
+      const fenced = text.replace(/^[\s\S]*?```(?:json)?\s*/i, '').replace(/\s*```[\s\S]*$/i, '')
+      result = tryParse(fenced) || result
+    }
+
+    // Strategy 3: look for JSON after the word "json" (Claude prefixes with "json {")
+    if (!result || result.role === 0) {
+      const afterJson = text.replace(/^[\s\S]*?\bjson\s*\{/i, '{')
+      result = tryParse(afterJson) || result
+    }
+
+    // Validate result has required fields — reject fallback objects
+    if (result && result.role && result.role !== 0 && result.confidence !== undefined) {
+      return result
+    }
+
+    // Strategy 4: if result looks valid despite role=0, trust it if confidence is present
+    if (result && result.confidence !== null && result.confidence !== undefined) {
+      return result
+    }
+
+    throw new Error('No valid JSON found')
   } catch {
-    // Return a structured fallback if Claude's output wasn't clean JSON
+    // Return a structured fallback if all strategies fail
     return {
       role:           0,
-      summary:        text.replace(/`/g, '').trim().slice(0, 300),
+      summary:        text.replace(/`/g, '').replace(/^json\s*/i, '').trim().slice(0, 400),
       signals:        [],
       confidence:     null,
       recommendation: null,
@@ -196,16 +223,11 @@ function buildPhase1Context(phase1Results) {
 // ── Role system prompts ───────────────────────────────────────
 
 const JSON_INSTRUCTION = `
-Respond ONLY with a single valid JSON object — no markdown, no explanation, no code blocks.
-Schema:
-{
-  "role": <role_number>,
-  "summary": "<one paragraph, max 150 words>",
-  "signals": ["<positive or negative signal>", ...],
-  "confidence": <0.00–1.00>,
-  "recommendation": "<home_win|away_win|draw|over|under|value_home|value_away|null>",
-  "flags": ["<flag_name>", ...]
-}
+CRITICAL: Your ENTIRE response must be ONLY a raw JSON object. 
+Do NOT use markdown. Do NOT use code blocks. Do NOT write backticks.
+Do NOT write the word "json". Start your response with { and end with }.
+Required schema (copy exactly, fill in values):
+{"role":<number>,"summary":"<text>","signals":["<signal>"],"confidence":<0.00-1.00>,"recommendation":"<home_win|away_win|draw|over|under|value_home|value_away|null>","flags":[]}
 `.trim()
 
 function rolePrompt(roleNumber, roleName, matchContext) {
