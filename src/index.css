@@ -44,6 +44,9 @@
   --color-edge-fair:       #3d4d5c;
   --color-edge-weak:       #ff5252;
   --color-edge-avoid:      #cc0000;
+  --color-edge-green:      #00d4aa;
+  --color-edge-amber:      #ffb547;
+  --color-edge-red:        #ff5252;
 
   /* ── V1/V2 agreement ── */
   --color-agree:           #00d4aa;

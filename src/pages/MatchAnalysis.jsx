@@ -7,7 +7,7 @@ import { getFlag } from '../lib/teamFlags'
 import { toBeijingTime } from '../lib/dateUtils'
 import { supabase } from '../lib/supabase'
 import { runModels, capProb, SCORE_MAX } from '../lib/poisson'
-import { formatProb } from '../lib/evEngine'
+import { formatProb, analyse1X2 } from '../lib/evEngine'
 
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
@@ -771,12 +771,21 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
   )
 }
 
-// Value tab — shows model probabilities, prompts for odds entry
+// Value tab — model probabilities + bookmaker odds entry → EV/edge per outcome
 function TabValue({ stats, match }) {
   const model = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
     try { return runModels(stats.home, stats.away) } catch { return null }
   }, [stats])
+
+  // Decimal odds entry (MT09). Empty until analyst inputs bookmaker prices.
+  const [odds, setOdds] = useState({ home: '', draw: '', away: '' })
+  const ev1x2 = useMemo(() => {
+    if (!model) return null
+    const o = { home: parseFloat(odds.home), draw: parseFloat(odds.draw), away: parseFloat(odds.away) }
+    if (![o.home, o.draw, o.away].every(v => v > 1)) return null
+    try { return analyse1X2(model.v2.probs, o) } catch { return null }
+  }, [model, odds])
 
   const OUTCOME_LABELS = {
     home: `${match?.home_team || 'Home'} Win`,
@@ -862,24 +871,79 @@ function TabValue({ stats, match }) {
         </div>
       )}
 
-      {/* Odds entry prompt */}
+      {/* Odds entry — decimal (MT09) */}
       <div style={{
         background: 'var(--color-bg-card)',
         border: '0.5px solid var(--color-border)',
         borderRadius: 'var(--radius-md)',
         padding: '14px 16px',
-        display: 'flex', alignItems: 'center', gap: 12,
       }}>
-        <span style={{ fontSize: 21 }}>📋</span>
-        <div>
-          <p style={{ fontSize: 15, color: 'var(--color-text-primary)', fontWeight: 600, marginBottom: 2 }}>
-            Enter bookmaker odds to unlock EV analysis
-          </p>
-          <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>
-            Vig stripped automatically (MT22) · Edge ≥ 5% = recommend (MT23) · Kelly ×0.25 (MT24)
-          </p>
+        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
+          BOOKMAKER ODDS (DECIMAL) · 1X2
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {['home', 'draw', 'away'].map(key => (
+            <div key={key} style={{ flex: 1 }}>
+              <label style={{ fontSize: 13, color: 'var(--color-text-muted)', display: 'block', marginBottom: 4 }}>
+                {OUTCOME_LABELS[key]}
+              </label>
+              <input
+                type="number" inputMode="decimal" step="0.01" min="1" placeholder="2.10"
+                value={odds[key]}
+                onChange={e => setOdds(o => ({ ...o, [key]: e.target.value }))}
+                style={{
+                  width: '100%', fontSize: 16, minHeight: 44,
+                  padding: '0 12px', borderRadius: 'var(--radius-sm)',
+                  background: 'var(--color-bg)', color: 'var(--color-text-primary)',
+                  border: '0.5px solid var(--color-border-active)',
+                }}
+              />
+            </div>
+          ))}
         </div>
+        <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 8 }}>
+          Vig stripped automatically (MT22) · Edge vs V2 model · ≥ 5% = recommend (MT23)
+        </p>
       </div>
+
+      {/* EV results — appears once all three odds entered */}
+      {ev1x2 && (
+        <div style={{
+          background: 'var(--color-bg-card)',
+          border: '0.5px solid var(--color-border)',
+          borderRadius: 'var(--radius-md)',
+          padding: '14px 16px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>
+              EXPECTED VALUE
+            </span>
+            <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>vig {(ev1x2.vig.vigPct).toFixed(1)}%</span>
+          </div>
+          {['home', 'draw', 'away'].map(key => {
+            const oc = ev1x2.outcomes[key]
+            const col = EDGE_COLOURS[oc.ev?.colour] || 'var(--color-text-muted)'
+            const best = ev1x2.bestBet === key
+            return (
+              <div key={key} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 0', borderBottom: '0.5px solid var(--color-border)',
+              }}>
+                <span style={{ fontSize: 15, color: 'var(--color-text-primary)', fontWeight: best ? 700 : 400 }}>
+                  {best ? '★ ' : ''}{OUTCOME_LABELS[key]}
+                </span>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>fair {oc.fairOdds.toFixed(2)}</span>
+                  <span style={{
+                    fontSize: 14, fontWeight: 700, color: col,
+                    padding: '2px 8px', borderRadius: 'var(--radius-full)', background: `${col}22`,
+                  }}>{oc.ev?.edgeDisplay}</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Edge legend */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
