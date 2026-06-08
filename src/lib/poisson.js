@@ -21,6 +21,21 @@ export const DIXON_COLES_RHO  = 0.1
 export const SCORE_MAX        = 6      // matrix dimension: 0..SCORE_MAX
 export const GOALS_LINES      = [0.5, 1.5, 2.5, 3.5, 4.5]
 
+// ── Venue advantage table (WC2026 hosts: USA/CAN/MEX) ────────────────────
+// Multiplier applied to the home/designated team's lambda. Co-hosts get a
+// genuine boost; everyone else plays on neutral ground = baseline 1.15.
+export const VENUE_ADVANTAGE = {
+  USA:     1.30,  // host nation
+  CAN:     1.25,  // co-host
+  MEX:     1.25,  // co-host, high altitude
+  NEUTRAL: 1.15,  // default — no venue edge (HOME_ADVANTAGE)
+}
+
+/** Venue advantage multiplier for a team code at a host country. */
+export function getVenueAdvantage(teamCode) {
+  return VENUE_ADVANTAGE[teamCode] ?? VENUE_ADVANTAGE.NEUTRAL
+}
+
 // ── Core math ────────────────────────────────────────────────────────────
 
 /**
@@ -320,5 +335,44 @@ export function runModels(homeStats, awayStats, { dixonColes = false } = {}) {
     },
     divergence,
     dixonColes,
+  }
+}
+
+// ── Monte Carlo simulation ───────────────────────────────────────────────
+
+/** Draw one Poisson sample (Knuth's algorithm). */
+function samplePoisson(lambda) {
+  const L = Math.exp(-lambda)
+  let k = 0, p = 1
+  do { k++; p *= Math.random() } while (p > L)
+  return k - 1
+}
+
+/**
+ * Simulate n full-time scorelines from two lambdas. Cross-checks the analytic
+ * Poisson matrix; results should converge to runModels() within ~1pp at 50k.
+ * Returns { n, home, draw, away, topScores, lambdaTotalAvg }.
+ */
+export function monteCarlo(lambdaHome, lambdaAway, n = 50000) {
+  let home = 0, draw = 0, away = 0, goalSum = 0
+  const scoreFreq = {}
+  for (let i = 0; i < n; i++) {
+    const h = samplePoisson(lambdaHome)
+    const a = samplePoisson(lambdaAway)
+    if (h > a) home++; else if (h < a) away++; else draw++
+    goalSum += h + a
+    const key = `${h}-${a}`
+    scoreFreq[key] = (scoreFreq[key] || 0) + 1
+  }
+  const topScores = Object.entries(scoreFreq)
+    .sort((x, y) => y[1] - x[1]).slice(0, 5)
+    .map(([score, count]) => ({ score, prob: count / n }))
+  return {
+    n,
+    home: home / n,
+    draw: draw / n,
+    away: away / n,
+    topScores,
+    lambdaTotalAvg: goalSum / n,
   }
 }
