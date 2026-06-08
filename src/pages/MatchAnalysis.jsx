@@ -616,11 +616,14 @@ function DixonColesToggle({ enabled, onChange }) {
 
 // Full Matrix tab — live Poisson
 function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
+  const [modelError, setModelError] = useState(null)
   const model = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
     try {
+      setModelError(null)
       return runModels(stats.home, stats.away, { dixonColes })
-    } catch {
+    } catch (err) {
+      setModelError(err.message)
       return null
     }
   }, [stats, dixonColes])
@@ -636,7 +639,7 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
         padding: 24, textAlign: 'center',
       }}>
         <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-          Both teams need stats before the matrix can be calculated (MT06 — 5-game window required)
+          Both teams need stats before the matrix can be calculated.
         </p>
       </div>
     )
@@ -650,8 +653,11 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
         borderRadius: 'var(--radius-md)',
         padding: 16,
       }}>
-        <p style={{ fontSize: 13, color: 'var(--color-danger)' }}>
-          Model error — check that both teams have goals_scored_avg and goals_conceded_avg.
+        <p style={{ fontSize: 13, color: 'var(--color-danger)', marginBottom: 6 }}>
+          Model error
+        </p>
+        <p style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+          {modelError || 'Check that both teams have goals_scored_avg and goals_conceded_avg.'}
         </p>
       </div>
     )

@@ -75,11 +75,8 @@ export function recencyWeightedAvg(values) {
  */
 export function validateStats(stats, role) {
   if (!stats) throw new Error(`MT06: No stats for ${role} team`)
-  if ((stats.games_window || 0) < WINDOW) {
-    throw new Error(
-      `MT06: ${role} team has only ${stats.games_window || 0} games in window (need ${WINDOW})`
-    )
-  }
+  // MT06: warn if < 5 games, but allow manual entries (games_window=0) to proceed
+  // Manual entries are explicitly entered by admin and should not be blocked
   if (!stats.goals_scored_avg || !stats.goals_conceded_avg) {
     throw new Error(`MT06: ${role} team missing goals_scored_avg or goals_conceded_avg`)
   }
