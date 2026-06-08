@@ -113,7 +113,11 @@ async function fetchTeamStats(env, teamId, signal) {
     const isHome = f.teams.home.id === teamId
     const scored = isHome ? f.goals.home : f.goals.away
     const conceded = isHome ? f.goals.away : f.goals.home
-    const result = scored > conceded ? 'W' : scored < conceded ? 'L' : 'D'
+    // Result from winner flags (both null = draw); goals as fallback.
+    const won = isHome ? f.teams.home.winner : f.teams.away.winner
+    const lost = isHome ? f.teams.away.winner : f.teams.home.winner
+    const result = won === true ? 'W' : lost === true ? 'L'
+      : won == null && lost == null ? (scored > conceded ? 'W' : scored < conceded ? 'L' : 'D') : 'D'
     return { fixtureId: f.fixture.id, isHome, scored, conceded, result, wc: f.league?.id === WC_LEAGUE }
   })
 
@@ -148,16 +152,20 @@ async function fetchTeamStats(env, teamId, signal) {
 
 // xG for/against for one team in one fixture, cached in fixture_stats forever.
 async function getFixtureXg(env, fixtureId, teamId, signal) {
-  const cached = await readXgCache(env, fixtureId, teamId)
-  if (cached) return cached
-  const data = await apiFetch(env, `/fixtures/statistics?fixture=${fixtureId}`, signal)
-  const teams = data.response || []
-  const get = side => Number(side?.statistics?.find(s => s.type === 'expected_goals')?.value) || null
-  const mine = teams.find(t => t.team?.id === teamId)
-  const opp = teams.find(t => t.team?.id !== teamId)
-  const pair = { xgf: get(mine), xga: get(opp) }
-  await writeXgCache(env, fixtureId, teamId, pair)
-  return pair
+  try {
+    const cached = await readXgCache(env, fixtureId, teamId)
+    if (cached) return cached
+    const data = await apiFetch(env, `/fixtures/statistics?fixture=${fixtureId}`, signal)
+    const teams = data.response || []
+    const get = side => Number(side?.statistics?.find(s => s.type === 'expected_goals')?.value) || null
+    const mine = teams.find(t => t.team?.id === teamId)
+    const opp = teams.find(t => t.team?.id !== teamId)
+    const pair = { xgf: get(mine), xga: get(opp) }
+    await writeXgCache(env, fixtureId, teamId, pair)
+    return pair
+  } catch {
+    return { xgf: null, xga: null }   // xG is optional — never fail the whole sync
+  }
 }
 
 // Sync all needed teams: map names→ids, fetch stats. Returns metisName→stats.
