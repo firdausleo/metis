@@ -1,8 +1,8 @@
 /**
  * CF Pages Function: POST /api/sync-stats
  *
- * Bulk-syncs team stats from footystats.org into the team_stats table.
- * Called by admin to populate stats for all upcoming matches.
+ * Bulk-syncs team stats from API-Football (league=1, season=2026) into the
+ * team_stats table. Called by admin to populate stats for all upcoming matches.
  *
  * Auth: admin-only (verified via Supabase service role)
  * Method: POST
@@ -25,11 +25,9 @@
 
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
-// Recency weights: index 0 = oldest game, index 4 = most recent
-const RECENCY_WEIGHTS = [0.10, 0.15, 0.20, 0.25, 0.30]
 const WINDOW = 5
 
-// footystats team name mapping
+// Metis name → API-Football team name overrides (only where they differ)
 const NAME_MAP = {
   'Spain': 'Spain National Team',
   'England': 'England National Team',
@@ -76,7 +74,6 @@ const NAME_MAP = {
   'Bosnia-Herzegovina': 'Bosnia And Herzegovina National Team',
   'Czechia': 'Czech Republic National Team',
   'South Africa': 'South Africa National Team',
-  'Ecuador': 'Ecuador National Team',
   'El Salvador': 'El Salvador National Team',
   'Honduras': 'Honduras National Team',
   'Costa Rica': 'Costa Rica National Team',
@@ -120,121 +117,72 @@ async function verifyAdmin(request, env) {
   return user
 }
 
-// ── Footystats scraper ────────────────────────────────────────────────────
+// ── API-Football integration ───────────────────────────────────────────────
+// league=1 (World Cup), season=2026. Auth via x-apisports-key (CF secret).
 
-/**
- * Fetch the WC xG page from footystats and parse team aggregate stats.
- * Returns a map: footyName (lowercase) → { scored, conceded, xgf, xga, mp }
- */
-async function scrapeFootyStats(signal) {
-  const url = 'https://footystats.org/international/world-cup/xg'
+const API_BASE   = 'https://v3.football.api-sports.io'
+const WC_LEAGUE  = 1
+const WC_SEASON  = 2026
 
-  const response = await fetch(url, {
+async function apiFetch(env, path, signal) {
+  const res = await fetch(`${API_BASE}${path}`, {
     signal,
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.5',
-    },
+    headers: { 'x-apisports-key': env.API_FOOTBALL_KEY },
   })
-
-  if (!response.ok) {
-    throw new Error(`footystats HTTP ${response.status}`)
-  }
-
-  const html = await response.text()
-  return parseAggregateStats(html)
+  if (!res.ok) throw new Error(`API-Football HTTP ${res.status}`)
+  return res.json()
 }
 
-/**
- * Parse aggregate stats table from the footystats WC xG page.
- * Returns map: metisTeamName → parsed stats object
- */
-function parseAggregateStats(html) {
-  const results = {}
-
-  // Reverse lookup: footyName → metisName
-  const reverseMap = {}
-  for (const [metis, footy] of Object.entries(NAME_MAP)) {
-    reverseMap[footy.toLowerCase()] = metis
-    reverseMap[metis.toLowerCase()] = metis
+// Build 48-team name → team_id map from the WC team list. Keyed by lowercase
+// name; also indexed by Metis name so our team strings resolve.
+async function buildTeamIdMap(env, signal) {
+  const data = await apiFetch(env, `/teams?league=${WC_LEAGUE}&season=${WC_SEASON}`, signal)
+  const map = {}
+  for (const { team } of data.response || []) {
+    map[team.name.toLowerCase()] = team.id
   }
-
-  // Try to find JSON data embedded in the page (footystats often uses __DATA__ or similar)
-  const jsonMatch = html.match(/window\.__DATA__\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/i)
-    || html.match(/var\s+tableData\s*=\s*(\[[\s\S]*?\]);\s*\n/i)
-
-  if (jsonMatch) {
-    try {
-      const raw = JSON.parse(jsonMatch[1])
-      parseJsonData(raw, reverseMap, results)
-      if (Object.keys(results).length > 0) return results
-    } catch { /* fall through to HTML parsing */ }
-  }
-
-  // HTML table parsing fallback
-  parseHtmlTable(html, reverseMap, results)
-  return results
+  return map
 }
 
-function parseJsonData(raw, reverseMap, results) {
-  const rows = Array.isArray(raw) ? raw : (raw.rows || raw.data || raw.teams || [])
-  for (const row of rows) {
-    const name = (row.name || row.team_name || row.team || '').toLowerCase()
-    const metis = reverseMap[name]
-    if (!metis) continue
-    results[metis] = {
-      mp: parseInt(row.matches_played || row.mp || 0),
-      scored: parseFloat(row.goals_for || row.scored || row.gf || 0),
-      conceded: parseFloat(row.goals_against || row.conceded || row.ga || 0),
-      xgf: parseFloat(row.xg_for || row.xgf || row.xg || 0) || null,
-      xga: parseFloat(row.xg_against || row.xga || 0) || null,
-      home_scored: parseFloat(row.home_goals_for || row.home_scored || 0) || null,
-      home_conceded: parseFloat(row.home_goals_against || row.home_conceded || 0) || null,
-      home_mp: parseInt(row.home_matches || 0) || null,
-      away_scored: parseFloat(row.away_goals_for || row.away_scored || 0) || null,
-      away_conceded: parseFloat(row.away_goals_against || row.away_conceded || 0) || null,
-      away_mp: parseInt(row.away_matches || 0) || null,
-    }
+function resolveTeamId(map, metisName) {
+  const direct = map[metisName.toLowerCase()]
+  if (direct) return direct
+  const apiName = NAME_MAP[metisName]
+  return apiName ? map[apiName.toLowerCase()] : null
+}
+
+// Fetch one team's WC statistics. Returns the buildStatsRow shape; xG is not
+// in this endpoint so xgf/xga stay null (admin/manual override later).
+async function fetchTeamStats(env, teamId, signal) {
+  const data = await apiFetch(env, `/teams/statistics?league=${WC_LEAGUE}&season=${WC_SEASON}&team=${teamId}`, signal)
+  const s = data.response
+  if (!s) return null
+  const num = v => (v == null ? null : Number(v))
+  return {
+    mp: s.fixtures?.played?.total || 0,
+    scored: num(s.goals?.for?.total?.total) ?? 0,
+    conceded: num(s.goals?.against?.total?.total) ?? 0,
+    xgf: null, xga: null,
+    home_scored: num(s.goals?.for?.total?.home),
+    home_conceded: num(s.goals?.against?.total?.home),
+    home_mp: s.fixtures?.played?.home || null,
+    away_scored: num(s.goals?.for?.total?.away),
+    away_conceded: num(s.goals?.against?.total?.away),
+    away_mp: s.fixtures?.played?.away || null,
+    form: (s.form || '').slice(-5).split('').reverse().join(''), // latest-first WWDLL
   }
 }
 
-function parseHtmlTable(html, reverseMap, results) {
-  // Look for team rows in any stats table
-  // Typical footystats pattern: team name anchor, then stat cells
-  const rowPattern = /<tr[^>]*>[\s\S]*?<\/tr>/gi
-  const rows = html.match(rowPattern) || []
-
-  for (const row of rows) {
-    // Extract text content
-    const textContent = row.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-    const numbers = textContent.match(/[\d.]+/g) || []
-
-    // Try to match any known team name
-    let foundMetis = null
-    for (const [footy, metis] of Object.entries(reverseMap)) {
-      if (textContent.toLowerCase().includes(footy)) {
-        foundMetis = metis
-        break
-      }
-    }
-    if (!foundMetis || numbers.length < 4) continue
-    if (results[foundMetis]) continue // already found, keep first
-
-    results[foundMetis] = {
-      mp: parseInt(numbers[0]) || 0,
-      xgf: parseFloat(numbers[1]) || null,
-      xga: parseFloat(numbers[2]) || null,
-      scored: parseFloat(numbers[3]) || null,
-      conceded: parseFloat(numbers[4]) || null,
-      home_scored: null,
-      home_conceded: null,
-      home_mp: null,
-      away_scored: null,
-      away_conceded: null,
-      away_mp: null,
-    }
+// Sync all needed teams: map names→ids, fetch stats. Returns metisName→stats.
+async function fetchApiFootball(env, teamNames, signal) {
+  const idMap = await buildTeamIdMap(env, signal)
+  const out = {}
+  for (const name of teamNames) {
+    const id = resolveTeamId(idMap, name)
+    if (!id) continue
+    try { const st = await fetchTeamStats(env, id, signal); if (st) out[name] = st } catch { /* skip */ }
   }
+  return out
 }
 
 // ── Rolling window calculator ────────────────────────────────────────────
@@ -286,9 +234,8 @@ function buildStatsRow({ matchId, teamCode, footyData, existingRow }) {
   const homeGoalsAvg = homeScored && hmp > 0 ? Number((homeScored / hmp).toFixed(3)) : scoredPg
   const awayGoalsAvg = awayScored && amp > 0 ? Number((awayScored / amp).toFixed(3)) : scoredPg
 
-  // For recency weighting: if we have individual game data we'd apply
-  // RECENCY_WEIGHTS[i], but with aggregates we treat all games equally.
-  // The RECENCY_WEIGHTS constant is exported for use by the algorithm layer.
+  // API-Football gives season aggregates, not per-game, so all games are
+  // weighted equally here; the algorithm layer applies recency weights.
   // Flag if fewer than 5 games (MT06 — partial data, algorithm must check)
   const partial = mp < WINDOW
 
@@ -302,9 +249,9 @@ function buildStatsRow({ matchId, teamCode, footyData, existingRow }) {
     away_goals_avg: awayGoalsAvg,
     xgf_per_game: xgfPg,
     xga_per_game: xgaPg,
-    form_string: existingRow?.form_string || null,        // preserved — set by admin
+    form_string: footyData.form || existingRow?.form_string || null,
     wc_games_in_window: existingRow?.wc_games_in_window || 0,
-    data_source: partial ? 'footystats_partial' : 'footystats',
+    data_source: partial ? 'api_football_partial' : 'api_football',
     updated_at: new Date().toISOString(),
   }
 }
@@ -407,23 +354,15 @@ export async function onRequestPost(context) {
       existingMap[`${row.match_id}:${row.team_code}`] = row
     }
 
-    // 3. Scrape footystats
+    // 3. Collect unique team names, fetch from API-Football
+    const teamNames = [...new Set(matches.flatMap(m => [m.home_team, m.away_team]))]
     let footyData = {}
     const scrapeFailed = { error: null }
     try {
-      footyData = await scrapeFootyStats(controller.signal)
+      footyData = await fetchApiFootball(env, teamNames, controller.signal)
     } catch (err) {
       scrapeFailed.error = err.message
       // Continue — rows will be built with null stats
-    }
-
-    // 4. Deduplicate teams
-    const teamSet = new Map() // teamCode → { teamName, matchIds[] }
-    for (const m of matches) {
-      for (const [code, name] of [[m.home_team_code, m.home_team], [m.away_team_code, m.away_team]]) {
-        if (!teamSet.has(code)) teamSet.set(code, { name, matchIds: [] })
-        teamSet.get(code).matchIds.push(m.id)
-      }
     }
 
     // 5. Build rows for each team × match
