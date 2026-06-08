@@ -114,14 +114,21 @@ async function fetchTeamStats(env, teamId, signal) {
     const scored = isHome ? f.goals.home : f.goals.away
     const conceded = isHome ? f.goals.away : f.goals.home
     const result = scored > conceded ? 'W' : scored < conceded ? 'L' : 'D'
-    return { isHome, scored, conceded, result, wc: f.league?.id === WC_LEAGUE }
+    return { fixtureId: f.fixture.id, isHome, scored, conceded, result, wc: f.league?.id === WC_LEAGUE }
   })
+
+  // xG per game (cached forever — finished fixtures don't change). Average only
+  // non-null values; friendlies often return null.
+  const xgPairs = await Promise.all(games.map(g => getFixtureXg(env, g.fixtureId, teamId, signal)))
+  const xgf = xgPairs.map(p => p?.xgf).filter(v => v != null)
+  const xga = xgPairs.map(p => p?.xga).filter(v => v != null)
+  const avg = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null
 
   // Recency weights only when exactly 5; otherwise simple average.
   const wAvg = arr => n === WINDOW
     ? arr.reduce((s, v, i) => s + v * RECENCY_WEIGHTS[i], 0)
     : arr.reduce((s, v) => s + v, 0) / n
-  const r3 = x => Number(x.toFixed(3))
+  const r3 = x => x == null ? null : Number(x.toFixed(3))
 
   const homeGames = games.filter(g => g.isHome)
   const awayGames = games.filter(g => !g.isHome)
@@ -135,8 +142,22 @@ async function fetchTeamStats(env, teamId, signal) {
     away_goals_avg: awayGames.length ? r3(simpleAvg(awayGames)) : null,
     form_string: games.map(g => g.result).reverse().join(''), // newest first
     wc_games_in_window: games.filter(g => g.wc).length,
-    xgf: null, xga: null,
+    xgf: r3(avg(xgf)), xga: r3(avg(xga)),
   }
+}
+
+// xG for/against for one team in one fixture, cached in fixture_stats forever.
+async function getFixtureXg(env, fixtureId, teamId, signal) {
+  const cached = await readXgCache(env, fixtureId, teamId)
+  if (cached) return cached
+  const data = await apiFetch(env, `/fixtures/statistics?fixture=${fixtureId}`, signal)
+  const teams = data.response || []
+  const get = side => Number(side?.statistics?.find(s => s.type === 'expected_goals')?.value) || null
+  const mine = teams.find(t => t.team?.id === teamId)
+  const opp = teams.find(t => t.team?.id !== teamId)
+  const pair = { xgf: get(mine), xga: get(opp) }
+  await writeXgCache(env, fixtureId, teamId, pair)
+  return pair
 }
 
 // Sync all needed teams: map names→ids, fetch stats. Returns metisName→stats.
@@ -187,6 +208,27 @@ function buildStatsRow({ matchId, teamCode, footyData, existingRow }) {
     data_source: w.games_window < WINDOW ? 'api_football_partial' : 'api_football',
     updated_at: new Date().toISOString(),
   }
+}
+
+// ── xG cache (fixture_stats) ───────────────────────────────────────────────
+
+function sbAuth(env) {
+  return { 'apikey': env.SUPABASE_SERVICE_ROLE_KEY, 'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` }
+}
+
+async function readXgCache(env, fixtureId, teamId) {
+  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/fixture_stats?fixture_id=eq.${fixtureId}&team_id=eq.${teamId}&select=xgf,xga&limit=1`, { headers: sbAuth(env) })
+  if (!res.ok) return null
+  const rows = await res.json()
+  return rows.length ? { xgf: rows[0].xgf, xga: rows[0].xga } : null
+}
+
+async function writeXgCache(env, fixtureId, teamId, { xgf, xga }) {
+  await fetch(`${env.SUPABASE_URL}/rest/v1/fixture_stats`, {
+    method: 'POST',
+    headers: { ...sbAuth(env), 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+    body: JSON.stringify({ fixture_id: fixtureId, team_id: teamId, xgf, xga }),
+  }).catch(() => {})
 }
 
 // ── Supabase helpers ─────────────────────────────────────────────────────
