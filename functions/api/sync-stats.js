@@ -135,20 +135,24 @@ async function apiFetch(env, path, signal) {
 
 // Build 48-team name → team_id map from the WC team list. Keyed by lowercase
 // name; also indexed by Metis name so our team strings resolve.
+// Normalize for matching: lowercase, strip accents, drop "national team", trim.
+function norm(name) {
+  return (name || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/national team/g, '').replace(/[^a-z]/g, '').trim()
+}
+
 async function buildTeamIdMap(env, signal) {
   const data = await apiFetch(env, `/teams?league=${WC_LEAGUE}&season=${WC_SEASON}`, signal)
   const map = {}
   for (const { team } of data.response || []) {
-    map[team.name.toLowerCase()] = team.id
+    map[norm(team.name)] = team.id
   }
   return map
 }
 
 function resolveTeamId(map, metisName) {
-  const direct = map[metisName.toLowerCase()]
-  if (direct) return direct
-  const apiName = NAME_MAP[metisName]
-  return apiName ? map[apiName.toLowerCase()] : null
+  return map[norm(metisName)] ?? map[norm(NAME_MAP[metisName])] ?? null
 }
 
 // Fetch one team's WC statistics. Returns the buildStatsRow shape; xG is not
@@ -179,11 +183,17 @@ async function fetchApiFootball(env, teamNames, signal) {
   const idMap = await buildTeamIdMap(env, signal)
   if (!Object.keys(idMap).length) throw new Error('API-Football returned no WC teams (check key/plan)')
   const out = {}
+  const unresolved = []
   for (const name of teamNames) {
     const id = resolveTeamId(idMap, name)
-    if (!id) continue
-    try { const st = await fetchTeamStats(env, id, signal); if (st) out[name] = st } catch { /* skip */ }
+    if (!id) { unresolved.push(name); continue }
+    // Record the team even if stats are empty (pre-tournament: 0 fixtures) so
+    // it still maps; rolling-window guard handles partial data downstream.
+    let st = null
+    try { st = await fetchTeamStats(env, id, signal) } catch { /* keep null */ }
+    out[name] = st || { mp: 0, scored: 0, conceded: 0, xgf: null, xga: null }
   }
+  if (unresolved.length) out.__unresolved = unresolved
   return out
 }
 
@@ -359,9 +369,12 @@ export async function onRequestPost(context) {
     // 3. Collect unique team names, fetch from API-Football
     const teamNames = [...new Set(matches.flatMap(m => [m.home_team, m.away_team]))]
     let footyData = {}
+    let unresolved = []
     const scrapeFailed = { error: null }
     try {
       footyData = await fetchApiFootball(env, teamNames, controller.signal)
+      unresolved = footyData.__unresolved || []
+      delete footyData.__unresolved
     } catch (err) {
       scrapeFailed.error = err.message
       // Continue — rows will be built with null stats
@@ -394,6 +407,7 @@ export async function onRequestPost(context) {
       synced: rows.length,
       matches_processed: matches.length,
       teams_found: Object.keys(footyData).length,
+      unresolved,               // names that didn't map to an API team
       partial_data: partial,   // MT06: flagged teams with < 5 games
       scrape_error: scrapeFailed.error,
       timestamp: new Date().toISOString(),

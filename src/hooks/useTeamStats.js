@@ -62,6 +62,7 @@ export function useTeamStats(match) {
       // Worker swallows fetch failures into scrape_error and returns ok — surface them
       if (data.scrape_error) throw new Error(`API-Football: ${data.scrape_error}`)
       if (data.teams_found === 0) throw new Error('No teams resolved from API-Football — check API key / team mapping')
+      if (data.unresolved?.length) throw new Error(`Unmapped teams: ${data.unresolved.join(', ')}`)
       await loadFromDB()
     } catch (err) {
       setError(err.message)
