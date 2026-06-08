@@ -626,11 +626,16 @@ function MonteCarloPanel({ v1, match }) {
   const [sim, setSim] = useState(null)
   const [running, setRunning] = useState(false)
 
-  const run = () => {
+  // Quick 10k run on mount (~50ms) — always available
+  useEffect(() => {
+    setSim(monteCarlo(v1.lambdaHome, v1.lambdaAway, 10000))
+  }, [v1.lambdaHome, v1.lambdaAway])
+
+  const run = (n) => {
     setRunning(true)
-    // defer so the button paints disabled before the 50k loop blocks
+    // defer so the button paints disabled before the loop blocks
     setTimeout(() => {
-      setSim(monteCarlo(v1.lambdaHome, v1.lambdaAway, 50000))
+      setSim(monteCarlo(v1.lambdaHome, v1.lambdaAway, n))
       setRunning(false)
     }, 20)
   }
@@ -644,13 +649,15 @@ function MonteCarloPanel({ v1, match }) {
   return (
     <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>MONTE CARLO · 50K SIMS</p>
-        <button onClick={run} disabled={running} style={{
+        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>
+          MONTE CARLO{sim ? ` · ${(sim.n / 1000)}K SIMS` : ''}
+        </p>
+        <button onClick={() => run(100000)} disabled={running} style={{
           minHeight: 44, padding: '0 16px', fontSize: 15, fontWeight: 700,
           borderRadius: 'var(--radius-sm)', cursor: running ? 'default' : 'pointer',
           background: 'var(--color-accent-dim)', color: 'var(--color-accent)',
           border: '0.5px solid var(--color-accent-border)', opacity: running ? 0.7 : 1,
-        }}>{running ? 'Simulating…' : sim ? 'Re-run' : 'Run'}</button>
+        }}>{running ? 'Simulating…' : 'Deep run · 100K'}</button>
       </div>
       {sim ? (
         <>
