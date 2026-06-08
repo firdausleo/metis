@@ -8,6 +8,7 @@ import { toBeijingTime } from '../lib/dateUtils'
 import { supabase } from '../lib/supabase'
 import { runModels, capProb, SCORE_MAX, monteCarlo } from '../lib/poisson'
 import { formatProb, analyse1X2, calcStake } from '../lib/evEngine'
+import { placeBet } from '../lib/bets'
 
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
@@ -842,6 +843,17 @@ function TabValue({ stats, match }) {
 
   // Decimal odds entry (MT09). Empty until analyst inputs bookmaker prices.
   const [odds, setOdds] = useState({ home: '', draw: '', away: '' })
+  const [stake, setStake] = useState('')
+  const [placed, setPlaced] = useState({})
+
+  const place = async (key) => {
+    const amt = parseFloat(stake)
+    if (!(amt > 0)) return
+    try {
+      await placeBet({ matchId: match.id, betType: '1X2', selection: key, odds: parseFloat(odds[key]), stake: amt })
+      setPlaced(p => ({ ...p, [key]: true }))
+    } catch { setPlaced(p => ({ ...p, [key]: 'error' })) }
+  }
   const ev1x2 = useMemo(() => {
     if (!model) return null
     const o = { home: parseFloat(odds.home), draw: parseFloat(odds.draw), away: parseFloat(odds.away) }
@@ -982,6 +994,9 @@ function TabValue({ stats, match }) {
             </span>
             <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>vig {(ev1x2.vig.vigPct).toFixed(1)}%</span>
           </div>
+          <input type="number" inputMode="decimal" min="0" placeholder="Stake ¥" value={stake}
+            onChange={e => setStake(e.target.value)}
+            style={{ width: '100%', fontSize: 16, minHeight: 44, padding: '0 12px', marginBottom: 8, borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
           {['home', 'draw', 'away'].map(key => {
             const oc = ev1x2.outcomes[key]
             const col = EDGE_COLOURS[oc.ev?.colour] || 'var(--color-text-muted)'
@@ -1000,6 +1015,11 @@ function TabValue({ stats, match }) {
                     fontSize: 14, fontWeight: 700, color: col,
                     padding: '2px 8px', borderRadius: 'var(--radius-full)', background: `${col}22`,
                   }}>{oc.ev?.edgeDisplay}</span>
+                  <button onClick={() => place(key)} disabled={!(parseFloat(stake) > 0) || placed[key] === true}
+                    style={{ minHeight: 36, padding: '0 10px', fontSize: 13, fontWeight: 700, borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer',
+                      background: placed[key] === true ? 'var(--color-bg-hover)' : 'var(--color-accent)', color: placed[key] === true ? 'var(--color-text-muted)' : 'var(--color-bg)' }}>
+                    {placed[key] === true ? '✓ Placed' : placed[key] === 'error' ? 'Retry' : 'Place'}
+                  </button>
                 </div>
               </div>
             )
