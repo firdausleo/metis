@@ -23,7 +23,7 @@ const CONFIDENCE_CONFIG = {
   max:    { label: '🔥 Max Confidence',   color: 'var(--color-accent)',  desc: '4–5 WC games' },
 }
 
-const TABS = ['stats', 'matrix', 'value', 'portfolio']
+const TABS = ['stats', 'matrix', 'value', 'portfolio', 'ai']
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
@@ -986,6 +986,440 @@ function TabPortfolio({ stats }) {
   )
 }
 
+// ── AI Roles tab ─────────────────────────────────────────────────────────
+
+const ROLE_META = {
+  1:  { name: 'Statistical Validator', icon: '📊', phase: 1 },
+  2:  { name: 'Form Intelligence',     icon: '📈', phase: 1 },
+  3:  { name: 'Deep Analysis',         icon: '🧠', phase: 2, sonnet: true },
+  4:  { name: 'Tournament Context',    icon: '🏆', phase: 1 },
+  5:  { name: 'Market Intelligence',   icon: '💹', phase: 1 },
+  6:  { name: 'Risk Manager',          icon: '🛡️', phase: 1 },
+  7:  { name: 'Tactical Analyst',      icon: '⚽', phase: 1 },
+  8:  { name: 'Head-to-Head Historian',icon: '📜', phase: 1 },
+  9:  { name: 'Motivation Analyst',    icon: '🔥', phase: 1 },
+  10: { name: 'Composite Scorer',      icon: '🎯', phase: 3 },
+}
+
+const REC_COLOURS = {
+  home_win:   'var(--color-accent)',
+  away_win:   'var(--color-info)',
+  draw:       'var(--color-warning)',
+  over:       'var(--color-success)',
+  under:      'var(--color-text-secondary)',
+  value_home: 'var(--color-accent)',
+  value_away: 'var(--color-info)',
+  null:       'var(--color-text-muted)',
+}
+
+function ConfidenceBar({ value }) {
+  if (value == null) return <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>—</span>
+  const pct   = Math.round(value * 100)
+  const color = pct >= 70 ? 'var(--color-success)' : pct >= 45 ? 'var(--color-warning)' : 'var(--color-danger)'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{
+        flex: 1, height: 5, background: 'var(--color-bg)',
+        border: '0.5px solid var(--color-border)',
+        borderRadius: 'var(--radius-full)', overflow: 'hidden',
+      }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 'var(--radius-full)', transition: 'width 0.4s ease' }} />
+      </div>
+      <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 34 }}>{pct}%</span>
+    </div>
+  )
+}
+
+function RoleCard({ roleOutput }) {
+  const [expanded, setExpanded] = useState(false)
+  const roleNum  = roleOutput?.role
+  const meta     = ROLE_META[roleNum] || { name: `Role ${roleNum}`, icon: '🔹', phase: 1 }
+  // roleId available for future role-specific overrides
+  const rec      = roleOutput?.recommendation
+  const recColor = REC_COLOURS[rec] || 'var(--color-text-muted)'
+  const hasError = roleOutput?.flags?.includes('call_error') || roleOutput?.flags?.includes('parse_error')
+
+  return (
+    <div style={{
+      background: 'var(--color-bg-card)',
+      border: meta.sonnet
+        ? '0.5px solid var(--color-info)'
+        : '0.5px solid var(--color-border)',
+      borderRadius: 'var(--radius-md)',
+      overflow: 'hidden',
+    }}>
+      {/* Card header */}
+      <button
+        onClick={() => setExpanded(v => !v)}
+        style={{
+          width: '100%', padding: '12px 14px',
+          background: 'none', border: 'none',
+          cursor: 'pointer', textAlign: 'left',
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}
+      >
+        <span style={{ fontSize: 20, flexShrink: 0 }}>{meta.icon}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+              {meta.name}
+            </span>
+            {meta.sonnet && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: '0.06em',
+                color: 'var(--color-info)', padding: '1px 5px',
+                border: '0.5px solid var(--color-info)',
+                borderRadius: 'var(--radius-full)',
+              }}>
+                SONNET
+              </span>
+            )}
+            {hasError && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, color: 'var(--color-danger)',
+                padding: '1px 5px', border: '0.5px solid var(--color-danger)',
+                borderRadius: 'var(--radius-full)',
+              }}>ERROR</span>
+            )}
+          </div>
+          <ConfidenceBar value={roleOutput?.confidence} />
+        </div>
+        {rec && rec !== 'null' && (
+          <span style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
+            color: recColor, padding: '3px 8px',
+            background: `${recColor}22`,
+            border: `0.5px solid ${recColor}`,
+            borderRadius: 'var(--radius-full)',
+            flexShrink: 0,
+          }}>
+            {rec?.replace(/_/g, ' ').toUpperCase()}
+          </span>
+        )}
+        <span style={{ color: 'var(--color-text-muted)', fontSize: 12, flexShrink: 0 }}>
+          {expanded ? '▲' : '▼'}
+        </span>
+      </button>
+
+      {/* Expanded body */}
+      {expanded && roleOutput && (
+        <div style={{
+          padding: '0 14px 14px',
+          borderTop: '0.5px solid var(--color-border)',
+        }}>
+          {/* Summary */}
+          <p style={{
+            fontSize: 13, color: 'var(--color-text-secondary)',
+            lineHeight: 1.6, marginTop: 12, marginBottom: 10,
+          }}>
+            {roleOutput.summary}
+          </p>
+
+          {/* Signals */}
+          {roleOutput.signals?.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              {roleOutput.signals.map((sig, i) => {
+                const isPositive = !sig.toLowerCase().startsWith('⚠') &&
+                  !sig.toLowerCase().includes('concern') &&
+                  !sig.toLowerCase().includes('risk') &&
+                  !sig.toLowerCase().includes('weak') &&
+                  !sig.toLowerCase().includes('miss')
+                return (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 6,
+                    marginBottom: 4,
+                  }}>
+                    <span style={{
+                      fontSize: 11,
+                      color: isPositive ? 'var(--color-success)' : 'var(--color-warning)',
+                      flexShrink: 0, marginTop: 1,
+                    }}>
+                      {isPositive ? '✓' : '⚠'}
+                    </span>
+                    <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                      {sig}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Flags */}
+          {roleOutput.flags?.length > 0 && (
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+              {roleOutput.flags.map(flag => (
+                <span key={flag} style={{
+                  fontSize: 10, fontWeight: 700,
+                  padding: '2px 6px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--color-warning-dim)',
+                  color: 'var(--color-warning)',
+                  letterSpacing: '0.04em',
+                }}>
+                  {flag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Composite score display (Role 10)
+function CompositeScore({ output }) {
+  if (!output) return null
+  const score = output.confidence != null ? Math.round(output.confidence * 100) : null
+  const rec   = output.recommendation
+  const color =
+    score == null ? 'var(--color-text-muted)' :
+    score >= 70   ? 'var(--color-success)' :
+    score >= 50   ? 'var(--color-warning)' :
+                    'var(--color-danger)'
+
+  return (
+    <div style={{
+      background: 'var(--color-bg-card)',
+      border: `1px solid ${color}`,
+      borderRadius: 'var(--radius-lg)',
+      padding: '20px 16px',
+      textAlign: 'center',
+      marginBottom: 20,
+    }}>
+      <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.08em', marginBottom: 8 }}>
+        🎯 COMPOSITE CONFIDENCE
+      </p>
+      <p style={{
+        fontFamily: 'var(--font-display)',
+        fontSize: 56, fontWeight: 700,
+        color,
+        lineHeight: 1,
+        marginBottom: 6,
+      }}>
+        {score ?? '—'}
+      </p>
+      <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>out of 100</p>
+
+      {rec && rec !== 'null' && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '6px 16px',
+          background: `${REC_COLOURS[rec] || 'var(--color-text-muted)'}22`,
+          border: `0.5px solid ${REC_COLOURS[rec] || 'var(--color-text-muted)'}`,
+          borderRadius: 'var(--radius-full)',
+          marginBottom: 12,
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: REC_COLOURS[rec] || 'var(--color-text-muted)' }}>
+            {rec.replace(/_/g, ' ').toUpperCase()}
+          </span>
+        </div>
+      )}
+
+      {output.summary && (
+        <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.6, maxWidth: 400, margin: '0 auto' }}>
+          {output.summary}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function TabAI({ match, isAdmin }) {
+  const [roleOutputs, setRoleOutputs]   = useState([])   // { role_id, output_json, confidence }[]
+  const [aiRoles, setAiRoles]           = useState([])   // ai_roles rows
+  const [loading, setLoading]           = useState(true)
+  const [running, setRunning]           = useState(false)
+  const [error, setError]               = useState(null)
+  const [runMsg, setRunMsg]             = useState('')
+
+  // Load ai_roles + existing role_outputs on mount
+  useEffect(() => {
+    if (!match?.id) return
+
+    async function load() {
+      setLoading(true)
+      try {
+        const [rolesRes, outputsRes] = await Promise.all([
+          supabase.from('ai_roles').select('*').eq('enabled', true).order('role_number'),
+          supabase.from('role_outputs').select('*').eq('match_id', match.id),
+        ])
+        if (rolesRes.data) setAiRoles(rolesRes.data)
+        if (outputsRes.data) setRoleOutputs(outputsRes.data)
+      } catch (err) {
+        setError(err.message)
+      }
+      setLoading(false)
+    }
+    load()
+  }, [match?.id])
+
+  async function handleRunAnalysis() {
+    setRunning(true)
+    setRunMsg('')
+    setError(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) throw new Error('Not authenticated')
+
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify({ match_id: match.id }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+
+      setRunMsg(`✓ ${data.roles_run} roles complete · confidence ${data.confidence != null ? Math.round(data.confidence * 100) : '—'}`)
+
+      // Reload outputs from Supabase
+      const { data: fresh } = await supabase
+        .from('role_outputs')
+        .select('*')
+        .eq('match_id', match.id)
+      if (fresh) setRoleOutputs(fresh)
+
+    } catch (err) {
+      setError(err.message)
+    }
+    setRunning(false)
+  }
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {[1,2,3,4].map(i => (
+          <div key={i} className="skeleton" style={{ height: 60 }} />
+        ))}
+      </div>
+    )
+  }
+
+  // Build lookup: role_id → output_json
+  const outputByRoleId = {}
+  for (const o of roleOutputs) outputByRoleId[o.role_id] = o
+
+  // Find composite (Role 10)
+  const role10Row    = aiRoles.find(r => r.role_number === 10)
+  const composite    = role10Row ? outputByRoleId[role10Row.id]?.output_json : null
+  const hasAnyOutput = roleOutputs.length > 0
+  const lastRun      = roleOutputs.length
+    ? new Date(Math.max(...roleOutputs.map(o => new Date(o.created_at)))).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+    : null
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+      {/* Admin: run button */}
+      {isAdmin && (
+        <div style={{
+          background: 'var(--color-bg-card)',
+          border: '0.5px solid var(--color-border)',
+          borderRadius: 'var(--radius-md)',
+          padding: '12px 14px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
+        }}>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 2 }}>
+              {hasAnyOutput ? 'Re-run AI Analysis' : 'Run AI Analysis'}
+            </p>
+            {lastRun && (
+              <p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Last run: {lastRun} 北京</p>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {runMsg && <span style={{ fontSize: 11, color: 'var(--color-success)' }}>{runMsg}</span>}
+            <button
+              onClick={handleRunAnalysis}
+              disabled={running}
+              style={{
+                minHeight: 'var(--touch-target)',
+                padding: '0 16px',
+                background: running ? 'transparent' : 'var(--color-accent-dim)',
+                border: '0.5px solid var(--color-accent-border)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--color-accent)',
+                fontFamily: 'var(--font-ui)',
+                fontSize: 13, fontWeight: 500,
+                cursor: running ? 'not-allowed' : 'pointer',
+                opacity: running ? 0.6 : 1,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {running ? '⏳ Analysing…' : '▶ Run 11 Roles'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div style={{
+          background: 'var(--color-danger-dim)',
+          border: '0.5px solid var(--color-danger)',
+          borderRadius: 'var(--radius-md)',
+          padding: '10px 14px',
+        }}>
+          <p style={{ fontSize: 13, color: 'var(--color-danger)' }}>{error}</p>
+        </div>
+      )}
+
+      {/* No outputs yet */}
+      {!hasAnyOutput && !isAdmin && (
+        <div style={{
+          background: 'var(--color-bg-card)',
+          border: '0.5px solid var(--color-border)',
+          borderRadius: 'var(--radius-md)',
+          padding: 24, textAlign: 'center',
+          color: 'var(--color-text-muted)', fontSize: 13,
+        }}>
+          AI analysis not yet run for this match
+        </div>
+      )}
+
+      {/* Composite score — prominently first */}
+      {composite && <CompositeScore output={composite} />}
+
+      {/* Role 3 (Deep Analysis) first among cards if present */}
+      {aiRoles
+        .filter(r => r.role_number === 3)
+        .map(r => {
+          const out = outputByRoleId[r.id]
+          if (!out) return null
+          return (
+            <RoleCard key={r.id} roleOutput={out.output_json} />
+          )
+        })
+      }
+
+      {/* Phase 1 roles (1,2,4,5,6,7,8,9) */}
+      <div>
+        <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 8 }}>
+          SPECIALIST ROLES
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {aiRoles
+            .filter(r => [1,2,4,5,6,7,8,9].includes(r.role_number))
+            .map(r => {
+              const out = outputByRoleId[r.id]
+              return (
+                <RoleCard key={r.id} roleOutput={out?.output_json || null} />
+              )
+            })
+          }
+        </div>
+      </div>
+
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────
 
 export default function MatchAnalysis() {
@@ -1282,6 +1716,9 @@ export default function MatchAnalysis() {
 
         {/* TAB 4: Portfolio */}
         {activeTab === 'portfolio' && <TabPortfolio stats={stats} />}
+
+        {/* TAB 5: AI Roles */}
+        {activeTab === 'ai' && <TabAI match={match} isAdmin={isAdmin} />}
 
       </div>
     </div>

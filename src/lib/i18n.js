@@ -53,6 +53,7 @@ const translations = {
     'analysis.matrix': 'Matrix',
     'analysis.value': 'Value',
     'analysis.portfolio': 'Portfolio',
+    'analysis.ai':        'AI Roles',
     'analysis.confidence': 'Confidence',
     'analysis.lambda': 'Expected Goals',
     'analysis.xgf': 'XG For / Match',
