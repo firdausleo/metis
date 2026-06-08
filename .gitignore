@@ -24,3 +24,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local CF dev vars
+.dev.vars
+.env.local
+.env
+.env.production
