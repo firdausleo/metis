@@ -2001,7 +2001,34 @@ export default function MatchAnalysis() {
         {/* TAB 5: AI Roles */}
         {activeTab === 'ai' && <TabAI match={match} isAdmin={isAdmin} />}
 
+        {isAdmin && <SettlementPanel match={match} />}
       </div>
+    </div>
+  )
+}
+
+// Admin: record final score → status finished. Bets settle on owner's My Bets view.
+function SettlementPanel({ match }) {
+  const [h, setH] = useState(match.home_score ?? '')
+  const [a, setA] = useState(match.away_score ?? '')
+  const [msg, setMsg] = useState('')
+  const save = async () => {
+    const hs = parseInt(h, 10), as = parseInt(a, 10)
+    if (Number.isNaN(hs) || Number.isNaN(as)) return
+    const { error } = await supabase.from('matches').update({ home_score: hs, away_score: as, status: 'finished' }).eq('id', match.id)
+    setMsg(error ? 'Save failed' : '✓ Final score saved — bets settle on view')
+  }
+  const inp = { width: 56, fontSize: 16, minHeight: 44, textAlign: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }
+  return (
+    <div style={{ marginTop: 20, background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }}>
+      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>SETTLE — FINAL SCORE</p>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input type="number" min="0" value={h} onChange={e => setH(e.target.value)} style={inp} />
+        <span style={{ color: 'var(--color-text-muted)' }}>–</span>
+        <input type="number" min="0" value={a} onChange={e => setA(e.target.value)} style={inp} />
+        <button onClick={save} style={{ minHeight: 44, padding: '0 16px', fontWeight: 700, background: 'var(--color-accent)', color: 'var(--color-bg)', border: 'none', borderRadius: 'var(--radius-sm)' }}>Save</button>
+      </div>
+      {msg && <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 8 }}>{msg}</p>}
     </div>
   )
 }

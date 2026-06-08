@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { fetchMyBets, calcPnl, portfolioStats } from '../lib/bets'
+import { fetchMyBets, calcPnl, portfolioStats, resultFor1X2, settleBet } from '../lib/bets'
 import { toBeijingTime } from '../lib/dateUtils'
 
 const STATUS_COLOUR = {
@@ -15,7 +15,22 @@ export default function MyBets() {
   const [err, setErr] = useState(null)
 
   useEffect(() => {
-    fetchMyBets().then(setBets).catch(e => setErr(e.message)).finally(() => setLoading(false))
+    fetchMyBets()
+      .then(async list => {
+        // Auto-settle pending 1X2 bets whose match has a final score (owner update, MT05)
+        const ready = list.filter(b => b.status === 'pending' && b.bet_type === '1X2'
+          && b.match?.status === 'finished' && b.match.home_score != null && b.match.away_score != null)
+        if (ready.length) {
+          await Promise.all(ready.map(b => {
+            const status = resultFor1X2(b.selection, b.match.home_score, b.match.away_score)
+            const pnl = status === 'won' ? b.stake * (b.odds - 1) : -b.stake
+            b.status = status; b.pnl = pnl
+            return settleBet(b.id, status, pnl).catch(() => {})
+          }))
+        }
+        setBets(list)
+      })
+      .catch(e => setErr(e.message)).finally(() => setLoading(false))
   }, [])
 
   const s = portfolioStats(bets)
