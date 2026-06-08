@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600&family=DM+Sans:wght@400;500&display=swap');
+/* Google Fonts removed — using system fonts (China-safe) */
 
 :root {
   /* ── Base backgrounds ── */
@@ -50,8 +50,8 @@
   --color-conflict:        #ff5252;
 
   /* ── Typography ── */
-  --font-display: 'Barlow Condensed', sans-serif;
-  --font-ui:      'DM Sans', sans-serif;
+  --font-display: 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+  --font-ui:      'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
 
   /* ── Font sizes ── */
   --text-xs:   11px;
