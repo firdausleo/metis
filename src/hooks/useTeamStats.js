@@ -1,21 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchTeamStats } from '../lib/statsApi'
-
-function buildStatsRow(matchId, teamCode, footyData) {
-  const mp = footyData.matches_played || 0
-  return {
-    team_code: teamCode,
-    match_id: matchId,
-    xgf_per_game: footyData.xgf && mp ? Number((footyData.xgf / mp).toFixed(3)) : null,
-    xga_per_game: footyData.xga && mp ? Number((footyData.xga / mp).toFixed(3)) : null,
-    goals_scored_avg: footyData.scored && mp ? Number((footyData.scored / mp).toFixed(3)) : null,
-    goals_conceded_avg: footyData.conceded && mp ? Number((footyData.conceded / mp).toFixed(3)) : null,
-    games_window: mp,
-    wc_games_in_window: 0,
-    updated_at: new Date().toISOString(),
-  }
-}
 
 function calcConfidence(stats) {
   if (!stats.home || !stats.away) return 'low'
@@ -55,19 +39,26 @@ export function useTeamStats(match) {
 
   useEffect(() => { loadFromDB() }, [loadFromDB])
 
-  async function refreshStats(homeTeam, awayTeam) {
+  async function refreshStats() {
     if (!match?.id) return
     setError(null)
     try {
-      const [homeData, awayData] = await Promise.all([
-        fetchTeamStats(homeTeam),
-        fetchTeamStats(awayTeam),
-      ])
-      const rows = [
-        buildStatsRow(match.id, match.home_team_code, homeData),
-        buildStatsRow(match.id, match.away_team_code, awayData),
-      ]
-      await supabase.from('team_stats').upsert(rows, { onConflict: 'team_code,match_id' })
+      // Use CF Worker — runs outside China, has service role key (MT03)
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) throw new Error('Not authenticated')
+
+      const res = await fetch('/api/sync-stats', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ match_ids: [match.id] }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Sync failed: ${res.status}`)
       await loadFromDB()
     } catch (err) {
       setError(err.message)

@@ -1459,7 +1459,7 @@ export default function MatchAnalysis() {
   async function handleRefreshStats() {
     if (!match) return
     setRefreshing(true)
-    await refreshStats(match.home_team, match.away_team)
+    await refreshStats()
     setRefreshing(false)
   }
 
