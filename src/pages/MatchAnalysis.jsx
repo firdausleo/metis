@@ -1900,9 +1900,9 @@ export default function MatchAnalysis() {
         {activeTab === 'stats' && (
           <div>
             {statsError && (
-              <p style={{ color: 'var(--color-danger)', fontSize: 15, marginBottom: 12 }}>
-                {statsError}
-              </p>
+              <div style={{ background: 'var(--color-danger-dim)', border: '1px solid var(--color-danger)', borderRadius: 'var(--radius-md)', padding: '12px 14px', marginBottom: 12 }}>
+                <p style={{ color: 'var(--color-danger)', fontSize: 15, fontWeight: 600 }}>⚠ {statsError}</p>
+              </div>
             )}
 
             {isAdmin && (

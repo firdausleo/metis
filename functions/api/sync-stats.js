@@ -175,7 +175,9 @@ async function fetchTeamStats(env, teamId, signal) {
 
 // Sync all needed teams: map names→ids, fetch stats. Returns metisName→stats.
 async function fetchApiFootball(env, teamNames, signal) {
+  if (!env.API_FOOTBALL_KEY) throw new Error('API_FOOTBALL_KEY not set in worker env')
   const idMap = await buildTeamIdMap(env, signal)
+  if (!Object.keys(idMap).length) throw new Error('API-Football returned no WC teams (check key/plan)')
   const out = {}
   for (const name of teamNames) {
     const id = resolveTeamId(idMap, name)

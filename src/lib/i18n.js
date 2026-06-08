@@ -65,7 +65,7 @@ const translations = {
     'analysis.conceded': 'Conceded / Match',
     'analysis.overall': 'Overall',
     'analysis.away': 'Away',
-    'analysis.fetchStats': 'Fetch from footystats',
+    'analysis.fetchStats': 'Fetch Stats',
     'analysis.inputManual': 'Input manually',
     'analysis.saveStats': 'Save Stats',
     'analysis.noStats': 'No stats yet',

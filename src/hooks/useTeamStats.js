@@ -59,6 +59,9 @@ export function useTeamStats(match) {
 
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Sync failed: ${res.status}`)
+      // Worker swallows fetch failures into scrape_error and returns ok — surface them
+      if (data.scrape_error) throw new Error(`API-Football: ${data.scrape_error}`)
+      if (data.teams_found === 0) throw new Error('No teams resolved from API-Football — check API key / team mapping')
       await loadFromDB()
     } catch (err) {
       setError(err.message)
