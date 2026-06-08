@@ -624,6 +624,7 @@ function DixonColesToggle({ enabled, onChange }) {
 
 // Monte Carlo panel — simulate scorelines, cross-check analytic Poisson
 function MonteCarloPanel({ v1, match }) {
+  const { t } = useTranslation()
   const [sim, setSim] = useState(null)
   const [running, setRunning] = useState(false)
 
@@ -651,14 +652,14 @@ function MonteCarloPanel({ v1, match }) {
     <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>
-          MONTE CARLO{sim ? ` · ${(sim.n / 1000)}K SIMS` : ''}
+          {t('mc.title').toUpperCase()}{sim ? ` · ${(sim.n / 1000)}K` : ''}
         </p>
         <button onClick={() => run(100000)} disabled={running} style={{
           minHeight: 44, padding: '0 16px', fontSize: 15, fontWeight: 700,
           borderRadius: 'var(--radius-sm)', cursor: running ? 'default' : 'pointer',
           background: 'var(--color-accent-dim)', color: 'var(--color-accent)',
           border: '0.5px solid var(--color-accent-border)', opacity: running ? 0.7 : 1,
-        }}>{running ? 'Simulating…' : 'Deep run · 100K'}</button>
+        }}>{running ? t('mc.running') : t('mc.deep')}</button>
       </div>
       {sim ? (
         <>
@@ -671,7 +672,7 @@ function MonteCarloPanel({ v1, match }) {
             </div>
           ))}
           <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 10 }}>
-            Most likely: {sim.topScores.map(s => `${s.score} (${(s.prob * 100).toFixed(1)}%)`).join(' · ')}
+            {t('mc.likely')}: {sim.topScores.map(s => `${s.score} (${(s.prob * 100).toFixed(1)}%)`).join(' · ')}
           </p>
         </>
       ) : (
@@ -836,6 +837,7 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
 
 // Value tab — model probabilities + bookmaker odds entry → EV/edge per outcome
 function TabValue({ stats, match }) {
+  const { t } = useTranslation()
   const model = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
     try { return runModels(stats.home, stats.away) } catch { return null }
@@ -953,7 +955,7 @@ function TabValue({ stats, match }) {
         padding: '14px 16px',
       }}>
         <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
-          BOOKMAKER ODDS (DECIMAL) · 1X2
+          {t('value.odds').toUpperCase()}
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
           {['home', 'draw', 'away'].map(key => (
@@ -990,11 +992,11 @@ function TabValue({ stats, match }) {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>
-              EXPECTED VALUE
+              {t('value.ev').toUpperCase()}
             </span>
             <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>vig {(ev1x2.vig.vigPct).toFixed(1)}%</span>
           </div>
-          <input type="number" inputMode="decimal" min="0" placeholder="Stake ¥" value={stake}
+          <input type="number" inputMode="decimal" min="0" placeholder={t('value.stake')} value={stake}
             onChange={e => setStake(e.target.value)}
             style={{ width: '100%', fontSize: 16, minHeight: 44, padding: '0 12px', marginBottom: 8, borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
           {['home', 'draw', 'away'].map(key => {
@@ -1010,7 +1012,7 @@ function TabValue({ stats, match }) {
                   {best ? '★ ' : ''}{OUTCOME_LABELS[key]}
                 </span>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>fair {oc.fairOdds.toFixed(2)}</span>
+                  <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{t('value.fair')} {oc.fairOdds.toFixed(2)}</span>
                   <span style={{
                     fontSize: 14, fontWeight: 700, color: col,
                     padding: '2px 8px', borderRadius: 'var(--radius-full)', background: `${col}22`,
@@ -1018,7 +1020,7 @@ function TabValue({ stats, match }) {
                   <button onClick={() => place(key)} disabled={!(parseFloat(stake) > 0) || placed[key] === true}
                     style={{ minHeight: 36, padding: '0 10px', fontSize: 13, fontWeight: 700, borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer',
                       background: placed[key] === true ? 'var(--color-bg-hover)' : 'var(--color-accent)', color: placed[key] === true ? 'var(--color-text-muted)' : 'var(--color-bg)' }}>
-                    {placed[key] === true ? '✓ Placed' : placed[key] === 'error' ? 'Retry' : 'Place'}
+                    {placed[key] === true ? t('value.placed') : placed[key] === 'error' ? t('value.retry') : t('value.place')}
                   </button>
                 </div>
               </div>
@@ -1138,6 +1140,7 @@ function TabPortfolio({ stats }) {
 
 // Portfolio builder — add legs (odds + model prob), Kelly stake, stress test
 function PortfolioBuilder() {
+  const { t } = useTranslation()
   const [bankroll, setBankroll] = useState(1000)
   const [legs, setLegs] = useState([])
   const [draft, setDraft] = useState({ label: '', odds: '', prob: '' })
@@ -1161,9 +1164,9 @@ function PortfolioBuilder() {
 
   return (
     <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }}>
-      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>PORTFOLIO BUILDER</p>
+      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>{t('portfolio.title').toUpperCase()}</p>
 
-      <label style={{ fontSize: 13, color: 'var(--color-text-muted)', display: 'block', marginBottom: 4 }}>Bankroll</label>
+      <label style={{ fontSize: 13, color: 'var(--color-text-muted)', display: 'block', marginBottom: 4 }}>{t('portfolio.bankroll')}</label>
       <input type="number" inputMode="decimal" min="0" value={bankroll} onChange={e => setBankroll(Math.max(0, parseFloat(e.target.value) || 0))} style={{ ...inp, width: '100%', marginBottom: 12 }} />
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
@@ -1185,19 +1188,19 @@ function PortfolioBuilder() {
 
       {sized.length >= 2 && (
         <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-warning)', margin: '8px 0' }}>
-          ⚠ {sized.length} legs on the same match — correlated. Never parlay 2+ from one match (red line).
+          ⚠ {sized.length} {t('portfolio.correlated')}
         </p>
       )}
 
       {sized.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 }}>
-            <span style={{ color: 'var(--color-text-muted)' }}>Total exposure</span>
+            <span style={{ color: 'var(--color-text-muted)' }}>{t('portfolio.exposure')}</span>
             <span style={{ color: exposurePct > 15 ? 'var(--color-warning)' : 'var(--color-text-primary)', fontWeight: 700 }}>¥{totalStake.toFixed(0)} · {exposurePct.toFixed(1)}%</span>
           </div>
-          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', margin: '10px 0 6px' }}>STRESS TEST (P&L)</p>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-green)' }}><span>All win</span><span>+¥{allWin.toFixed(0)}</span></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-red)' }}><span>All lose</span><span>¥{allLose.toFixed(0)}</span></div>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', margin: '10px 0 6px' }}>{t('portfolio.stress').toUpperCase()}</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-green)' }}><span>{t('portfolio.allWin')}</span><span>+¥{allWin.toFixed(0)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-red)' }}><span>{t('portfolio.allLose')}</span><span>¥{allLose.toFixed(0)}</span></div>
           {sized.map((l, i) => {
             const pnl = l.amount * (l.odds - 1) - (totalStake - l.amount)
             return <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--color-text-secondary)' }}><span>Only {l.label} wins</span><span>{pnl >= 0 ? '+' : ''}¥{pnl.toFixed(0)}</span></div>
@@ -2009,13 +2012,14 @@ export default function MatchAnalysis() {
 
 // Admin: record final score → status finished. Bets settle on owner's My Bets view.
 function SettlementPanel({ match }) {
+  const { t } = useTranslation()
   const [h, setH] = useState(match.home_score ?? '')
   const [a, setA] = useState(match.away_score ?? '')
   const [msg, setMsg] = useState('')
   const save = async () => {
     const hs = parseInt(h, 10), as = parseInt(a, 10)
     if (Number.isNaN(hs) || Number.isNaN(as)) return
-    setMsg('Settling…')
+    setMsg(t('settle.settling'))
     const { data: { session } } = await supabase.auth.getSession()
     try {
       const r = await fetch('/api/settle-match', {
@@ -2030,12 +2034,12 @@ function SettlementPanel({ match }) {
   const inp = { width: 56, fontSize: 16, minHeight: 44, textAlign: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }
   return (
     <div style={{ marginTop: 20, background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }}>
-      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>SETTLE — FINAL SCORE</p>
+      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>{t('settle.title').toUpperCase()}</p>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <input type="number" min="0" value={h} onChange={e => setH(e.target.value)} style={inp} />
         <span style={{ color: 'var(--color-text-muted)' }}>–</span>
         <input type="number" min="0" value={a} onChange={e => setA(e.target.value)} style={inp} />
-        <button onClick={save} style={{ minHeight: 44, padding: '0 16px', fontWeight: 700, background: 'var(--color-accent)', color: 'var(--color-bg)', border: 'none', borderRadius: 'var(--radius-sm)' }}>Save</button>
+        <button onClick={save} style={{ minHeight: 44, padding: '0 16px', fontWeight: 700, background: 'var(--color-accent)', color: 'var(--color-bg)', border: 'none', borderRadius: 'var(--radius-sm)' }}>{t('settle.save')}</button>
       </div>
       {msg && <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 8 }}>{msg}</p>}
     </div>

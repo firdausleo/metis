@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { fetchMyBets, calcPnl, portfolioStats, resultFor1X2, settleBet } from '../lib/bets'
 import { toBeijingTime } from '../lib/dateUtils'
+import { useTranslation } from '../lib/i18n'
 
 const STATUS_COLOUR = {
   pending: 'var(--color-text-muted)',
@@ -10,6 +11,7 @@ const STATUS_COLOUR = {
 }
 
 export default function MyBets() {
+  const { t } = useTranslation()
   const [bets, setBets] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState(null)
@@ -41,15 +43,15 @@ export default function MyBets() {
 
   return (
     <div className="app-content" style={{ maxWidth: 720, margin: '0 auto', padding: 16 }}>
-      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, marginBottom: 16 }}>My Bets</h1>
+      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 28, marginBottom: 16 }}>{t('bets.title')}</h1>
 
       {/* P&L summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 20 }}>
         {[
-          { label: 'P&L', value: `${pnlPositive ? '+' : ''}¥${s.pnl.toFixed(0)}`, colour: pnlPositive ? 'var(--color-edge-green)' : 'var(--color-edge-red)' },
-          { label: 'ROI', value: `${s.roi >= 0 ? '+' : ''}${s.roi.toFixed(1)}%`, colour: s.roi >= 0 ? 'var(--color-edge-green)' : 'var(--color-edge-red)' },
-          { label: 'Win rate', value: `${s.winRate.toFixed(0)}%`, colour: 'var(--color-text-primary)' },
-          { label: 'Bets', value: `${s.settled}/${s.total}`, colour: 'var(--color-text-primary)' },
+          { label: t('bets.pnl'), value: `${pnlPositive ? '+' : ''}¥${s.pnl.toFixed(0)}`, colour: pnlPositive ? 'var(--color-edge-green)' : 'var(--color-edge-red)' },
+          { label: t('bets.roi'), value: `${s.roi >= 0 ? '+' : ''}${s.roi.toFixed(1)}%`, colour: s.roi >= 0 ? 'var(--color-edge-green)' : 'var(--color-edge-red)' },
+          { label: t('bets.winRate'), value: `${s.winRate.toFixed(0)}%`, colour: 'var(--color-text-primary)' },
+          { label: t('bets.count'), value: `${s.settled}/${s.total}`, colour: 'var(--color-text-primary)' },
         ].map(c => (
           <div key={c.label} style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px 8px', textAlign: 'center' }}>
             <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 4 }}>{c.label}</p>
@@ -59,7 +61,7 @@ export default function MyBets() {
       </div>
 
       {bets.length === 0 ? (
-        <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: 24 }}>No bets yet. Place one from a match's Value tab.</p>
+        <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: 24 }}>{t('bets.empty')}</p>
       ) : bets.map(b => {
         const pnl = b.pnl != null ? Number(b.pnl) : calcPnl(b)
         return (
