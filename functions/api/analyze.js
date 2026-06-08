@@ -134,26 +134,19 @@ async function callClaude(env, model, systemPrompt, userContent, signal) {
   const data = await res.json()
   const text = data.content?.[0]?.text || ''
 
-  // Parse JSON from response — strip all markdown/code block wrappers
+  // Parse JSON from response — extract JSON object from anywhere in the text
   try {
-    // Remove ```json, ```, and any leading/trailing whitespace
-    let clean = text
-      .replace(/^\s*```(?:json)?\s*/i, '')  // opening fence
-      .replace(/\s*```\s*$/i, '')            // closing fence
-      .replace(/^\s*`+/gm, '')               // any remaining backticks
-      .trim()
-    // Find the JSON object if there's text before/after it
-    const jsonStart = clean.indexOf('{')
-    const jsonEnd   = clean.lastIndexOf('}')
-    if (jsonStart !== -1 && jsonEnd !== -1) {
-      clean = clean.slice(jsonStart, jsonEnd + 1)
-    }
-    return JSON.parse(clean)
+    // Strategy: find the first { and last } and parse what's between them
+    const jsonStart = text.indexOf('{')
+    const jsonEnd   = text.lastIndexOf('}')
+    if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON object found')
+    const extracted = text.slice(jsonStart, jsonEnd + 1)
+    return JSON.parse(extracted)
   } catch {
     // Return a structured fallback if Claude's output wasn't clean JSON
     return {
       role:           0,
-      summary:        text.replace(/```json?|```/g, '').trim().slice(0, 300),
+      summary:        text.replace(/`/g, '').trim().slice(0, 300),
       signals:        [],
       confidence:     null,
       recommendation: null,
