@@ -2015,8 +2015,17 @@ function SettlementPanel({ match }) {
   const save = async () => {
     const hs = parseInt(h, 10), as = parseInt(a, 10)
     if (Number.isNaN(hs) || Number.isNaN(as)) return
-    const { error } = await supabase.from('matches').update({ home_score: hs, away_score: as, status: 'finished' }).eq('id', match.id)
-    setMsg(error ? 'Save failed' : '✓ Final score saved — bets settle on view')
+    setMsg('Settling…')
+    const { data: { session } } = await supabase.auth.getSession()
+    try {
+      const r = await fetch('/api/settle-match', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ match_id: match.id, home_score: hs, away_score: as }),
+      })
+      const d = await r.json()
+      setMsg(r.ok ? `✓ Settled ${d.settled}/${d.pending} bets` : `Failed: ${d.error}`)
+    } catch { setMsg('Save failed') }
   }
   const inp = { width: 56, fontSize: 16, minHeight: 44, textAlign: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }
   return (

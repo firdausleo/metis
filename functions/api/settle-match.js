@@ -1,109 +1,77 @@
-// CF Pages Function: PATCH /api/settle-match
-// Admin-only endpoint to record match results and mark as completed.
-// Auth: requires admin Bearer token.
-// Env: SUPABASE_URL (var), SUPABASE_ANON_KEY (var), SUPABASE_SERVICE_ROLE_KEY (secret)
+// CF Pages Function: POST /api/settle-match
+// Admin records final score → marks match finished → settles ALL pending bets
+// across every user. Service role key bypasses RLS so one call settles the
+// whole book instantly (MT05-compliant: server-side, never frontend).
 
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type',
   'Content-Type': 'application/json',
 }
+const res = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: CORS })
+export const onRequestOptions = () => new Response(null, { status: 204, headers: CORS })
 
 async function verifyAdmin(request, env) {
-  const authHeader = request.headers.get('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) return null
-
-  const response = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
-    headers: {
-      'Authorization': authHeader,
-      'apikey': env.SUPABASE_ANON_KEY,
-    },
+  const auth = request.headers.get('Authorization')
+  if (!auth?.startsWith('Bearer ')) return null
+  const r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+    headers: { 'Authorization': auth, 'apikey': env.SUPABASE_ANON_KEY },
   })
-  if (!response.ok) return null
-
-  const user = await response.json()
-  if (user.id !== ADMIN_UUID) return null
-  return user
+  if (!r.ok) return null
+  const user = await r.json()
+  return user?.id === ADMIN_UUID ? user : null
 }
 
-export async function onRequestPatch(context) {
-  const { request, env } = context
+const sb = env => ({
+  'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+  'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
+  'Content-Type': 'application/json',
+})
 
-  const admin = await verifyAdmin(request, env)
-  if (!admin) {
-    return new Response(
-      JSON.stringify({ error: 'Forbidden — admin only' }),
-      { status: 403, headers: CORS }
-    )
-  }
+// 1X2 result for a selection vs final score.
+function result1X2(selection, h, a) {
+  const r = h > a ? 'home' : h < a ? 'away' : 'draw'
+  return selection === r ? 'won' : 'lost'
+}
+
+export async function onRequestPost(context) {
+  const { request, env } = context
+  if (!await verifyAdmin(request, env)) return res({ error: 'Forbidden — admin only' }, 403)
 
   let body
-  try {
-    body = await request.json()
-  } catch {
-    return new Response(
-      JSON.stringify({ error: 'Invalid JSON body' }),
-      { status: 400, headers: CORS }
-    )
-  }
-
+  try { body = await request.json() } catch { return res({ error: 'Invalid JSON' }, 400) }
   const { match_id, home_score, away_score } = body
-
-  if (!match_id || home_score === undefined || away_score === undefined) {
-    return new Response(
-      JSON.stringify({ error: 'match_id, home_score, and away_score are required' }),
-      { status: 400, headers: CORS }
-    )
+  if (!match_id || !Number.isInteger(home_score) || !Number.isInteger(away_score)) {
+    return res({ error: 'match_id and integer home_score/away_score required' }, 400)
   }
 
-  if (!Number.isInteger(home_score) || !Number.isInteger(away_score)) {
-    return new Response(
-      JSON.stringify({ error: 'Scores must be integers' }),
-      { status: 400, headers: CORS }
-    )
-  }
-
-  const updateResponse = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/matches?id=eq.${match_id}`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-        'apikey': env.SUPABASE_SERVICE_ROLE_KEY,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal',
-      },
-      body: JSON.stringify({
-        home_score,
-        away_score,
-        status: 'completed',
-        updated_at: new Date().toISOString(),
-      }),
-    }
-  )
-
-  if (!updateResponse.ok) {
-    const errText = await updateResponse.text()
-    return new Response(
-      JSON.stringify({ error: 'DB update failed', detail: errText }),
-      { status: 502, headers: CORS }
-    )
-  }
-
-  return new Response(
-    JSON.stringify({ success: true, match_id, home_score, away_score }),
-    { status: 200, headers: CORS }
-  )
-}
-
-export async function onRequestOptions() {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'PATCH, OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-    },
+  // Mark match finished with final score
+  const mu = await fetch(`${env.SUPABASE_URL}/rest/v1/matches?id=eq.${match_id}`, {
+    method: 'PATCH', headers: { ...sb(env), 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ home_score, away_score, status: 'finished', updated_at: new Date().toISOString() }),
   })
+  if (!mu.ok) return res({ error: 'Match update failed', detail: await mu.text() }, 502)
+
+  // Read all pending bets for this match (service role = all users)
+  const br = await fetch(`${env.SUPABASE_URL}/rest/v1/bets?match_id=eq.${match_id}&status=eq.pending&select=*`, { headers: sb(env) })
+  if (!br.ok) return res({ error: 'Bets fetch failed', detail: await br.text() }, 502)
+  const pending = await br.json()
+
+  // Settle each bet (1X2 only; other markets stay pending for manual review)
+  let settled = 0
+  for (const b of pending) {
+    if (b.bet_type !== '1X2') continue
+    const status = result1X2(b.selection, home_score, away_score)
+    const pnl = status === 'won' ? b.stake * (b.odds - 1) : -b.stake
+    const u = await fetch(`${env.SUPABASE_URL}/rest/v1/bets?id=eq.${b.id}`, {
+      method: 'PATCH', headers: { ...sb(env), 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ status, pnl }),
+    })
+    if (u.ok) settled++
+  }
+
+  return res({ success: true, match_id, home_score, away_score, pending: pending.length, settled })
 }
