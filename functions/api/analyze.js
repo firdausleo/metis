@@ -109,7 +109,7 @@ function sbHeaders(env) {
 
 // ── Claude API call ───────────────────────────────────────────
 
-async function callClaude(env, model, systemPrompt, userContent, signal, maxTokens = 2048) {
+async function callClaude(env, model, systemPrompt, userContent, signal, maxTokens = 600) {
   const res = await fetch(ANTHROPIC_API, {
     method:  'POST',
     signal,
@@ -380,7 +380,7 @@ export async function onRequestPost(context) {
       const userMsg   = `Provide your deep analysis and final recommendation.`
 
       try {
-        role3Output = await callClaude(env, SONNET_MODEL, system, userMsg, controller.signal)
+        role3Output = await callClaude(env, SONNET_MODEL, system, userMsg, controller.signal, 1024)
         await upsertOutput(env, match_id, roleByNumber[3].id, role3Output, role3Output.confidence)
       } catch (err) {
         role3Output = {
@@ -409,7 +409,7 @@ export async function onRequestPost(context) {
       const r10timeout = setTimeout(() => r10controller.abort(), 15_000)
 
       try {
-        role10Output = await callClaude(env, HAIKU_MODEL, system, userMsg, r10controller.signal)
+        role10Output = await callClaude(env, HAIKU_MODEL, system, userMsg, r10controller.signal, 1024)
         clearTimeout(r10timeout)
         await upsertOutput(env, match_id, roleByNumber[10].id, role10Output, role10Output.confidence)
       } catch (err) {
