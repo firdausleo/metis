@@ -18,10 +18,10 @@ const STAGE_LABELS = {
 }
 
 const CONFIDENCE_CONFIG = {
-  low:    { label: '⚠️ Low Confidence',   color: 'var(--color-danger)',  desc: '< 5 games data' },
-  medium: { label: '~ Medium Confidence', color: 'var(--color-warning)', desc: '2–4 WC games' },
-  high:   { label: '✅ High Confidence',  color: 'var(--color-accent)',  desc: '3 WC games' },
-  max:    { label: '🔥 Max Confidence',   color: 'var(--color-accent)',  desc: '4–5 WC games' },
+  low:    { icon: '⚠️', color: 'var(--color-danger)',  desc: '< 5 games data' },
+  medium: { icon: '~',  color: 'var(--color-warning)', desc: '2–4 WC games' },
+  high:   { icon: '✅', color: 'var(--color-accent)',  desc: '3 WC games' },
+  max:    { icon: '🔥', color: 'var(--color-accent)',  desc: '4–5 WC games' },
 }
 
 const TABS = ['stats', 'matrix', 'value', 'portfolio', 'ai']
@@ -291,7 +291,7 @@ function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManua
           {getFlag(teamName)} {teamName}
         </p>
         <p style={{ fontSize: 15, color: 'var(--color-text-muted)', marginTop: 2 }}>
-          {isHome ? 'Home' : 'Away'} · {teamCode}
+          {isHome ? t('analysis.home') : t('analysis.away')} · {teamCode}
         </p>
       </div>
 
@@ -684,6 +684,7 @@ function MonteCarloPanel({ v1, match }) {
 
 // Full Matrix tab — live Poisson
 function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
+  const { t } = useTranslation()
   const [modelError, setModelError] = useState(null)
   const model = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
@@ -810,7 +811,7 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
         matrix={v1.matrix}
         homeTeam={match.home_team_code}
         awayTeam={match.away_team_code}
-        label="V1 MATRIX"
+        label={t('analysis.v1matrix').toUpperCase()}
         colour="var(--color-accent)"
       />
 
@@ -819,7 +820,7 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
         matrix={v2.matrix}
         homeTeam={match.home_team_code}
         awayTeam={match.away_team_code}
-        label="V2 MATRIX"
+        label={t('analysis.v2matrix').toUpperCase()}
         colour="var(--color-info)"
       />
 
@@ -1760,7 +1761,7 @@ export default function MatchAnalysis() {
   if (matchError || !match) {
     return (
       <div style={{ padding: '24px 16px', maxWidth: 720, margin: '0 auto' }}>
-        <button onClick={() => navigate(-1)} style={backBtnStyle}>← Back</button>
+        <button onClick={() => navigate(-1)} style={backBtnStyle}>← {t('analysis.back')}</button>
         <p style={{ color: 'var(--color-danger)', marginTop: 16 }}>
           {matchError || 'Match not found'}
         </p>
@@ -1780,7 +1781,7 @@ export default function MatchAnalysis() {
         borderBottom: '0.5px solid var(--color-border)',
       }}>
         <button onClick={() => navigate(-1)} style={backBtnStyle}>
-          ← Back
+          ← {t('analysis.back')}
         </button>
 
         {/* Stage + venue */}
@@ -1815,7 +1816,7 @@ export default function MatchAnalysis() {
             }}>
               {match.home_team}
             </p>
-            <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>Home</p>
+            <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>{t('analysis.home')}</p>
           </div>
 
           <div style={{ textAlign: 'center', flexShrink: 0 }}>
@@ -1838,7 +1839,7 @@ export default function MatchAnalysis() {
             }}>
               {match.away_team}
             </p>
-            <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>Away</p>
+            <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>{t('analysis.away')}</p>
           </div>
         </div>
 
@@ -1852,7 +1853,7 @@ export default function MatchAnalysis() {
             borderRadius: 'var(--radius-full)',
             padding: '4px 12px',
           }}>
-            {confCfg.label}
+            {confCfg.icon} {t(`confidence.${confidence}`)}
           </span>
           <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
             {confCfg.desc}
@@ -1948,12 +1949,12 @@ export default function MatchAnalysis() {
                     flexWrap: 'wrap',
                   }}>
                     <div style={{ flex: 1, minWidth: 120 }}>
-                      <p style={{ fontSize: 14, color: 'var(--color-accent)', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }}>V1 MODEL</p>
-                      <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>Overall stats — home + away combined</p>
+                      <p style={{ fontSize: 14, color: 'var(--color-accent)', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }}>{t('analysis.v1model')}</p>
+                      <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>{t('analysis.v1note')}</p>
                     </div>
                     <div style={{ flex: 1, minWidth: 120 }}>
-                      <p style={{ fontSize: 14, color: 'var(--color-info)', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }}>V2 MODEL</p>
-                      <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>Away-factor correction applied</p>
+                      <p style={{ fontSize: 14, color: 'var(--color-info)', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }}>{t('analysis.v2model')}</p>
+                      <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>{t('analysis.v2note')}</p>
                     </div>
                   </div>
                 )}
