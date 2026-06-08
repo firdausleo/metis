@@ -1157,24 +1157,30 @@ function PortfolioBuilder() {
         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid var(--color-border)' }}>
           <span style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>{l.label} @ {l.odds.toFixed(2)}</span>
           <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <span style={{ fontSize: 14, color: l.stake.pct >= 5 ? 'var(--color-warning)' : 'var(--color-text-secondary)' }}>{l.stake.pct.toFixed(1)}% · {l.amount.toFixed(0)}</span>
+            <span style={{ fontSize: 14, color: l.stake.pct >= 5 ? 'var(--color-warning)' : 'var(--color-text-secondary)' }}>{l.stake.pct.toFixed(1)}% · ¥{l.amount.toFixed(0)}</span>
             <button onClick={() => removeLeg(i)} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', fontSize: 18, cursor: 'pointer' }}>×</button>
           </span>
         </div>
       ))}
 
+      {sized.length >= 2 && (
+        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-warning)', margin: '8px 0' }}>
+          ⚠ {sized.length} legs on the same match — correlated. Never parlay 2+ from one match (red line).
+        </p>
+      )}
+
       {sized.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 }}>
             <span style={{ color: 'var(--color-text-muted)' }}>Total exposure</span>
-            <span style={{ color: exposurePct > 15 ? 'var(--color-warning)' : 'var(--color-text-primary)', fontWeight: 700 }}>{totalStake.toFixed(0)} · {exposurePct.toFixed(1)}%</span>
+            <span style={{ color: exposurePct > 15 ? 'var(--color-warning)' : 'var(--color-text-primary)', fontWeight: 700 }}>¥{totalStake.toFixed(0)} · {exposurePct.toFixed(1)}%</span>
           </div>
           <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', margin: '10px 0 6px' }}>STRESS TEST (P&L)</p>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-green)' }}><span>All win</span><span>+{allWin.toFixed(0)}</span></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-red)' }}><span>All lose</span><span>{allLose.toFixed(0)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-green)' }}><span>All win</span><span>+¥{allWin.toFixed(0)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-red)' }}><span>All lose</span><span>¥{allLose.toFixed(0)}</span></div>
           {sized.map((l, i) => {
             const pnl = l.amount * (l.odds - 1) - (totalStake - l.amount)
-            return <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--color-text-secondary)' }}><span>Only {l.label} wins</span><span>{pnl >= 0 ? '+' : ''}{pnl.toFixed(0)}</span></div>
+            return <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--color-text-secondary)' }}><span>Only {l.label} wins</span><span>{pnl >= 0 ? '+' : ''}¥{pnl.toFixed(0)}</span></div>
           })}
         </div>
       )}
