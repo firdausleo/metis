@@ -109,7 +109,7 @@ function sbHeaders(env) {
 
 // ── Claude API call ───────────────────────────────────────────
 
-async function callClaude(env, model, systemPrompt, userContent, signal, maxTokens = 1024) {
+async function callClaude(env, model, systemPrompt, userContent, signal, maxTokens = 2048) {
   const res = await fetch(ANTHROPIC_API, {
     method:  'POST',
     signal,
@@ -134,17 +134,50 @@ async function callClaude(env, model, systemPrompt, userContent, signal, maxToke
   const data = await res.json()
   const text = data.content?.[0]?.text || ''
 
+  // Strategy 1: parse a complete balanced JSON object
   const result = extractJson(text)
-  if (result) return result
+  if (result) return normaliseConfidence(result)
 
-  // Return a structured fallback if extraction fails
+  // Strategy 2: response was truncated (stop_reason=max_tokens) → no closing
+  // brace, balanced scan fails. Salvage required fields by regex so confidence
+  // is never lost just because the summary ran long.
+  const salvaged = salvageFields(text)
+  if (salvaged.confidence !== null) {
+    return normaliseConfidence({ ...salvaged, flags: ['salvaged_truncated'] })
+  }
+
+  // Total failure — keep the raw text so it can be inspected in the DB.
   return {
     role:           0,
     summary:        text.replace(/`/g, '').replace(/^\s*json\s*/i, '').trim().slice(0, 400),
     signals:        [],
     confidence:     null,
     recommendation: null,
-    flags:          ['parse_error'],
+    flags:          ['parse_error', `stop:${data.stop_reason}`],
+  }
+}
+
+/** Confidence may come back 0–100 instead of 0.00–1.00; numeric(4,3) caps at
+ *  1.000 so >1 values would be rejected by the DB. Scale them down. */
+function normaliseConfidence(obj) {
+  if (typeof obj.confidence === 'number' && obj.confidence > 1) {
+    obj.confidence = Math.min(1, obj.confidence / 100)
+  }
+  return obj
+}
+
+/** Pull individual fields from a malformed/truncated JSON string by regex. */
+function salvageFields(text) {
+  const num = text.match(/"confidence"\s*:\s*([0-9.]+)/)
+  const rec = text.match(/"recommendation"\s*:\s*"([^"]*)"/)
+  const sum = text.match(/"summary"\s*:\s*"([^"]*)"/)
+  const role = text.match(/"role"\s*:\s*([0-9]+)/)
+  return {
+    role:           role ? Number(role[1]) : 0,
+    summary:        sum ? sum[1] : '',
+    signals:        [],
+    confidence:     num ? Number(num[1]) : null,
+    recommendation: rec ? rec[1] : null,
   }
 }
 
@@ -251,7 +284,7 @@ function rolePrompt(roleNumber, roleName, matchContext) {
 
     9: `\nFocus: Motivation scoring (0–10 scale for each team). Factors: must-win pressure, already qualified status, group permutations, rivalry intensity, pride/prestige, home advantage (WC host considerations). Higher motivation differential = bigger edge for motivated side.`,
 
-    10: `\nFocus: You are the Composite Scorer. Your confidence IS the final confidence score (0.00–1.00 = 0–100). Synthesise all role outputs into a single score. Weight: data quality (Role 1) = 25%, form (Role 2) = 20%, context (Roles 4,9) = 20%, risk (Role 6) = 20%, tactical/H2H (Roles 7,8) = 15%. In your summary, explain the top 3 drivers. Your recommendation is the consensus bet direction.`,
+    10: `\nFocus: You are the Composite Scorer. Your confidence is the final score as a DECIMAL between 0.00 and 1.00 (e.g. 0.72 means 72%) — never write a number above 1. Synthesise all role outputs into a single score. Weight: data quality (Role 1) = 25%, form (Role 2) = 20%, context (Roles 4,9) = 20%, risk (Role 6) = 20%, tactical/H2H (Roles 7,8) = 15%. In your summary, explain the top 3 drivers. Your recommendation is the consensus bet direction.`,
   }
 
   return base + (roleInstructions[roleNumber] || '')
