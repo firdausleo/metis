@@ -18,10 +18,10 @@
   --color-text-secondary:  #c8d8e8;
   --color-text-muted:      #8fa4b8;
 
-  /* ── Accent — Electric Teal ── */
-  --color-accent:          #00d4aa;
-  --color-accent-dim:      rgba(0,212,170,0.10);
-  --color-accent-border:   rgba(0,212,170,0.25);
+  /* ── Accent — WC2026 Gold ── */
+  --color-accent:          #c9a84c;
+  --color-accent-dim:      rgba(201,168,76,0.12);
+  --color-accent-border:   rgba(201,168,76,0.28);
 
   /* ── Semantic ── */
   --color-success:         #00d4aa;
