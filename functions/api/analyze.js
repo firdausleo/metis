@@ -134,15 +134,26 @@ async function callClaude(env, model, systemPrompt, userContent, signal) {
   const data = await res.json()
   const text = data.content?.[0]?.text || ''
 
-  // Parse JSON from response — Claude returns JSON in a code block or raw
+  // Parse JSON from response — strip all markdown/code block wrappers
   try {
-    const clean = text.replace(/```json\n?|\n?```/g, '').trim()
+    // Remove ```json, ```, and any leading/trailing whitespace
+    let clean = text
+      .replace(/^\s*```(?:json)?\s*/i, '')  // opening fence
+      .replace(/\s*```\s*$/i, '')            // closing fence
+      .replace(/^\s*`+/gm, '')               // any remaining backticks
+      .trim()
+    // Find the JSON object if there's text before/after it
+    const jsonStart = clean.indexOf('{')
+    const jsonEnd   = clean.lastIndexOf('}')
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      clean = clean.slice(jsonStart, jsonEnd + 1)
+    }
     return JSON.parse(clean)
   } catch {
     // Return a structured fallback if Claude's output wasn't clean JSON
     return {
       role:           0,
-      summary:        text.slice(0, 300),
+      summary:        text.replace(/```json?|```/g, '').trim().slice(0, 300),
       signals:        [],
       confidence:     null,
       recommendation: null,
