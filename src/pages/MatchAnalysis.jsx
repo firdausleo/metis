@@ -6,8 +6,8 @@ import { useTranslation } from '../lib/i18n'
 import { getFlag } from '../lib/teamFlags'
 import { toBeijingTime } from '../lib/dateUtils'
 import { supabase } from '../lib/supabase'
-import { runModels, capProb, SCORE_MAX } from '../lib/poisson'
-import { formatProb, analyse1X2 } from '../lib/evEngine'
+import { runModels, capProb, SCORE_MAX, monteCarlo } from '../lib/poisson'
+import { formatProb, analyse1X2, calcStake } from '../lib/evEngine'
 
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
@@ -621,6 +621,58 @@ function DixonColesToggle({ enabled, onChange }) {
   )
 }
 
+// Monte Carlo panel — simulate scorelines, cross-check analytic Poisson
+function MonteCarloPanel({ v1, match }) {
+  const [sim, setSim] = useState(null)
+  const [running, setRunning] = useState(false)
+
+  const run = () => {
+    setRunning(true)
+    // defer so the button paints disabled before the 50k loop blocks
+    setTimeout(() => {
+      setSim(monteCarlo(v1.lambdaHome, v1.lambdaAway, 50000))
+      setRunning(false)
+    }, 20)
+  }
+
+  const rows = sim ? [
+    { label: `${match.home_team} Win`, sim: sim.home, model: v1.probs.home },
+    { label: 'Draw',                   sim: sim.draw, model: v1.probs.draw },
+    { label: `${match.away_team} Win`, sim: sim.away, model: v1.probs.away },
+  ] : []
+
+  return (
+    <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>MONTE CARLO · 50K SIMS</p>
+        <button onClick={run} disabled={running} style={{
+          minHeight: 44, padding: '0 16px', fontSize: 15, fontWeight: 700,
+          borderRadius: 'var(--radius-sm)', cursor: running ? 'default' : 'pointer',
+          background: 'var(--color-accent-dim)', color: 'var(--color-accent)',
+          border: '0.5px solid var(--color-accent-border)', opacity: running ? 0.7 : 1,
+        }}>{running ? 'Simulating…' : sim ? 'Re-run' : 'Run'}</button>
+      </div>
+      {sim ? (
+        <>
+          {rows.map(r => (
+            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '0.5px solid var(--color-border)' }}>
+              <span style={{ fontSize: 15, color: 'var(--color-text-primary)' }}>{r.label}</span>
+              <span style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>
+                sim {(r.sim * 100).toFixed(1)}% <span style={{ color: 'var(--color-text-muted)' }}>· model {(r.model * 100).toFixed(1)}%</span>
+              </span>
+            </div>
+          ))}
+          <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: 10 }}>
+            Most likely: {sim.topScores.map(s => `${s.score} (${(s.prob * 100).toFixed(1)}%)`).join(' · ')}
+          </p>
+        </>
+      ) : (
+        <p style={{ fontSize: 14, color: 'var(--color-text-muted)' }}>Cross-check the analytic V1 matrix against 50k random simulations.</p>
+      )}
+    </div>
+  )
+}
+
 // Full Matrix tab — live Poisson
 function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
   const [modelError, setModelError] = useState(null)
@@ -740,6 +792,9 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
           </p>
         )}
       </div>
+
+      {/* Monte Carlo cross-check */}
+      <MonteCarloPanel v1={v1} match={match} />
 
       {/* Score matrices — V1 */}
       <ScoreMatrix
@@ -1048,17 +1103,74 @@ function TabPortfolio({ stats }) {
         ))}
       </div>
 
-      {/* Coming Stage 5 */}
-      <div style={{
-        background: 'var(--color-bg-card)',
-        border: '0.5px solid var(--color-border)',
-        borderRadius: 'var(--radius-md)',
-        padding: '14px 16px',
-        textAlign: 'center',
-        color: 'var(--color-text-muted)', fontSize: 14,
-      }}>
-        Interactive stake calculator, portfolio builder, and stress-test table — Stage 5
+      {/* Kelly portfolio builder + stress test */}
+      <PortfolioBuilder />
+    </div>
+  )
+}
+
+// Portfolio builder — add legs (odds + model prob), Kelly stake, stress test
+function PortfolioBuilder() {
+  const [bankroll, setBankroll] = useState(1000)
+  const [legs, setLegs] = useState([])
+  const [draft, setDraft] = useState({ label: '', odds: '', prob: '' })
+
+  const addLeg = () => {
+    const odds = parseFloat(draft.odds), prob = parseFloat(draft.prob) / 100
+    if (!(odds > 1) || !(prob > 0 && prob < 1) || !draft.label.trim()) return
+    setLegs(l => [...l, { label: draft.label.trim(), odds, prob, stake: calcStake(prob, odds) }])
+    setDraft({ label: '', odds: '', prob: '' })
+  }
+  const removeLeg = i => setLegs(l => l.filter((_, idx) => idx !== i))
+
+  const sized = legs.map(leg => ({ ...leg, amount: bankroll * leg.stake.fraction }))
+  const totalStake = sized.reduce((s, l) => s + l.amount, 0)
+  const exposurePct = bankroll ? (totalStake / bankroll) * 100 : 0
+  // Stress test: all win, all lose, and each-only-wins
+  const allWin = sized.reduce((s, l) => s + l.amount * (l.odds - 1), 0)
+  const allLose = -totalStake
+
+  const inp = { fontSize: 16, minHeight: 44, padding: '0 10px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }
+
+  return (
+    <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }}>
+      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>PORTFOLIO BUILDER</p>
+
+      <label style={{ fontSize: 13, color: 'var(--color-text-muted)', display: 'block', marginBottom: 4 }}>Bankroll</label>
+      <input type="number" inputMode="decimal" min="0" value={bankroll} onChange={e => setBankroll(Math.max(0, parseFloat(e.target.value) || 0))} style={{ ...inp, width: '100%', marginBottom: 12 }} />
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <input placeholder="Bet" value={draft.label} onChange={e => setDraft(d => ({ ...d, label: e.target.value }))} style={{ ...inp, flex: 2 }} />
+        <input placeholder="Odds" type="number" step="0.01" value={draft.odds} onChange={e => setDraft(d => ({ ...d, odds: e.target.value }))} style={{ ...inp, flex: 1, minWidth: 0 }} />
+        <input placeholder="Prob%" type="number" value={draft.prob} onChange={e => setDraft(d => ({ ...d, prob: e.target.value }))} style={{ ...inp, flex: 1, minWidth: 0 }} />
+        <button onClick={addLeg} style={{ minHeight: 44, padding: '0 14px', fontWeight: 700, background: 'var(--color-accent)', color: 'var(--color-bg)', border: 'none', borderRadius: 'var(--radius-sm)' }}>+</button>
       </div>
+
+      {sized.map((l, i) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid var(--color-border)' }}>
+          <span style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>{l.label} @ {l.odds.toFixed(2)}</span>
+          <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span style={{ fontSize: 14, color: l.stake.pct >= 5 ? 'var(--color-warning)' : 'var(--color-text-secondary)' }}>{l.stake.pct.toFixed(1)}% · {l.amount.toFixed(0)}</span>
+            <button onClick={() => removeLeg(i)} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', fontSize: 18, cursor: 'pointer' }}>×</button>
+          </span>
+        </div>
+      ))}
+
+      {sized.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 }}>
+            <span style={{ color: 'var(--color-text-muted)' }}>Total exposure</span>
+            <span style={{ color: exposurePct > 15 ? 'var(--color-warning)' : 'var(--color-text-primary)', fontWeight: 700 }}>{totalStake.toFixed(0)} · {exposurePct.toFixed(1)}%</span>
+          </div>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', margin: '10px 0 6px' }}>STRESS TEST (P&L)</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-green)' }}><span>All win</span><span>+{allWin.toFixed(0)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-red)' }}><span>All lose</span><span>{allLose.toFixed(0)}</span></div>
+          {sized.map((l, i) => {
+            const pnl = l.amount * (l.odds - 1) - (totalStake - l.amount)
+            return <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--color-text-secondary)' }}><span>Only {l.label} wins</span><span>{pnl >= 0 ? '+' : ''}{pnl.toFixed(0)}</span></div>
+          })}
+        </div>
+      )}
     </div>
   )
 }
