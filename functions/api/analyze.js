@@ -109,7 +109,7 @@ function sbHeaders(env) {
 
 // ── Claude API call ───────────────────────────────────────────
 
-async function callClaude(env, model, systemPrompt, userContent, signal) {
+async function callClaude(env, model, systemPrompt, userContent, signal, maxTokens = 1024) {
   const res = await fetch(ANTHROPIC_API, {
     method:  'POST',
     signal,
@@ -120,7 +120,7 @@ async function callClaude(env, model, systemPrompt, userContent, signal) {
     },
     body: JSON.stringify({
       model,
-      max_tokens: 600,
+      max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: 'user', content: userContent }],
     }),
@@ -134,52 +134,52 @@ async function callClaude(env, model, systemPrompt, userContent, signal) {
   const data = await res.json()
   const text = data.content?.[0]?.text || ''
 
-  // Parse JSON from response — multiple strategies in order of preference
-  function tryParse(str) {
-    const start = str.indexOf('{')
-    const end   = str.lastIndexOf('}')
-    if (start === -1 || end === -1 || end <= start) return null
-    try { return JSON.parse(str.slice(start, end + 1)) } catch { return null }
+  const result = extractJson(text)
+  if (result) return result
+
+  // Return a structured fallback if extraction fails
+  return {
+    role:           0,
+    summary:        text.replace(/`/g, '').replace(/^\s*json\s*/i, '').trim().slice(0, 400),
+    signals:        [],
+    confidence:     null,
+    recommendation: null,
+    flags:          ['parse_error'],
   }
+}
 
-  try {
-    // Strategy 1: parse the raw text directly
-    let result = tryParse(text)
+/**
+ * Extract a JSON object from a Claude response. Robust against:
+ *  - markdown code fences (```json ... ```)
+ *  - a leading "json" label before the brace
+ *  - prose before or after the object (balanced-brace scan, not lastIndexOf)
+ * Returns the parsed object, or null if none parses.
+ */
+function extractJson(text) {
+  if (!text) return null
 
-    // Strategy 2: Claude sometimes wraps in ```json ... ```
-    if (!result || result.role === 0) {
-      const fenced = text.replace(/^[\s\S]*?```(?:json)?\s*/i, '').replace(/\s*```[\s\S]*$/i, '')
-      result = tryParse(fenced) || result
-    }
-
-    // Strategy 3: look for JSON after the word "json" (Claude prefixes with "json {")
-    if (!result || result.role === 0) {
-      const afterJson = text.replace(/^[\s\S]*?\bjson\s*\{/i, '{')
-      result = tryParse(afterJson) || result
-    }
-
-    // Validate result has required fields — reject fallback objects
-    if (result && result.role && result.role !== 0 && result.confidence !== undefined) {
-      return result
-    }
-
-    // Strategy 4: if result looks valid despite role=0, trust it if confidence is present
-    if (result && result.confidence !== null && result.confidence !== undefined) {
-      return result
-    }
-
-    throw new Error('No valid JSON found')
-  } catch {
-    // Return a structured fallback if all strategies fail
-    return {
-      role:           0,
-      summary:        text.replace(/`/g, '').replace(/^json\s*/i, '').trim().slice(0, 400),
-      signals:        [],
-      confidence:     null,
-      recommendation: null,
-      flags:          ['parse_error'],
+  // Locate every '{' and try a balanced-brace scan from each until one parses.
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== '{') continue
+    let depth = 0, inStr = false, esc = false
+    for (let j = i; j < text.length; j++) {
+      const ch = text[j]
+      if (inStr) {
+        if (esc) esc = false
+        else if (ch === '\\') esc = true
+        else if (ch === '"') inStr = false
+      } else if (ch === '"') inStr = true
+      else if (ch === '{') depth++
+      else if (ch === '}') {
+        depth--
+        if (depth === 0) {
+          try { return JSON.parse(text.slice(i, j + 1)) } catch { /* try next '{' */ }
+          break
+        }
+      }
     }
   }
+  return null
 }
 
 // ── Context builders ──────────────────────────────────────────
@@ -223,9 +223,10 @@ function buildPhase1Context(phase1Results) {
 // ── Role system prompts ───────────────────────────────────────
 
 const JSON_INSTRUCTION = `
-CRITICAL: Your ENTIRE response must be ONLY a raw JSON object. 
+CRITICAL: Your ENTIRE response must be ONLY a raw JSON object.
 Do NOT use markdown. Do NOT use code blocks. Do NOT write backticks.
-Do NOT write the word "json". Start your response with { and end with }.
+Do NOT write the word "json". Do NOT write anything before { or after }.
+First character must be { and last character must be }. No prose, no preamble.
 Required schema (copy exactly, fill in values):
 {"role":<number>,"summary":"<text>","signals":["<signal>"],"confidence":<0.00-1.00>,"recommendation":"<home_win|away_win|draw|over|under|value_home|value_away|null>","flags":[]}
 `.trim()
