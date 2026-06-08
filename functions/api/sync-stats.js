@@ -65,6 +65,7 @@ async function verifyAdmin(request, env) {
 const API_BASE   = 'https://v3.football.api-sports.io'
 const WC_LEAGUE  = 1
 const WC_SEASON  = 2026
+const FRIENDLY_LEAGUE = 10   // exclude friendlies from rolling window
 
 async function apiFetch(env, path, signal) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -100,9 +101,14 @@ function resolveTeamId(map, metisName) {
 // Build the 5-game rolling window from the team's last 10 fixtures (all
 // competitions). Returns a ready-to-store stats fragment, or null if no games.
 async function fetchTeamStats(env, teamId, signal) {
-  const data = await apiFetch(env, `/fixtures?team=${teamId}&last=10`, signal)
-  const fixtures = (data.response || []).filter(f => f.fixture?.status?.short === 'FT')
-  if (!fixtures.length) return null
+  const data = await apiFetch(env, `/fixtures?team=${teamId}&last=20`, signal)
+  const finished = (data.response || []).filter(f => f.fixture?.status?.short === 'FT')
+  if (!finished.length) return null
+
+  // Prefer competitive games (exclude friendlies = league.id 10); fall back to
+  // all finished if fewer than 5 competitive available.
+  const competitive = finished.filter(f => f.league?.id !== FRIENDLY_LEAGUE)
+  const fixtures = competitive.length >= WINDOW ? competitive : finished
 
   // 5 most recent, newest first (API returns newest first). Reverse → oldest→newest.
   const recent = fixtures.slice(0, WINDOW)
