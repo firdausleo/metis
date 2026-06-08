@@ -26,6 +26,8 @@
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
 const WINDOW = 5
+// Recency weights oldest→newest, sum = 1.0 (MT06)
+const RECENCY_WEIGHTS = [0.10, 0.15, 0.20, 0.25, 0.30]
 
 // Metis name → API-Football team name overrides (only where they differ)
 // API-Football returns plain names ("Mexico", "South Africa"). Only map the
@@ -95,25 +97,45 @@ function resolveTeamId(map, metisName) {
   return map[norm(metisName)] ?? map[norm(NAME_MAP[metisName])] ?? null
 }
 
-// Fetch one team's WC statistics. Returns the buildStatsRow shape; xG is not
-// in this endpoint so xgf/xga stay null (admin/manual override later).
+// Build the 5-game rolling window from the team's last 10 fixtures (all
+// competitions). Returns a ready-to-store stats fragment, or null if no games.
 async function fetchTeamStats(env, teamId, signal) {
-  const data = await apiFetch(env, `/teams/statistics?league=${WC_LEAGUE}&season=${WC_SEASON}&team=${teamId}`, signal)
-  const s = data.response
-  if (!s) return null
-  const num = v => (v == null ? null : Number(v))
+  const data = await apiFetch(env, `/fixtures?team=${teamId}&last=10`, signal)
+  const fixtures = (data.response || []).filter(f => f.fixture?.status?.short === 'FT')
+  if (!fixtures.length) return null
+
+  // 5 most recent, newest first (API returns newest first). Reverse → oldest→newest.
+  const recent = fixtures.slice(0, WINDOW)
+  const chrono = [...recent].reverse()
+  const n = chrono.length
+
+  const games = chrono.map(f => {
+    const isHome = f.teams.home.id === teamId
+    const scored = isHome ? f.goals.home : f.goals.away
+    const conceded = isHome ? f.goals.away : f.goals.home
+    const result = scored > conceded ? 'W' : scored < conceded ? 'L' : 'D'
+    return { isHome, scored, conceded, result, wc: f.league?.id === WC_LEAGUE }
+  })
+
+  // Recency weights only when exactly 5; otherwise simple average.
+  const wAvg = arr => n === WINDOW
+    ? arr.reduce((s, v, i) => s + v * RECENCY_WEIGHTS[i], 0)
+    : arr.reduce((s, v) => s + v, 0) / n
+  const r3 = x => Number(x.toFixed(3))
+
+  const homeGames = games.filter(g => g.isHome)
+  const awayGames = games.filter(g => !g.isHome)
+  const simpleAvg = gs => gs.length ? gs.reduce((s, g) => s + g.scored, 0) / gs.length : null
+
   return {
-    mp: s.fixtures?.played?.total || 0,
-    scored: num(s.goals?.for?.total?.total) ?? 0,
-    conceded: num(s.goals?.against?.total?.total) ?? 0,
+    games_window: n,
+    goals_scored_avg: r3(wAvg(games.map(g => g.scored))),
+    goals_conceded_avg: r3(wAvg(games.map(g => g.conceded))),
+    home_goals_avg: homeGames.length ? r3(simpleAvg(homeGames)) : null,
+    away_goals_avg: awayGames.length ? r3(simpleAvg(awayGames)) : null,
+    form_string: games.map(g => g.result).reverse().join(''), // newest first
+    wc_games_in_window: games.filter(g => g.wc).length,
     xgf: null, xga: null,
-    home_scored: num(s.goals?.for?.total?.home),
-    home_conceded: num(s.goals?.against?.total?.home),
-    home_mp: s.fixtures?.played?.home || null,
-    away_scored: num(s.goals?.for?.total?.away),
-    away_conceded: num(s.goals?.against?.total?.away),
-    away_mp: s.fixtures?.played?.away || null,
-    form: (s.form || '').slice(-5).split('').reverse().join(''), // latest-first WWDLL
   }
 }
 
@@ -131,79 +153,38 @@ async function fetchApiFootball(env, teamNames, signal) {
     // it still maps; rolling-window guard handles partial data downstream.
     let st = null
     try { st = await fetchTeamStats(env, id, signal) } catch { /* keep null */ }
-    out[name] = st || { mp: 0, scored: 0, conceded: 0, xgf: null, xga: null }
+    out[name] = st || { games_window: 0 }
   }
   if (unresolved.length) out.__unresolved = unresolved
   return out
 }
 
-// ── Rolling window calculator ────────────────────────────────────────────
-
-/**
- * Apply recency-weighted rolling window to aggregate stats.
- *
- * footystats provides only aggregates (not per-game), so we approximate
- * the 5-game rolling window by using the per-game average across all
- * recorded matches. When WC-specific games-in-window data is available
- * (written by admin or historical scrape), that will override this.
- *
- * MT06: if mp < WINDOW, flag it but still build a row (mark as partial).
- */
+// ── Stats row builder ──────────────────────────────────────────────────────
+// fetchTeamStats already computed the 5-game rolling window; map it to a
+// team_stats row. No window → empty row (algorithm guards on games_window).
 function buildStatsRow({ matchId, teamCode, footyData, existingRow }) {
-  const mp = footyData?.mp || 0
-  const hasData = footyData && mp > 0
-
-  if (!hasData) {
+  const w = footyData?.games_window ? footyData : null
+  if (!w) {
     return {
-      team_code: teamCode,
-      match_id: matchId,
-      games_window: 0,
-      goals_scored_avg: null,
-      goals_conceded_avg: null,
-      home_goals_avg: null,
-      away_goals_avg: null,
-      xgf_per_game: null,
-      xga_per_game: null,
+      team_code: teamCode, match_id: matchId, games_window: 0,
+      goals_scored_avg: null, goals_conceded_avg: null,
+      home_goals_avg: null, away_goals_avg: null, xgf_per_game: null, xga_per_game: null,
       form_string: existingRow?.form_string || null,
       wc_games_in_window: existingRow?.wc_games_in_window || 0,
-      data_source: 'not_found',
-      updated_at: new Date().toISOString(),
+      data_source: 'not_found', updated_at: new Date().toISOString(),
     }
   }
-
-  // Per-game averages (best approximation without per-game data)
-  const scoredPg = mp > 0 ? Number((footyData.scored / mp).toFixed(3)) : null
-  const concededPg = mp > 0 ? Number((footyData.conceded / mp).toFixed(3)) : null
-  const xgfPg = footyData.xgf && mp > 0 ? Number((footyData.xgf / mp).toFixed(3)) : null
-  const xgaPg = footyData.xga && mp > 0 ? Number((footyData.xga / mp).toFixed(3)) : null
-
-  // Home / away split (for V2 model)
-  const hmp = footyData.home_mp || Math.ceil(mp / 2)
-  const amp = footyData.away_mp || Math.floor(mp / 2)
-  const homeScored = footyData.home_scored ?? (scoredPg !== null ? scoredPg * 1.1 : null) // ~10% home boost estimate if missing
-  const awayScored = footyData.away_scored ?? (scoredPg !== null ? scoredPg * 0.9 : null)
-
-  const homeGoalsAvg = homeScored && hmp > 0 ? Number((homeScored / hmp).toFixed(3)) : scoredPg
-  const awayGoalsAvg = awayScored && amp > 0 ? Number((awayScored / amp).toFixed(3)) : scoredPg
-
-  // API-Football gives season aggregates, not per-game, so all games are
-  // weighted equally here; the algorithm layer applies recency weights.
-  // Flag if fewer than 5 games (MT06 — partial data, algorithm must check)
-  const partial = mp < WINDOW
-
   return {
-    team_code: teamCode,
-    match_id: matchId,
-    games_window: Math.min(mp, WINDOW),
-    goals_scored_avg: scoredPg,
-    goals_conceded_avg: concededPg,
-    home_goals_avg: homeGoalsAvg,
-    away_goals_avg: awayGoalsAvg,
-    xgf_per_game: xgfPg,
-    xga_per_game: xgaPg,
-    form_string: footyData.form || existingRow?.form_string || null,
-    wc_games_in_window: existingRow?.wc_games_in_window || 0,
-    data_source: partial ? 'api_football_partial' : 'api_football',
+    team_code: teamCode, match_id: matchId,
+    games_window: w.games_window,
+    goals_scored_avg: w.goals_scored_avg,
+    goals_conceded_avg: w.goals_conceded_avg,
+    home_goals_avg: w.home_goals_avg,
+    away_goals_avg: w.away_goals_avg,
+    xgf_per_game: w.xgf, xga_per_game: w.xga,
+    form_string: w.form_string,
+    wc_games_in_window: w.wc_games_in_window,
+    data_source: w.games_window < WINDOW ? 'api_football_partial' : 'api_football',
     updated_at: new Date().toISOString(),
   }
 }
@@ -330,8 +311,8 @@ export async function onRequestPost(context) {
         const existingRow = existingMap[`${m.id}:${code}`] || null
         const row = buildStatsRow({ matchId: m.id, teamCode: code, footyData: fd, existingRow })
         rows.push(row)
-        if (!fd || (fd.mp || 0) < WINDOW) {
-          partial.push({ team: teamName, mp: fd?.mp || 0 })
+        if (!fd || (fd.games_window || 0) < WINDOW) {
+          partial.push({ team: teamName, games: fd?.games_window || 0 })
         }
       }
     }
