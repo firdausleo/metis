@@ -344,7 +344,7 @@ async function getExistingStats(env, matchIds) {
 }
 
 async function upsertStats(env, rows) {
-  const url = `${env.SUPABASE_URL}/rest/v1/team_stats`
+  const url = `${env.SUPABASE_URL}/rest/v1/team_stats?on_conflict=team_code,match_id`
   const res = await fetch(url, {
     method: 'POST',
     headers: {
