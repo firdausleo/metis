@@ -1307,13 +1307,34 @@ function TabAI({ match, isAdmin }) {
     )
   }
 
-  // Build lookup: role_id → output_json
+  // Build lookup: role_id → normalised output_json
+  function normaliseOutput(raw) {
+    if (!raw) return null
+    if (typeof raw === 'object') return raw
+    try {
+      const clean = String(raw).replace(/```json\n?|\n?```/g, '').trim()
+      return JSON.parse(clean)
+    } catch {
+      return { summary: String(raw).slice(0, 300), confidence: null, recommendation: null, signals: [], flags: ['parse_error'] }
+    }
+  }
   const outputByRoleId = {}
-  for (const o of roleOutputs) outputByRoleId[o.role_id] = o
+  for (const o of roleOutputs) outputByRoleId[o.role_id] = { ...o, output_json: normaliseOutput(o.output_json) }
 
   // Find composite (Role 10)
   const role10Row    = aiRoles.find(r => r.role_number === 10)
-  const composite    = role10Row ? outputByRoleId[role10Row.id]?.output_json : null
+  // output_json may be a parsed object or a raw JSON string — normalise it
+  const rawComposite = role10Row ? outputByRoleId[role10Row.id]?.output_json : null
+  const composite = (() => {
+    if (!rawComposite) return null
+    if (typeof rawComposite === 'object') return rawComposite
+    try {
+      const clean = String(rawComposite).replace(/```json\n?|\n?```/g, '').trim()
+      return JSON.parse(clean)
+    } catch {
+      return { summary: String(rawComposite).slice(0, 300), confidence: null, recommendation: null }
+    }
+  })()
   const hasAnyOutput = roleOutputs.length > 0
   const lastRun      = roleOutputs.length
     ? new Date(Math.max(...roleOutputs.map(o => new Date(o.created_at)))).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
