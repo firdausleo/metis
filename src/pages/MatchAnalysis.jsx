@@ -1294,10 +1294,48 @@ function CompositeScore({ output }) {
         </div>
       )}
 
-      {output.summary && (
-        <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.6, maxWidth: 400, margin: '0 auto' }}>
-          {output.summary}
-        </p>
+      {/* Structured breakdown — verdict, drivers, calc, flags */}
+      {(output.verdict || output.drivers?.length || output.summary) && (
+        <div style={{ textAlign: 'left', maxWidth: 460, margin: '0 auto', padding: '0 4px' }}>
+          {output.verdict && (
+            <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)', lineHeight: 1.5, marginBottom: 12 }}>
+              {output.verdict}
+            </p>
+          )}
+
+          {Array.isArray(output.drivers) && output.drivers.length > 0 && (
+            <ol style={{ margin: '0 0 12px', paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {output.drivers.slice(0, 3).map((d, i) => (
+                <li key={i} style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>{d}</li>
+              ))}
+            </ol>
+          )}
+
+          {output.calc_note && (
+            <p style={{
+              fontSize: 13, color: 'var(--color-text-muted)', fontFamily: 'var(--font-display)',
+              background: 'var(--color-bg)', border: '0.5px solid var(--color-border)',
+              borderRadius: 'var(--radius-sm)', padding: '8px 10px', marginBottom: 10,
+            }}>
+              {output.calc_note}
+            </p>
+          )}
+
+          {Array.isArray(output.risk_flags) && output.risk_flags.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {output.risk_flags.map((f, i) => (
+                <p key={i} style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-warning)' }}>⚠ {f}</p>
+              ))}
+            </div>
+          )}
+
+          {/* Fallback: only show paragraph when no structured fields present */}
+          {!output.verdict && !output.drivers?.length && output.summary && (
+            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
+              {output.summary}
+            </p>
+          )}
+        </div>
       )}
     </div>
   )

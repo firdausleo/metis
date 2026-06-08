@@ -284,7 +284,7 @@ function rolePrompt(roleNumber, roleName, matchContext) {
 
     9: `\nFocus: Motivation scoring (0–10 scale for each team). Factors: must-win pressure, already qualified status, group permutations, rivalry intensity, pride/prestige, home advantage (WC host considerations). Higher motivation differential = bigger edge for motivated side.`,
 
-    10: `\nFocus: You are the Composite Scorer. Your confidence is the final score as a DECIMAL between 0.00 and 1.00 (e.g. 0.72 means 72%) — never write a number above 1. Synthesise all role outputs into a single score. Weight: data quality (Role 1) = 25%, form (Role 2) = 20%, context (Roles 4,9) = 20%, risk (Role 6) = 20%, tactical/H2H (Roles 7,8) = 15%. In your summary, explain the top 3 drivers. Your recommendation is the consensus bet direction.`,
+    10: `\nFocus: You are the Composite Scorer. Your confidence is the final score as a DECIMAL between 0.00 and 1.00 (e.g. 0.72 means 72%) — never write a number above 1. Synthesise all role outputs into a single score. Weight: data quality (Role 1) = 25%, form (Role 2) = 20%, context (Roles 4,9) = 20%, risk (Role 6) = 20%, tactical/H2H (Roles 7,8) = 15%. Your recommendation is the consensus bet direction. In ADDITION to the standard fields, include: "verdict" (one concise sentence stating conviction and role agreement, e.g. "Strong HOME WIN conviction — 6/7 roles agree"); "drivers" (array of exactly 3 short one-line strings); "calc_note" (one line showing the weighted math); "risk_flags" (array of short warning strings, empty if none). Keep "summary" as the full paragraph for fallback.`,
   }
 
   return base + (roleInstructions[roleNumber] || '')
