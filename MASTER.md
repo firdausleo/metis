@@ -8,7 +8,7 @@
 
 ## Current Status
 Stage: 7 — Dashboard + Intelligence
-Last commit: see git log --oneline -3
+Last commit: 8e95352 — Task 30 pre-bet checklist
 Live URL: https://metis.tiga6.com
 Tournament: WC2026 started June 11, 2026
 
@@ -46,12 +46,8 @@ SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 ANTHROPIC_API_KEY, API_FOOTBALL_KEY
 
 ## Active Issues (fix next)
-1. Rolling window: filter out friendlies (league.id !== 10), fetch last=20
-2. South Africa form_string wrong
-3. Delete orphaned fetch-stats.js
-4. Task 30 pre-commit checklist
-5. Task 35 model accuracy tracking
-6. Role 11 learning loop
+1. Task 35 model accuracy tracking
+2. Role 11 learning loop
 
 ## Model Cost Rules — ENFORCE STRICTLY
 Claude Code MUST use: claude-sonnet-4-6

@@ -19,6 +19,7 @@
 | 6A — src/lib/poisson.js (V1 + V2 engine) | ⚠️ | 1160737 |
 | 6B — src/lib/evEngine.js (EV + Kelly) | ⚠️ | 1160737 |
 | 6C — Matrix tab live + total goals anchor | ⚠️ | 1160737 |
+| 30 — Pre-bet checklist | ✅ | 8e95352 |
 
 ## Stage 3 — Core Algorithm ✅ COMPLETE
 
@@ -39,7 +40,6 @@
 | 27 | Edge traffic light per bet | 🔴 | ✅ |
 | 28 | Portfolio builder | 🔴 | ⚠️ |
 | 29 | Outcome stress test table | 🔴 | ⚠️ |
-| 30 | Pre-commit checklist | 🟡 | ✅ |
 | 31 | Save to My Bets flow | 🔴 | ⚠️ |
 
 ## Stage 6 — My Bets + P&L
