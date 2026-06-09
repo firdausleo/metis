@@ -314,7 +314,7 @@ function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManua
           <LambdaBlock
             label={`${t('analysis.lambda')} (V1)`}
             value={teamStats.xgf_per_game ?? teamStats.goals_scored_avg}
-            dimLabel={`${teamStats.games_window || 0} games · ${teamStats.data_source || 'footystats'}`}
+            dimLabel={`${teamStats.games_window || 0} games · ${teamStats.data_source || 'API-Football'}`}
           />
 
           {/* Home / Away split — feeds V2 model */}
@@ -2004,7 +2004,7 @@ export default function MatchAnalysis() {
                 {/* Data source note */}
                 {hasAnyStats && (
                   <p style={{ fontSize: 15, color: 'var(--color-text-secondary)', textAlign: 'center', marginTop: 16 }}>
-                    Source: footystats.org · {stats.home?.games_window || 0}-game window (MT06 requires 5)
+                    Source: API-Football · {stats.home?.games_window || 0}-game window (MT06 requires 5)
                   </p>
                 )}
               </>

@@ -16,11 +16,11 @@
 export const HOME_ADVANTAGE   = 1.15   // 15% uplift, WC calibrated
 export const LEAGUE_AVG_GOALS = 1.5    // tournament baseline
 export const DEF_FACTOR_MIN   = 0.5    // floor: cap elite defenses
-export const DEF_FACTOR_MAX   = 2.0    // ceiling: stops 0.3-conceded blowups
+export const DEF_FACTOR_MAX   = 1.8    // ceiling: stops 0.3-conceded blowups
 export const RECENCY_WEIGHTS  = [0.10, 0.15, 0.20, 0.25, 0.30]  // oldest→newest
 export const WINDOW           = 5
 export const DIXON_COLES_RHO  = 0.1
-export const SCORE_MAX        = 6      // matrix dimension: 0..SCORE_MAX
+export const SCORE_MAX        = 8      // matrix dimension: 0..SCORE_MAX
 export const GOALS_LINES      = [0.5, 1.5, 2.5, 3.5, 4.5]
 
 // ── Venue advantage table (WC2026 stadiums) ──────────────────────────────
@@ -109,7 +109,7 @@ export function validateStats(stats, role) {
  * λ_home = attack_home × defense_away_factor × venueMult
  * λ_away = attack_away × defense_home_factor
  *
- * defense_X_factor = LEAGUE_AVG_GOALS / X.goals_conceded_avg, clamped 0.5–2.0
+ * defense_X_factor = LEAGUE_AVG_GOALS / X.goals_conceded_avg, clamped 0.5–1.8
  *   (tiny conceded avgs like 0.30 would otherwise give factor 5.0 → λ≈8)
  * venueMult: 1.00 neutral default — venue table replaces flat HOME_ADVANTAGE.
  */
@@ -144,7 +144,14 @@ export function calcLambdasV2(homeStats, awayStats, venueMult = VENUE_ADVANTAGE.
 
   let awayFactor = 1.0
   if (awayStats.away_goals_avg && awayStats.goals_scored_avg > 0) {
-    awayFactor = awayStats.away_goals_avg / awayStats.goals_scored_avg
+    // If away_goals_avg > home_goals_avg × 1.5, the split is likely neutral-venue
+    // contamination (e.g. host nation playing all games classified as "away").
+    // Fall back to overall average (awayFactor = 1.0) to avoid inflating λ.
+    const suspiciousSplit = awayStats.home_goals_avg != null &&
+      awayStats.away_goals_avg > awayStats.home_goals_avg * 1.5
+    if (!suspiciousSplit) {
+      awayFactor = awayStats.away_goals_avg / awayStats.goals_scored_avg
+    }
   }
 
   // Clamp factor to [0.4, 1.4] to prevent extreme corrections
