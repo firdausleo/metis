@@ -6,7 +6,7 @@ import { useTranslation } from '../lib/i18n'
 import { getFlag } from '../lib/teamFlags'
 import { toBeijingTime } from '../lib/dateUtils'
 import { supabase } from '../lib/supabase'
-import { runModels, capProb, SCORE_MAX, monteCarlo } from '../lib/poisson'
+import { runModels, capProb, SCORE_MAX, monteCarlo, getVenueAdvantage } from '../lib/poisson'
 import { formatProb, analyse1X2, calcStake } from '../lib/evEngine'
 import { placeBet } from '../lib/bets'
 
@@ -695,12 +695,12 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
     if (!stats?.home || !stats?.away) return null
     try {
       setModelError(null)
-      return runModels(stats.home, stats.away, { dixonColes })
+      return runModels(stats.home, stats.away, { dixonColes, venueMult: getVenueAdvantage(match?.venue, match?.city) })
     } catch (err) {
       setModelError(err.message)
       return null
     }
-  }, [stats, dixonColes])
+  }, [stats, dixonColes, match])
 
   const noStats = !stats?.home || !stats?.away
 
@@ -903,8 +903,8 @@ function TabValue({ stats, match }) {
   const { t } = useTranslation()
   const model = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
-    try { return runModels(stats.home, stats.away) } catch { return null }
-  }, [stats])
+    try { return runModels(stats.home, stats.away, { venueMult: getVenueAdvantage(match?.venue, match?.city) }) } catch { return null }
+  }, [stats, match])
 
   // Decimal odds entry (MT09). Empty until analyst inputs bookmaker prices.
   const [odds, setOdds] = useState({ home: '', draw: '', away: '' })

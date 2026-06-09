@@ -21,19 +21,23 @@ export const DIXON_COLES_RHO  = 0.1
 export const SCORE_MAX        = 6      // matrix dimension: 0..SCORE_MAX
 export const GOALS_LINES      = [0.5, 1.5, 2.5, 3.5, 4.5]
 
-// ── Venue advantage table (WC2026 hosts: USA/CAN/MEX) ────────────────────
-// Multiplier applied to the home/designated team's lambda. Co-hosts get a
-// genuine boost; everyone else plays on neutral ground = baseline 1.15.
+// ── Venue advantage table (WC2026 stadiums) ──────────────────────────────
+// Multiplier replaces HOME_ADVANTAGE on the home lambda. WC2026 is mostly
+// neutral ground (1.00); Azteca's altitude is the one genuine edge.
 export const VENUE_ADVANTAGE = {
-  USA:     1.30,  // host nation
-  CAN:     1.25,  // co-host
-  MEX:     1.25,  // co-host, high altitude
-  NEUTRAL: 1.15,  // default — no venue edge (HOME_ADVANTAGE)
+  AZTECA:  1.35,  // Mexico City — 2240m altitude
+  USA:     1.10,  // US stadiums
+  CANADA:  1.05,  // Canada stadiums
+  NEUTRAL: 1.00,  // default — no venue edge
 }
 
-/** Venue advantage multiplier for a team code at a host country. */
-export function getVenueAdvantage(teamCode) {
-  return VENUE_ADVANTAGE[teamCode] ?? VENUE_ADVANTAGE.NEUTRAL
+/** Venue multiplier from a match's venue/city text. Falls back to NEUTRAL. */
+export function getVenueAdvantage(venue = '', city = '') {
+  const v = `${venue} ${city}`.toLowerCase()
+  if (v.includes('azteca') || v.includes('mexico city')) return VENUE_ADVANTAGE.AZTECA
+  if (/canada|toronto|vancouver/.test(v))                 return VENUE_ADVANTAGE.CANADA
+  if (/usa|united states|new york|dallas|atlanta|houston|miami|seattle|los angeles|kansas|philadelphia|boston|san francisco/.test(v)) return VENUE_ADVANTAGE.USA
+  return VENUE_ADVANTAGE.NEUTRAL
 }
 
 // ── Core math ────────────────────────────────────────────────────────────
@@ -100,12 +104,13 @@ export function validateStats(stats, role) {
 /**
  * V1 λ values — uses overall (home+away combined) stats.
  *
- * λ_home = attack_home × defense_away_factor × HOME_ADVANTAGE
+ * λ_home = attack_home × defense_away_factor × venueMult
  * λ_away = attack_away × defense_home_factor
  *
  * defense_X_factor = LEAGUE_AVG_GOALS / X.goals_conceded_avg
+ * venueMult: 1.00 neutral default — venue table replaces flat HOME_ADVANTAGE.
  */
-export function calcLambdasV1(homeStats, awayStats) {
+export function calcLambdasV1(homeStats, awayStats, venueMult = VENUE_ADVANTAGE.NEUTRAL) {
   validateStats(homeStats, 'home')
   validateStats(awayStats, 'away')
 
@@ -114,7 +119,7 @@ export function calcLambdasV1(homeStats, awayStats) {
   const defHomeFactor = LEAGUE_AVG_GOALS / homeStats.goals_conceded_avg
   const defAwayFactor = LEAGUE_AVG_GOALS / awayStats.goals_conceded_avg
 
-  const lambdaHome = attackHome * defAwayFactor * HOME_ADVANTAGE
+  const lambdaHome = attackHome * defAwayFactor * venueMult
   const lambdaAway = attackAway * defHomeFactor
 
   return {
@@ -131,8 +136,8 @@ export function calcLambdasV1(homeStats, awayStats) {
  *
  * Falls back to V1 λ_away if away_goals_avg is missing (graceful degradation).
  */
-export function calcLambdasV2(homeStats, awayStats) {
-  const v1 = calcLambdasV1(homeStats, awayStats)
+export function calcLambdasV2(homeStats, awayStats, venueMult = VENUE_ADVANTAGE.NEUTRAL) {
+  const v1 = calcLambdasV1(homeStats, awayStats, venueMult)
 
   let awayFactor = 1.0
   if (awayStats.away_goals_avg && awayStats.goals_scored_avg > 0) {
@@ -281,16 +286,16 @@ export function calcTotalGoals(lambdaHome, lambdaAway) {
  *
  * Throws on MT06 violations (caller must catch).
  */
-export function runModels(homeStats, awayStats, { dixonColes = false } = {}) {
+export function runModels(homeStats, awayStats, { dixonColes = false, venueMult = VENUE_ADVANTAGE.NEUTRAL } = {}) {
   // V1
-  const { lambdaHome: lhV1, lambdaAway: laV1 } = calcLambdasV1(homeStats, awayStats)
+  const { lambdaHome: lhV1, lambdaAway: laV1 } = calcLambdasV1(homeStats, awayStats, venueMult)
   const matrixV1  = buildScoreMatrix(lhV1, laV1, dixonColes)
   const probsV1   = calcResultProbs(matrixV1)
   const goalsV1   = calcTotalGoals(lhV1, laV1)
   const verifiedV1 = verifyProbSum(probsV1)
 
   // V2
-  const { lambdaHome: lhV2, lambdaAway: laV2, awayFactor, awayFactorNote } = calcLambdasV2(homeStats, awayStats)
+  const { lambdaHome: lhV2, lambdaAway: laV2, awayFactor, awayFactorNote } = calcLambdasV2(homeStats, awayStats, venueMult)
   const matrixV2  = buildScoreMatrix(lhV2, laV2, dixonColes)
   const probsV2   = calcResultProbs(matrixV2)
   const goalsV2   = calcTotalGoals(lhV2, laV2)
