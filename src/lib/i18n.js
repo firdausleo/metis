@@ -90,6 +90,18 @@ const translations = {
     'value.place': 'Place',
     'value.placed': '✓ Placed',
     'value.retry': 'Retry',
+    'check.title': 'Pre-bet checklist',
+    'check.allClear': 'All checks passed — clear to bet',
+    'check.stale': 'Stats are stale ({h}h old) — refresh before betting',
+    'check.fresh': 'Stats fresh ({h}h old)',
+    'check.lowConf': 'Low composite confidence ({n}/100)',
+    'check.confOk': 'Composite confidence {n}/100',
+    'check.lowEdge': 'Edge below 5% floor ({e}) — MT23',
+    'check.edgeOk': 'Edge {e} ≥ 5%',
+    'check.drift': 'Odds drifted: {from} → {to}',
+    'check.noDrift': 'Odds steady at {to}',
+    'check.confirm': 'Confirm & place bet',
+    'check.cancel': 'Cancel',
     'mc.title': 'Monte Carlo',
     'mc.deep': 'Deep run · 100K',
     'mc.running': 'Simulating…',
@@ -200,6 +212,18 @@ const translations = {
     'value.place': '下注',
     'value.placed': '✓ 已下注',
     'value.retry': '重试',
+    'check.title': '下注前检查',
+    'check.allClear': '全部通过 — 可以下注',
+    'check.stale': '数据已过期（{h}小时）— 下注前请刷新',
+    'check.fresh': '数据新鲜（{h}小时）',
+    'check.lowConf': '综合可信度偏低（{n}/100）',
+    'check.confOk': '综合可信度 {n}/100',
+    'check.lowEdge': '优势低于5%下限（{e}）— MT23',
+    'check.edgeOk': '优势 {e} ≥ 5%',
+    'check.drift': '赔率变动：{from} → {to}',
+    'check.noDrift': '赔率稳定 {to}',
+    'check.confirm': '确认下注',
+    'check.cancel': '取消',
     'mc.title': '蒙特卡洛',
     'mc.deep': '深度模拟 · 100K',
     'mc.running': '模拟中…',
@@ -237,8 +261,10 @@ export function useTranslation() {
     return () => window.removeEventListener('langchange', handler)
   }, [])
 
-  function t(key) {
-    return translations[lang]?.[key] ?? translations['en'][key] ?? key
+  function t(key, vars) {
+    const str = translations[lang]?.[key] ?? translations['en'][key] ?? key
+    if (!vars) return str
+    return str.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : m))
   }
 
   return { t, lang }

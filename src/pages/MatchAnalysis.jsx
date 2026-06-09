@@ -836,6 +836,63 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
   )
 }
 
+// Task 30 — pre-bet checklist shown before a bet confirms. Surfaces data
+// freshness, composite confidence, edge floor (MT23) and odds drift, then a
+// single confirm. Non-blocking: warnings inform, confirm always available.
+function PreBetChecklist({ t, label, oc, freshHrs, composite, snapshotOdds, currentOdds, onConfirm, onCancel }) {
+  const staleH = freshHrs == null ? null : Math.round(freshHrs)
+  const checks = [
+    freshHrs != null && freshHrs > 24
+      ? { ok: false, msg: t('check.stale', { h: staleH }) }
+      : { ok: true, msg: t('check.fresh', { h: staleH ?? '—' }) },
+    composite != null && composite < 50
+      ? { ok: false, msg: t('check.lowConf', { n: composite }) }
+      : { ok: true, msg: t('check.confOk', { n: composite ?? '—' }) },
+    !oc.ev?.recommend
+      ? { ok: false, msg: t('check.lowEdge', { e: oc.ev?.edgeDisplay || '—' }) }
+      : { ok: true, msg: t('check.edgeOk', { e: oc.ev?.edgeDisplay }) },
+    snapshotOdds != null && currentOdds !== snapshotOdds
+      ? { ok: false, msg: t('check.drift', { from: snapshotOdds, to: currentOdds }) }
+      : { ok: true, msg: t('check.noDrift', { to: currentOdds }) },
+  ]
+  const allClear = checks.every(c => c.ok)
+
+  return (
+    <div onClick={onCancel} style={{
+      position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)',
+        borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0', padding: '18px 16px',
+        width: '100%', maxWidth: 720,
+      }}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 4 }}>
+          {t('check.title').toUpperCase()}
+        </p>
+        <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 12 }}>{label}</p>
+        {checks.map((c, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '0.5px solid var(--color-border)' }}>
+            <span style={{ fontSize: 15 }}>{c.ok ? '✅' : '⚠️'}</span>
+            <span style={{ fontSize: 14, color: c.ok ? 'var(--color-text-secondary)' : 'var(--color-warning)', fontWeight: c.ok ? 400 : 600 }}>{c.msg}</span>
+          </div>
+        ))}
+        {allClear && (
+          <p style={{ fontSize: 13, color: 'var(--color-edge-green)', fontWeight: 700, margin: '10px 0 0' }}>{t('check.allClear')}</p>
+        )}
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <button onClick={onCancel} style={{ flex: 1, minHeight: 48, fontSize: 15, fontWeight: 700, borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--color-text-secondary)', border: '0.5px solid var(--color-border)', cursor: 'pointer' }}>
+            {t('check.cancel')}
+          </button>
+          <button onClick={onConfirm} style={{ flex: 2, minHeight: 48, fontSize: 15, fontWeight: 700, borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', background: allClear ? 'var(--color-accent)' : 'var(--color-warning)', color: 'var(--color-bg)' }}>
+            {t('check.confirm')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Value tab — model probabilities + bookmaker odds entry → EV/edge per outcome
 function TabValue({ stats, match }) {
   const { t } = useTranslation()
@@ -848,10 +905,39 @@ function TabValue({ stats, match }) {
   const [odds, setOdds] = useState({ home: '', draw: '', away: '' })
   const [stake, setStake] = useState('')
   const [placed, setPlaced] = useState({})
+  const [pending, setPending] = useState(null)   // outcome key awaiting checklist confirm
 
+  // Composite confidence (Role 10) — null until analysis run; drives Task 30 warning
+  const [composite, setComposite] = useState(null)
+  // Odds snapshot per outcome, captured when the bet is selected — for drift check
+  const [oddsSnap, setOddsSnap] = useState({})
+  useEffect(() => {
+    if (!match?.id) return
+    supabase.from('role_outputs').select('output_json, ai_roles(role_number)').eq('match_id', match.id)
+      .then(({ data }) => {
+        const r10 = data?.find(o => o.ai_roles?.role_number === 10)
+        if (!r10) return
+        let json = r10.output_json
+        if (typeof json === 'string') { try { json = JSON.parse(json.replace(/```json\n?|\n?```/g, '').trim()) } catch { json = null } }
+        if (json?.confidence != null) setComposite(Math.round(json.confidence * 100))
+      })
+  }, [match?.id])
+
+  // Stale by oldest of the two teams' updated_at; null if unknown
+  const freshHrs = useMemo(() => {
+    const ts = [stats?.home?.updated_at, stats?.away?.updated_at].filter(Boolean).map(d => new Date(d).getTime())
+    if (!ts.length) return null
+    return (Date.now() - Math.min(...ts)) / 3_600_000
+  }, [stats])
+
+  const requestPlace = (key) => {
+    if (!(parseFloat(stake) > 0)) return
+    setPending(key)
+  }
   const place = async (key) => {
     const amt = parseFloat(stake)
     if (!(amt > 0)) return
+    setPending(null)
     try {
       await placeBet({ matchId: match.id, betType: '1X2', selection: key, odds: parseFloat(odds[key]), stake: amt })
       setPlaced(p => ({ ...p, [key]: true }))
@@ -863,6 +949,11 @@ function TabValue({ stats, match }) {
     if (![o.home, o.draw, o.away].every(v => v > 1)) return null
     try { return analyse1X2(model.v2.probs, o) } catch { return null }
   }, [model, odds])
+
+  // Capture the odds at first valid EV as the drift baseline ("last fetch")
+  useEffect(() => {
+    if (ev1x2 && !Object.keys(oddsSnap).length) setOddsSnap({ ...odds })
+  }, [ev1x2, odds, oddsSnap])
 
   const OUTCOME_LABELS = {
     home: `${match?.home_team || 'Home'} Win`,
@@ -1018,7 +1109,7 @@ function TabValue({ stats, match }) {
                     fontSize: 14, fontWeight: 700, color: col,
                     padding: '2px 8px', borderRadius: 'var(--radius-full)', background: `${col}22`,
                   }}>{oc.ev?.edgeDisplay}</span>
-                  <button onClick={() => place(key)} disabled={!(parseFloat(stake) > 0) || placed[key] === true}
+                  <button onClick={() => requestPlace(key)} disabled={!(parseFloat(stake) > 0) || placed[key] === true}
                     style={{ minHeight: 36, padding: '0 10px', fontSize: 13, fontWeight: 700, borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer',
                       background: placed[key] === true ? 'var(--color-bg-hover)' : 'var(--color-accent)', color: placed[key] === true ? 'var(--color-text-muted)' : 'var(--color-bg)' }}>
                     {placed[key] === true ? t('value.placed') : placed[key] === 'error' ? t('value.retry') : t('value.place')}
@@ -1049,6 +1140,21 @@ function TabValue({ stats, match }) {
           </span>
         ))}
       </div>
+
+      {/* Task 30 — pre-bet checklist before confirm */}
+      {pending && ev1x2 && (
+        <PreBetChecklist
+          t={t}
+          label={`${OUTCOME_LABELS[pending]} @ ${odds[pending]} · ¥${stake}`}
+          oc={ev1x2.outcomes[pending]}
+          freshHrs={freshHrs}
+          composite={composite}
+          snapshotOdds={oddsSnap[pending]}
+          currentOdds={odds[pending]}
+          onConfirm={() => place(pending)}
+          onCancel={() => setPending(null)}
+        />
+      )}
     </div>
   )
 }
