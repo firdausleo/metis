@@ -28,7 +28,7 @@ const TABS = ['stats', 'matrix', 'value', 'portfolio', 'ai']
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
-function StatCard({ label, value, highlight }) {
+function StatCard({ label, value, highlight, naLabel }) {
   return (
     <div style={{
       background: 'var(--color-bg-card)',
@@ -43,10 +43,10 @@ function StatCard({ label, value, highlight }) {
       </p>
       <p style={{
         fontFamily: 'var(--font-display)',
-        fontSize: 23, fontWeight: 600,
+        fontSize: value == null && naLabel ? 14 : 23, fontWeight: 600,
         color: highlight ? 'var(--color-accent)' : (value == null ? 'var(--color-text-muted)' : 'var(--color-text-primary)'),
       }}>
-        {value ?? '—'}
+        {value ?? naLabel ?? '—'}
       </p>
     </div>
   )
@@ -301,9 +301,14 @@ function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManua
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
             <StatCard label={t('analysis.scored')}   value={teamStats.goals_scored_avg}   />
             <StatCard label={t('analysis.conceded')} value={teamStats.goals_conceded_avg} />
-            <StatCard label={t('analysis.xgf')}      value={teamStats.xgf_per_game}       />
-            <StatCard label={t('analysis.xga')}      value={teamStats.xga_per_game}       />
+            <StatCard label={t('analysis.xgf')}      value={teamStats.xgf_per_game} naLabel={t('analysis.xgNa')} />
+            <StatCard label={t('analysis.xga')}      value={teamStats.xga_per_game} naLabel={t('analysis.xgNa')} />
           </div>
+          {teamStats.xgf_per_game == null && (
+            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 10, lineHeight: 1.4 }}>
+              {t('analysis.xgNote')}
+            </p>
+          )}
 
           {/* Lambda V1 */}
           <LambdaBlock

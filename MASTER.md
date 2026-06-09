@@ -38,7 +38,7 @@ Supabase: wmxhcwellqtagpndpyhk.supabase.co
 Timezone: Always Beijing (UTC+8)
 Algorithm: V1 + V2 always together (MT07)
 Rolling window: 5 games, recency weighted, API-Football
-xG: fixture statistics, competitive games only
+xG: null for WC2026 teams — API-Football plan returns null for intl comps; model uses goals_scored_avg/goals_conceded_avg only (MT06)
 
 ## CF Secrets (all set in CF Pages)
 VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY (wrangler.toml)
