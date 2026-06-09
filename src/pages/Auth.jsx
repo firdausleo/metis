@@ -55,7 +55,7 @@ export default function Auth() {
       </button>
 
       <div style={{ width: '100%', maxWidth: 400, padding: '32px 28px', background: 'var(--color-bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 600, marginBottom: 4, color: 'var(--color-accent)', letterSpacing: '0.05em' }}>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 800, marginBottom: 4, color: 'var(--color-accent)', letterSpacing: '0.08em' }}>
           METIS
         </h1>
         <p style={{ color: 'var(--color-text-secondary)', marginBottom: 28, fontSize: 13 }}>

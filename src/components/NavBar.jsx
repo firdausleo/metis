@@ -38,7 +38,7 @@ export default function NavBar() {
         padding: '0 24px',
         gap: 8,
       }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 20, color: 'var(--color-accent)', letterSpacing: '0.05em', marginRight: 16 }}>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 20, color: 'var(--color-accent)', letterSpacing: '0.08em', marginRight: 16 }}>
           METIS
         </span>
 

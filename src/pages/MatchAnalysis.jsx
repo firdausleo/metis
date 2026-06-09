@@ -1526,8 +1526,8 @@ function CompositeScore({ output }) {
       </p>
       <p style={{
         fontFamily: 'var(--font-display)',
-        fontSize: 72, fontWeight: 700,
-        color,
+        fontSize: 80, fontWeight: 900,
+        color: 'var(--color-accent)',
         lineHeight: 1,
         marginBottom: 6,
       }}>
