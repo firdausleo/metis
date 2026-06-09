@@ -8,7 +8,7 @@
 
 ## Current Status
 Stage: 7 — Dashboard + Intelligence
-Last commit: 8e95352 — Task 30 pre-bet checklist
+Last commit: 58ae379 — venue advantage table
 Live URL: https://metis.tiga6.com
 Tournament: WC2026 started June 11, 2026
 
@@ -46,8 +46,8 @@ SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 ANTHROPIC_API_KEY, API_FOOTBALL_KEY
 
 ## Active Issues (fix next)
-1. Task 35 model accuracy tracking
-2. Role 11 learning loop
+1. Apply learning-loop: run /api/learning-loop after settlements to refresh calibration
+2. Surface role hit-rate breakdown per role (Dashboard shows aggregate only)
 
 ## Model Cost Rules — ENFORCE STRICTLY
 Claude Code MUST use: claude-sonnet-4-6

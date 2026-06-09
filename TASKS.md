@@ -20,6 +20,9 @@
 | 6B — src/lib/evEngine.js (EV + Kelly) | ⚠️ | 1160737 |
 | 6C — Matrix tab live + total goals anchor | ⚠️ | 1160737 |
 | 30 — Pre-bet checklist | ✅ | 8e95352 |
+| 35 — Model accuracy tracking + Dashboard hit rate | ✅ | 414c09d |
+| 42 — Role 11 learning loop (Sonnet calibration) | ✅ | dd059cc |
+| Venue advantage table (poisson.js) | ✅ | 58ae379 |
 
 ## Stage 3 — Core Algorithm ✅ COMPLETE
 
