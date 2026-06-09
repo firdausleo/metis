@@ -15,6 +15,8 @@
 
 export const HOME_ADVANTAGE   = 1.15   // 15% uplift, WC calibrated
 export const LEAGUE_AVG_GOALS = 1.5    // tournament baseline
+export const DEF_FACTOR_MIN   = 0.5    // floor: cap elite defenses
+export const DEF_FACTOR_MAX   = 2.0    // ceiling: stops 0.3-conceded blowups
 export const RECENCY_WEIGHTS  = [0.10, 0.15, 0.20, 0.25, 0.30]  // oldest→newest
 export const WINDOW           = 5
 export const DIXON_COLES_RHO  = 0.1
@@ -107,7 +109,8 @@ export function validateStats(stats, role) {
  * λ_home = attack_home × defense_away_factor × venueMult
  * λ_away = attack_away × defense_home_factor
  *
- * defense_X_factor = LEAGUE_AVG_GOALS / X.goals_conceded_avg
+ * defense_X_factor = LEAGUE_AVG_GOALS / X.goals_conceded_avg, clamped 0.5–2.0
+ *   (tiny conceded avgs like 0.30 would otherwise give factor 5.0 → λ≈8)
  * venueMult: 1.00 neutral default — venue table replaces flat HOME_ADVANTAGE.
  */
 export function calcLambdasV1(homeStats, awayStats, venueMult = VENUE_ADVANTAGE.NEUTRAL) {
@@ -116,8 +119,8 @@ export function calcLambdasV1(homeStats, awayStats, venueMult = VENUE_ADVANTAGE.
 
   const attackHome  = homeStats.goals_scored_avg
   const attackAway  = awayStats.goals_scored_avg
-  const defHomeFactor = LEAGUE_AVG_GOALS / homeStats.goals_conceded_avg
-  const defAwayFactor = LEAGUE_AVG_GOALS / awayStats.goals_conceded_avg
+  const defHomeFactor = Math.min(Math.max(LEAGUE_AVG_GOALS / homeStats.goals_conceded_avg, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
+  const defAwayFactor = Math.min(Math.max(LEAGUE_AVG_GOALS / awayStats.goals_conceded_avg, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
 
   const lambdaHome = attackHome * defAwayFactor * venueMult
   const lambdaAway = attackAway * defHomeFactor
