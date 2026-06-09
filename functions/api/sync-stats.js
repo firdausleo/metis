@@ -125,7 +125,10 @@ async function fetchTeamStats(env, teamId, signal) {
     const lost = isHome ? f.teams.away.winner : f.teams.home.winner
     const result = won === true ? 'W' : lost === true ? 'L'
       : won == null && lost == null ? (scored > conceded ? 'W' : scored < conceded ? 'L' : 'D') : 'D'
-    return { fixtureId: f.fixture.id, isHome, scored, conceded, result, wc: f.league?.id === WC_LEAGUE }
+    return {
+      fixtureId: f.fixture.id, isHome, scored, conceded, result, wc: f.league?.id === WC_LEAGUE,
+      date: f.fixture?.date, league_id: f.league?.id, league_name: f.league?.name,
+    }
   })
 
   // xG per game (cached forever — finished fixtures don't change). Average only
@@ -134,6 +137,19 @@ async function fetchTeamStats(env, teamId, signal) {
   const xgf = xgPairs.map(p => p?.xgf).filter(v => v != null)
   const xga = xgPairs.map(p => p?.xga).filter(v => v != null)
   const avg = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null
+
+  // DEBUG (temporary): selected fixtures + xG probe so Leo can verify which 5
+  // games are chosen and whether xG is available per league.
+  const _debug = {
+    fixtures: games.map((g, i) => ({
+      fixture_id: g.fixtureId, date: g.date, league_id: g.league_id, league_name: g.league_name,
+      is_competitive: g.league_id !== FRIENDLY_LEAGUE,
+      result: g.result, scored: g.scored, conceded: g.conceded,
+      xgf: xgPairs[i]?.xgf ?? null, xga: xgPairs[i]?.xga ?? null,
+      has_xg: xgPairs[i]?.xgf != null,
+    })),
+    xg_probe: games.length ? await probeFixtureXg(env, games[games.length - 1].fixtureId, teamId, signal) : null,
+  }
 
   // Recency weights only when exactly 5; otherwise simple average.
   const wAvg = arr => n === WINDOW
@@ -154,6 +170,27 @@ async function fetchTeamStats(env, teamId, signal) {
     form_string: games.map(g => g.result).reverse().join(''), // newest first
     wc_games_in_window: games.filter(g => g.wc).length,
     xgf: r3(avg(xgf)), xga: r3(avg(xga)),
+    _debug,
+  }
+}
+
+// DEBUG (temporary): raw probe of /fixtures/statistics so Leo can see whether
+// expected_goals comes back populated or null for a competitive fixture.
+async function probeFixtureXg(env, fixtureId, teamId, signal) {
+  try {
+    const data = await apiFetch(env, `/fixtures/statistics?fixture=${fixtureId}`, signal)
+    const teams = data.response || []
+    const mine = teams.find(t => t.team?.id === teamId)
+    const xgStat = mine?.statistics?.find(s => s.type === 'expected_goals')
+    return {
+      fixture_id: fixtureId,
+      teams_returned: teams.length,
+      mine_found: !!mine,
+      stat_types: mine?.statistics?.map(s => s.type) || [],
+      expected_goals_value: xgStat ? xgStat.value : 'no_expected_goals_type',
+    }
+  } catch (e) {
+    return { fixture_id: fixtureId, error: e.message }
   }
 }
 
@@ -379,6 +416,13 @@ export async function onRequestPost(context) {
       await upsertStats(env, rows)
     }
 
+    // DEBUG (temporary): per-team selected fixtures + xG probe so Leo can
+    // verify the 5-game window and why xG is null. Remove after verification.
+    const debug = {}
+    for (const [name, st] of Object.entries(footyData)) {
+      if (st?._debug) debug[name] = st._debug
+    }
+
     clearTimeout(timeout)
     return jsonResponse({
       ok: true,
@@ -388,6 +432,7 @@ export async function onRequestPost(context) {
       unresolved,               // names that didn't map to an API team
       partial_data: partial,   // MT06: flagged teams with < 5 games
       scrape_error: scrapeFailed.error,
+      debug,                    // TEMP: fixtures + xG probe per team
       timestamp: new Date().toISOString(),
     })
 
