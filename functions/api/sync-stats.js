@@ -26,6 +26,7 @@
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
 const WINDOW = 5
+const MIN_COMPETITIVE = 3   // include friendlies only if fewer than this many competitive games
 // Recency weights oldest→newest, sum = 1.0 (MT06)
 const RECENCY_WEIGHTS = [0.10, 0.15, 0.20, 0.25, 0.30]
 
@@ -106,9 +107,9 @@ async function fetchTeamStats(env, teamId, signal) {
   if (!finished.length) return null
 
   // Prefer competitive games (exclude friendlies = league.id 10); fall back to
-  // all finished if fewer than 5 competitive available.
+  // all finished only if fewer than 3 competitive available.
   const competitive = finished.filter(f => f.league?.id !== FRIENDLY_LEAGUE)
-  const fixtures = competitive.length >= WINDOW ? competitive : finished
+  const fixtures = competitive.length >= MIN_COMPETITIVE ? competitive : finished
 
   // 5 most recent, newest first (API returns newest first). Reverse → oldest→newest.
   const recent = fixtures.slice(0, WINDOW)

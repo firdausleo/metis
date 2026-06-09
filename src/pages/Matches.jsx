@@ -5,7 +5,7 @@ import { useTranslation } from '../lib/i18n'
 import { useMatchesByGroup, getTodaysMatches } from '../hooks/useMatches'
 import MatchCard from '../components/MatchCard'
 import { getFlag } from '../lib/teamFlags'
-import { fetchTeamStats, syncAllStats } from '../lib/statsApi'
+import { syncAllStats } from '../lib/statsApi'
 import { supabase } from '../lib/supabase'
 
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
@@ -225,48 +225,8 @@ export default function Matches() {
       if (result.scrape_error) msg += ` · ⚠ ${result.scrape_error}`
       setRefreshMsg(msg)
       refetch()
-    } catch {
-      // Fallback: direct per-team fetch via existing /api/fetch-stats
-      try {
-        const upcoming = matches.filter(m => m.status === 'upcoming' && m.home_team !== 'TBD' && m.away_team !== 'TBD')
-        const teams = [...new Set(upcoming.flatMap(m => [
-          { name: m.home_team, code: m.home_team_code },
-          { name: m.away_team, code: m.away_team_code },
-        ]).map(t => JSON.stringify(t))).values()].map(s => JSON.parse(s))
-
-        const statsCache = {}
-        await Promise.allSettled(teams.map(async ({ name, code }) => {
-          try {
-            const data = await fetchTeamStats(name)
-            statsCache[code] = data
-          } catch { /* skip */ }
-        }))
-
-        const rows = upcoming.flatMap(m => {
-          const result = []
-          const buildRow = (code, data, matchId) => ({
-            team_code: code, match_id: matchId,
-            xgf_per_game: data.xgf && data.matches_played ? Number((data.xgf / data.matches_played).toFixed(3)) : null,
-            xga_per_game: data.xga && data.matches_played ? Number((data.xga / data.matches_played).toFixed(3)) : null,
-            goals_scored_avg: data.scored && data.matches_played ? Number((data.scored / data.matches_played).toFixed(3)) : null,
-            goals_conceded_avg: data.conceded && data.matches_played ? Number((data.conceded / data.matches_played).toFixed(3)) : null,
-            games_window: data.matches_played || 0,
-            wc_games_in_window: 0,
-            updated_at: new Date().toISOString(),
-          })
-          if (statsCache[m.home_team_code]) result.push(buildRow(m.home_team_code, statsCache[m.home_team_code], m.id))
-          if (statsCache[m.away_team_code]) result.push(buildRow(m.away_team_code, statsCache[m.away_team_code], m.id))
-          return result
-        })
-
-        if (rows.length) {
-          await supabase.from('team_stats').upsert(rows, { onConflict: 'team_code,match_id' })
-        }
-        setRefreshMsg(`Fallback: updated ${Object.keys(statsCache).length} teams`)
-        refetch()
-      } catch (fallbackErr) {
-        setRefreshMsg('Refresh failed: ' + fallbackErr.message)
-      }
+    } catch (err) {
+      setRefreshMsg('Refresh failed: ' + err.message)
     }
     setRefreshingAll(false)
   }

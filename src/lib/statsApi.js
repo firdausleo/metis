@@ -5,27 +5,6 @@ async function getAuthToken() {
   return session?.access_token
 }
 
-export async function fetchTeamStats(teamName) {
-  const token = await getAuthToken()
-  if (!token) throw new Error('Not authenticated')
-
-  const response = await fetch(
-    `/api/fetch-stats?team=${encodeURIComponent(teamName)}`,
-    {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-
-  if (!response.ok) {
-    throw new Error(`Stats fetch failed: ${response.status}`)
-  }
-
-  return response.json()
-}
-
 export async function settleMatch(matchId, homeScore, awayScore) {
   const token = await getAuthToken()
   if (!token) throw new Error('Not authenticated')
