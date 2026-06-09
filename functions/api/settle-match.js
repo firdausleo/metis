@@ -37,6 +37,44 @@ function result1X2(selection, h, a) {
   return selection === r ? 'won' : 'lost'
 }
 
+// Task 35 — score a role's recommendation vs final score. Returns 1 (hit),
+// 0 (miss), or null (no scorable directional pick → excluded from hit rate).
+function scoreRecommendation(rec, h, a) {
+  if (!rec) return null
+  const outcome = h > a ? 'home' : h < a ? 'away' : 'draw'
+  const total = h + a
+  switch (rec) {
+    case 'home_win': case 'value_home': return outcome === 'home' ? 1 : 0
+    case 'away_win': case 'value_away': return outcome === 'away' ? 1 : 0
+    case 'draw':                        return outcome === 'draw' ? 1 : 0
+    case 'over':                        return total > 2.5 ? 1 : 0
+    case 'under':                       return total < 2.5 ? 1 : 0
+    default:                            return null
+  }
+}
+
+// Write one role_accuracy row per role that made a scorable prediction.
+// Replaces prior rows for this match so re-settling stays idempotent.
+async function trackRoleAccuracy(env, matchId, h, a) {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/role_outputs?match_id=eq.${matchId}&select=role_id,output_json`, { headers: sb(env) })
+  if (!r.ok) return 0
+  const outputs = await r.json()
+  const now = new Date().toISOString()
+  const actual = { home_score: h, away_score: a }
+  const rows = []
+  for (const o of outputs) {
+    const score = scoreRecommendation(o.output_json?.recommendation, h, a)
+    if (score === null) continue
+    rows.push({ role_id: o.role_id, match_id: matchId, predicted_json: o.output_json, actual_json: actual, accuracy_score: score, settled_at: now })
+  }
+  if (!rows.length) return 0
+  await fetch(`${env.SUPABASE_URL}/rest/v1/role_accuracy?match_id=eq.${matchId}`, { method: 'DELETE', headers: sb(env) })
+  const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/role_accuracy`, {
+    method: 'POST', headers: { ...sb(env), 'Prefer': 'return=minimal' }, body: JSON.stringify(rows),
+  })
+  return ins.ok ? rows.length : 0
+}
+
 export async function onRequestPost(context) {
   const { request, env } = context
   if (!await verifyAdmin(request, env)) return res({ error: 'Forbidden — admin only' }, 403)
@@ -73,5 +111,9 @@ export async function onRequestPost(context) {
     if (u.ok) settled++
   }
 
-  return res({ success: true, match_id, home_score, away_score, pending: pending.length, settled })
+  // Task 35 — score every role's prediction for this match (non-blocking)
+  let roles_scored = 0
+  try { roles_scored = await trackRoleAccuracy(env, match_id, home_score, away_score) } catch { /* never block settlement */ }
+
+  return res({ success: true, match_id, home_score, away_score, pending: pending.length, settled, roles_scored })
 }
