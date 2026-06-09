@@ -81,6 +81,23 @@ async function getAiRoles(env) {
   return res.json()
 }
 
+// Role 11 feedback: confidence multipliers keyed by role_id (empty if unset).
+async function getCalibration(env) {
+  try {
+    const res = await fetch(`${env.SUPABASE_URL}/rest/v1/role_calibration?select=role_id,confidence_multiplier`, { headers: sbHeaders(env) })
+    if (!res.ok) return {}
+    const map = {}
+    for (const r of await res.json()) map[r.role_id] = Number(r.confidence_multiplier)
+    return map
+  } catch { return {} }
+}
+
+// Apply a role's learning-loop multiplier; capped at 1.0 (numeric(4,3) max).
+function applyCalibration(output, mult) {
+  if (mult && typeof output?.confidence === 'number') output.confidence = Math.min(1, output.confidence * mult)
+  return output
+}
+
 async function upsertOutput(env, matchId, roleId, outputJson, confidence) {
   const res = await fetch(`${env.SUPABASE_URL}/rest/v1/role_outputs`, {
     method:  'POST',
@@ -323,10 +340,11 @@ export async function onRequestPost(context) {
     if (!match_id) return jsonRes({ error: 'match_id required' }, 400)
 
     // Load match + stats + roles from Supabase
-    const [match, statsRows, aiRoles] = await Promise.all([
+    const [match, statsRows, aiRoles, calibration] = await Promise.all([
       getMatch(env, match_id),
       getTeamStats(env, match_id),
       getAiRoles(env),
+      getCalibration(env),
     ])
 
     // Build stats lookup
@@ -359,6 +377,8 @@ export async function onRequestPost(context) {
             }
           }
 
+          applyCalibration(output, calibration[roleRow.id])
+
           // Write to Supabase (non-blocking failure)
           try {
             await upsertOutput(env, match_id, roleRow.id, output, output.confidence)
@@ -381,6 +401,7 @@ export async function onRequestPost(context) {
 
       try {
         role3Output = await callClaude(env, SONNET_MODEL, system, userMsg, controller.signal, 1024)
+        applyCalibration(role3Output, calibration[roleByNumber[3].id])
         await upsertOutput(env, match_id, roleByNumber[3].id, role3Output, role3Output.confidence)
       } catch (err) {
         role3Output = {
@@ -411,6 +432,7 @@ export async function onRequestPost(context) {
       try {
         role10Output = await callClaude(env, HAIKU_MODEL, system, userMsg, r10controller.signal, 1024)
         clearTimeout(r10timeout)
+        applyCalibration(role10Output, calibration[roleByNumber[10].id])
         await upsertOutput(env, match_id, roleByNumber[10].id, role10Output, role10Output.confidence)
       } catch (err) {
         clearTimeout(r10timeout)
