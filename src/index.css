@@ -181,6 +181,8 @@ body {
 }
 .analysis-side, .analysis-right { display: none; }
 @media (min-width: 1024px) { .analysis-side, .analysis-right { display: block; } }
+.only-desktop { display: none; }
+@media (min-width: 1024px) { .only-desktop { display: block; } .only-mobile { display: none; } }
 
 .matches-sidebar {
   display: none;

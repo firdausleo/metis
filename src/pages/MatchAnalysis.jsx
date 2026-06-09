@@ -1879,130 +1879,42 @@ export default function MatchAnalysis() {
   const confCfg = CONFIDENCE_CONFIG[confidence]
   const hasAnyStats = stats.home || stats.away
 
+  const stageLine = `${STAGE_LABELS[match.stage] || match.stage}${match.group_name ? ` · Group ${match.group_name}` : ''}${match.venue ? ` · ${match.venue}` : ''}${match.city ? `, ${match.city}` : ''}`
+
   return (
-    <div style={{ maxWidth: 1040, margin: '0 auto', padding: '24px 16px' }}>
+    <div className="analysis-page">
 
-      {/* ── Header ── */}
-      <div style={{
-        padding: '20px 0 0',
-        borderBottom: '0.5px solid var(--color-border)',
-      }}>
-        <button onClick={() => navigate(-1)} style={backBtnStyle}>
-          ← {t('analysis.back')}
-        </button>
+      {/* ── Left rail (desktop): match summary + vertical tabs ── */}
+      <aside className="analysis-side">
+        <button onClick={() => navigate(-1)} style={backBtnStyle}>← {t('analysis.back')}</button>
+        <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '16px 14px', marginTop: 8 }}>
+          <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 4 }}>{stageLine}</p>
+          <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 12 }}>{toBeijingTime(match.match_date, 'full')} 北京</p>
+          <MatchTeams match={match} t={t} />
+          <div style={{ textAlign: 'center', marginTop: 8 }}><ConfBadge confCfg={confCfg} confidence={confidence} t={t} /></div>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <TabNav tabs={TABS} activeTab={activeTab} setActiveTab={setActiveTab} vertical t={t} />
+        </div>
+      </aside>
 
-        {/* Stage + venue */}
-        <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginTop: 8, marginBottom: 4 }}>
-          {STAGE_LABELS[match.stage] || match.stage}
-          {match.group_name ? ` · Group ${match.group_name}` : ''}
-          {match.venue ? ` · ${match.venue}` : ''}
-          {match.city ? `, ${match.city}` : ''}
-        </p>
-
-        {/* Time (MT14 — Beijing always) */}
-        <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
-          {toBeijingTime(match.match_date, 'full')} 北京
-        </p>
-
-        {/* Teams */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 16,
-          marginBottom: 12,
-          flexWrap: 'wrap',
-        }}>
-          <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 36, lineHeight: 1 }}>{getFlag(match.home_team)}</p>
-            <p style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 19, fontWeight: 600,
-              color: 'var(--color-text-primary)',
-              marginTop: 4,
-            }}>
-              {match.home_team}
-            </p>
-            <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>{t('analysis.home')}</p>
+      {/* ── Center: mobile header + tab content ── */}
+      <div>
+        {/* Mobile header (hidden ≥1024) */}
+        <div className="only-mobile" style={{ padding: '20px 0 0', borderBottom: '0.5px solid var(--color-border)' }}>
+          <button onClick={() => navigate(-1)} style={backBtnStyle}>← {t('analysis.back')}</button>
+          <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginTop: 8, marginBottom: 4 }}>{stageLine}</p>
+          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 16 }}>{toBeijingTime(match.match_date, 'full')} 北京</p>
+          <MatchTeams match={match} t={t} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 16, flexWrap: 'wrap' }}>
+            <ConfBadge confCfg={confCfg} confidence={confidence} t={t} />
+            <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>{confCfg.desc}</span>
           </div>
-
-          <div style={{ textAlign: 'center', flexShrink: 0 }}>
-            <p style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 19, fontWeight: 400,
-              color: 'var(--color-text-muted)',
-            }}>
-              {match.home_score !== null ? `${match.home_score} – ${match.away_score}` : 'vs'}
-            </p>
-          </div>
-
-          <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 36, lineHeight: 1 }}>{getFlag(match.away_team)}</p>
-            <p style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 19, fontWeight: 600,
-              color: 'var(--color-text-primary)',
-              marginTop: 4,
-            }}>
-              {match.away_team}
-            </p>
-            <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>{t('analysis.away')}</p>
-          </div>
+          <TabNav tabs={TABS} activeTab={activeTab} setActiveTab={setActiveTab} t={t} />
         </div>
 
-        {/* Confidence badge + last updated */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 16, flexWrap: 'wrap' }}>
-          <span style={{
-            fontSize: 14, fontWeight: 600,
-            color: confCfg.color,
-            background: 'var(--color-bg-card)',
-            border: `0.5px solid ${confCfg.color}`,
-            borderRadius: 'var(--radius-full)',
-            padding: '4px 12px',
-          }}>
-            {confCfg.icon} {t(`confidence.${confidence}`)}
-          </span>
-          <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
-            {confCfg.desc}
-          </span>
-          {lastUpdated && (
-            <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
-              · Updated {new Date(lastUpdated).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}
-            </span>
-          )}
-        </div>
-
-        {/* Tab bar */}
-        <div style={{ display: 'flex', gap: 0, marginBottom: -1 }}>
-          {TABS.map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                flex: 1,
-                minHeight: 40,
-                background: 'none',
-                border: 'none',
-                borderBottom: activeTab === tab
-                  ? '2px solid var(--color-accent)'
-                  : '2px solid transparent',
-                color: activeTab === tab
-                  ? 'var(--color-accent)'
-                  : 'var(--color-text-muted)',
-                fontFamily: 'var(--font-ui)',
-                fontSize: 15, fontWeight: activeTab === tab ? 600 : 400,
-                cursor: 'pointer',
-                padding: '8px 4px',
-              }}
-            >
-              {t(`analysis.${tab}`)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Tab Content ── */}
-      <div style={{ paddingTop: 20 }}>
+        {/* ── Tab Content ── */}
+        <div style={{ paddingTop: 20 }}>
 
         {/* TAB 1: Stats */}
         {activeTab === 'stats' && (
@@ -2113,7 +2025,78 @@ export default function MatchAnalysis() {
         {activeTab === 'ai' && <TabAI match={match} isAdmin={isAdmin} />}
 
         {isAdmin && <SettlementPanel match={match} />}
+        </div>
       </div>
+
+      {/* ── Right panel (desktop): live summary ── */}
+      <aside className="analysis-right">
+        <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '16px 14px' }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-blue)', letterSpacing: '0.06em', marginBottom: 12 }}>SUMMARY</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <ConfBadge confCfg={confCfg} confidence={confidence} t={t} />
+            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>{confCfg.desc}</p>
+            {lastUpdated && (
+              <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+                Updated {new Date(lastUpdated).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}
+              </p>
+            )}
+          </div>
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+// Team row — flags + names + score/vs. Reused in left rail and mobile head.
+function MatchTeams({ match, t }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
+      <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 36, lineHeight: 1 }}>{getFlag(match.home_team)}</p>
+        <p style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 600, color: 'var(--color-text-primary)', marginTop: 4 }}>{match.home_team}</p>
+        <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>{t('analysis.home')}</p>
+      </div>
+      <div style={{ textAlign: 'center', flexShrink: 0 }}>
+        <p style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 400, color: 'var(--color-text-muted)' }}>
+          {match.home_score !== null ? `${match.home_score} – ${match.away_score}` : 'vs'}
+        </p>
+      </div>
+      <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 36, lineHeight: 1 }}>{getFlag(match.away_team)}</p>
+        <p style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 600, color: 'var(--color-text-primary)', marginTop: 4 }}>{match.away_team}</p>
+        <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>{t('analysis.away')}</p>
+      </div>
+    </div>
+  )
+}
+
+// Confidence pill — reused in header and right panel.
+function ConfBadge({ confCfg, confidence, t }) {
+  return (
+    <span style={{ fontSize: 14, fontWeight: 600, color: confCfg.color, background: 'var(--color-bg-card)', border: `0.5px solid ${confCfg.color}`, borderRadius: 'var(--radius-full)', padding: '4px 12px' }}>
+      {confCfg.icon} {t(`confidence.${confidence}`)}
+    </span>
+  )
+}
+
+// Tab nav — horizontal (mobile) or vertical (desktop rail).
+function TabNav({ tabs, activeTab, setActiveTab, vertical, t }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: vertical ? 'column' : 'row', gap: vertical ? 4 : 0, marginBottom: vertical ? 0 : -1 }}>
+      {tabs.map(tab => {
+        const active = activeTab === tab
+        return (
+          <button key={tab} onClick={() => setActiveTab(tab)} style={{
+            flex: vertical ? undefined : 1, textAlign: vertical ? 'left' : 'center', minHeight: 40,
+            background: vertical && active ? 'var(--color-accent-dim)' : 'none', border: 'none',
+            borderBottom: vertical ? 'none' : active ? '2px solid var(--color-accent)' : '2px solid transparent',
+            borderLeft: vertical ? (active ? '3px solid var(--color-accent)' : '3px solid transparent') : 'none',
+            borderRadius: vertical ? 'var(--radius-sm)' : 0,
+            color: active ? 'var(--color-accent)' : 'var(--color-text-muted)',
+            fontFamily: 'var(--font-ui)', fontSize: 15, fontWeight: active ? 600 : 400, cursor: 'pointer', padding: vertical ? '10px 12px' : '8px 4px',
+          }}>{t(`analysis.${tab}`)}</button>
+        )
+      })}
     </div>
   )
 }
