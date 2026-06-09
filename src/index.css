@@ -1,60 +1,68 @@
 /* Google Fonts removed — using system fonts (China-safe) */
 
 :root {
-  /* ── Base backgrounds ── */
-  --color-bg:              #080b0f;
-  --color-bg-secondary:    #0f1318;
-  --color-bg-card:         #141920;
-  --color-bg-hover:        #1a2028;
+  /* ── Base backgrounds — warm white ── */
+  --color-bg:              #FAFAF8;
+  --color-bg-secondary:    #F4F2ED;
+  --color-bg-card:         #FFFFFF;
+  --color-bg-elevated:     #FFFFFF;
+  --color-bg-hover:        #EEECEA;
 
   /* ── Borders ── */
-  --color-border:          rgba(255,255,255,0.07);
-  --color-border-hover:    rgba(255,255,255,0.12);
-  --color-border-active:   rgba(255,255,255,0.20);
+  --color-border:          #E2DDD6;
+  --color-border-light:    #EEECEA;
+  --color-border-hover:    #D6CFC5;
+  --color-border-active:   #C9A84C;
 
   /* ── Text ── */
-  /* Contrast ratios on #080b0f: primary=15:1, secondary=9:1, muted=6:1 */
-  --color-text-primary:    #ffffff;
-  --color-text-secondary:  #c8d8e8;
-  --color-text-muted:      #8fa4b8;
+  --color-text-primary:    #1A1A1A;
+  --color-text-secondary:  #4A4540;
+  --color-text-muted:      #8A8078;
 
   /* ── Accent — WC2026 Gold ── */
-  --color-accent:          #c9a84c;
-  --color-accent-dim:      rgba(201,168,76,0.12);
-  --color-accent-border:   rgba(201,168,76,0.28);
+  --color-accent:          #C9A84C;
+  --color-accent-dim:      rgba(201,168,76,0.10);
+  --color-accent-border:   rgba(201,168,76,0.30);
+
+  /* ── WC2026 brand greens/blues ── */
+  --color-green:           #2D7A4F;
+  --color-green-dim:       rgba(45,122,79,0.10);
+  --color-green-border:    rgba(45,122,79,0.25);
+  --color-blue:            #1A3A6C;
+  --color-blue-dim:        rgba(26,58,108,0.08);
 
   /* ── Semantic ── */
-  --color-success:         #00d4aa;
-  --color-success-dim:     rgba(0,212,170,0.10);
-  --color-danger:          #ff5252;
-  --color-danger-dim:      rgba(255,82,82,0.10);
-  --color-warning:         #ffb547;
-  --color-warning-dim:     rgba(255,181,71,0.10);
-  --color-info:            #4d9fff;
-  --color-info-dim:        rgba(77,159,255,0.10);
+  --color-success:         #2D7A4F;
+  --color-success-dim:     rgba(45,122,79,0.10);
+  --color-danger:          #C0392B;
+  --color-danger-dim:      rgba(192,57,43,0.10);
+  --color-warning:         #D4860A;
+  --color-warning-dim:     rgba(212,134,10,0.10);
+  --color-info:            #1A5A8C;
+  --color-info-dim:        rgba(26,90,140,0.10);
 
   /* ── Probability heatmap ── */
-  --color-prob-high:       #00d4aa;
-  --color-prob-mid:        #ffb547;
-  --color-prob-low:        #2a3540;
+  --color-prob-high:       #2D7A4F;
+  --color-prob-mid:        #D4860A;
+  --color-prob-low:        #EEECEA;
 
   /* ── Edge traffic light ── */
-  --color-edge-strong:     #00d4aa;
-  --color-edge-moderate:   #ffb547;
-  --color-edge-fair:       #3d4d5c;
-  --color-edge-weak:       #ff5252;
-  --color-edge-avoid:      #cc0000;
-  --color-edge-green:      #00d4aa;
-  --color-edge-amber:      #ffb547;
-  --color-edge-red:        #ff5252;
+  --color-edge-strong:     #2D7A4F;
+  --color-edge-moderate:   #D4860A;
+  --color-edge-fair:       #C9C2B8;
+  --color-edge-weak:       #C0392B;
+  --color-edge-avoid:      #A02718;
+  --color-edge-green:      #2D7A4F;
+  --color-edge-amber:      #D4860A;
+  --color-edge-red:        #C0392B;
 
   /* ── V1/V2 agreement ── */
-  --color-agree:           #00d4aa;
-  --color-diverge:         #ffb547;
-  --color-conflict:        #ff5252;
+  --color-agree:           #2D7A4F;
+  --color-diverge:         #D4860A;
+  --color-conflict:        #C0392B;
 
   /* ── Typography ── */
-  --font-display: 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+  --font-display: Georgia, 'Times New Roman', 'Songti SC', serif;
   --font-ui:      'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
 
   /* ── Font sizes ── */
@@ -148,14 +156,31 @@ body {
 
 @media (min-width: 768px) {
   .matches-page {
-    max-width: 980px;
+    max-width: 1400px;
     display: grid;
-    grid-template-columns: 188px 1fr;
-    gap: 24px;
+    grid-template-columns: 220px 1fr;
+    gap: 32px;
     align-items: start;
-    padding: 24px 24px 0;
+    padding: 24px 32px 0;
   }
 }
+
+/* ── 3-column analysis layout (sidebar + main + right panel) ── */
+.analysis-page { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 1024px) {
+  .analysis-page {
+    max-width: 1400px;
+    display: grid;
+    grid-template-columns: 240px minmax(0,1fr) 320px;
+    gap: 32px;
+    align-items: start;
+    padding: 24px 32px;
+  }
+  .analysis-side  { position: sticky; top: calc(var(--nav-height-top) + 24px); }
+  .analysis-right { position: sticky; top: calc(var(--nav-height-top) + 24px); }
+}
+.analysis-side, .analysis-right { display: none; }
+@media (min-width: 1024px) { .analysis-side, .analysis-right { display: block; } }
 
 .matches-sidebar {
   display: none;

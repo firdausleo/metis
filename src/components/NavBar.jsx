@@ -31,8 +31,8 @@ export default function NavBar() {
       <nav className="navbar-desktop" style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
         height: 56,
-        background: 'var(--color-bg-secondary)',
-        borderBottom: '0.5px solid var(--color-border)',
+        background: 'var(--color-blue)',
+        borderBottom: '1px solid var(--color-accent-border)',
         display: 'flex',
         alignItems: 'center',
         padding: '0 24px',
@@ -56,7 +56,7 @@ export default function NavBar() {
                 fontSize: 14,
                 fontWeight: 500,
                 minHeight: 'var(--touch-target)',
-                color: isActive(item.path, location.pathname) ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                color: isActive(item.path, location.pathname) ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
                 background: isActive(item.path, location.pathname) ? 'var(--color-accent-dim)' : 'transparent',
                 transition: 'color 0.15s, background 0.15s',
               }}
@@ -77,14 +77,14 @@ export default function NavBar() {
               borderRadius: 'var(--radius-sm)',
               fontSize: 16,
               minHeight: 'var(--touch-target)',
-              color: isActive('/settings', location.pathname) ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+              color: isActive('/settings', location.pathname) ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
             }}
             title={t('nav.settings')}
           >
             ⚙️
           </button>
           {user && (
-            <span style={{ fontSize: 12, color: 'var(--color-text-muted)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {user.email}
             </span>
           )}
@@ -92,13 +92,13 @@ export default function NavBar() {
             onClick={handleSignOut}
             style={{
               background: 'none',
-              border: '0.5px solid var(--color-border)',
+              border: '0.5px solid var(--color-accent-border)',
               cursor: 'pointer',
               padding: '5px 12px',
               borderRadius: 'var(--radius-sm)',
               fontFamily: 'var(--font-ui)',
               fontSize: 13,
-              color: 'var(--color-text-secondary)',
+              color: 'rgba(255,255,255,0.80)',
             }}
           >
             {t('nav.logout')}
@@ -109,8 +109,8 @@ export default function NavBar() {
       {/* Mobile bottom nav */}
       <nav className="navbar-mobile" style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
-        background: 'var(--color-bg-secondary)',
-        borderTop: '0.5px solid var(--color-border)',
+        background: 'var(--color-blue)',
+        borderTop: '1px solid var(--color-accent-border)',
         paddingBottom: 'env(safe-area-inset-bottom)',
         display: 'flex',
       }}>
@@ -131,7 +131,7 @@ export default function NavBar() {
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
-                color: active ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                color: active ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
                 minHeight: 'var(--touch-target)',
               }}
             >

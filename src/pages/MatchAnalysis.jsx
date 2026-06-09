@@ -446,25 +446,21 @@ const EDGE_COLOURS = {
 // Single score-matrix cell — colour intensity based on probability
 function MatrixCell({ value, isMax }) {
   const intensity = Math.min(value * 12, 0.9)
-  // High intensity cells need dark text, low intensity cells need light text
-  const textColor = intensity > 0.5
-    ? '#000000'
-    : intensity > 0.25
-      ? '#1a2a1a'
-      : 'var(--color-text-secondary)'
+  // On warm-white: deep cells get light text, faint cells keep dark ink
+  const textColor = intensity > 0.45 ? '#FFFFFF' : 'var(--color-text-primary)'
   return (
     <div style={{
       height: 44,
       borderRadius: 4,
       background: isMax
-        ? `rgba(0,229,160,${intensity + 0.15})`
-        : `rgba(0,229,160,${intensity})`,
+        ? `rgba(45,122,79,${intensity + 0.15})`
+        : `rgba(45,122,79,${intensity})`,
       border: isMax
         ? '2px solid var(--color-accent)'
-        : '0.5px solid rgba(255,255,255,0.08)',
+        : '0.5px solid var(--color-border-light)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 13, 
-      color: isMax ? '#000' : textColor,
+      fontSize: 13,
+      color: isMax ? '#FFFFFF' : textColor,
       fontWeight: isMax ? 800 : intensity > 0.3 ? 600 : 400,
       transition: 'background 0.2s',
     }}>
@@ -1861,7 +1857,7 @@ export default function MatchAnalysis() {
 
   if (matchLoading) {
     return (
-      <div style={{ padding: '24px 16px', maxWidth: 720, margin: '0 auto' }}>
+      <div style={{ padding: '24px 16px', maxWidth: 1040, margin: '0 auto' }}>
         {[1, 2, 3].map(i => (
           <div key={i} className="skeleton" style={{ height: 80, marginBottom: 12 }} />
         ))}
@@ -1871,7 +1867,7 @@ export default function MatchAnalysis() {
 
   if (matchError || !match) {
     return (
-      <div style={{ padding: '24px 16px', maxWidth: 720, margin: '0 auto' }}>
+      <div style={{ padding: '24px 16px', maxWidth: 1040, margin: '0 auto' }}>
         <button onClick={() => navigate(-1)} style={backBtnStyle}>← {t('analysis.back')}</button>
         <p style={{ color: 'var(--color-danger)', marginTop: 16 }}>
           {matchError || 'Match not found'}
@@ -1884,7 +1880,7 @@ export default function MatchAnalysis() {
   const hasAnyStats = stats.home || stats.away
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '0 16px' }}>
+    <div style={{ maxWidth: 1040, margin: '0 auto', padding: '24px 16px' }}>
 
       {/* ── Header ── */}
       <div style={{
