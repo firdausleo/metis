@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { useTranslation } from '../lib/i18n'
+import { useTranslation, setLanguage } from '../lib/i18n'
 
 const NAV_ITEMS = [
   { key: 'nav.dashboard', icon: '📊', path: '/' },
@@ -14,9 +14,41 @@ function isActive(path, pathname) {
   return pathname.startsWith(path)
 }
 
+// Compact language toggle — pipe separator on desktop, bare labels on mobile
+function LanguageToggle({ lang, mobile = false }) {
+  const langs = [['en', 'EN'], ['zh', '中文']]
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 4 : 0 }}>
+      {langs.map(([code, label], i) => (
+        <span key={code} style={{ display: 'flex', alignItems: 'center' }}>
+          {!mobile && i > 0 && (
+            <span style={{ color: 'rgba(255,255,255,0.30)', fontSize: 13, margin: '0 4px', userSelect: 'none' }}>|</span>
+          )}
+          <button
+            onClick={() => setLanguage(code)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: mobile ? '4px 6px' : '4px 6px',
+              fontSize: mobile ? 11 : 13,
+              fontWeight: 700,
+              fontFamily: 'var(--font-ui)',
+              color: lang === code ? 'var(--color-accent)' : 'rgba(255,255,255,0.40)',
+              transition: 'color 0.15s',
+            }}
+          >
+            {label}
+          </button>
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export default function NavBar() {
   const { user, signOut } = useAuth()
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -67,6 +99,7 @@ export default function NavBar() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <LanguageToggle lang={lang} />
           <button
             onClick={() => navigate('/settings')}
             style={{
@@ -142,6 +175,21 @@ export default function NavBar() {
             </button>
           )
         })}
+
+        {/* Language toggle — 5th mobile tab */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 3,
+          padding: '10px 0',
+          minHeight: 'var(--touch-target)',
+        }}>
+          <span style={{ fontSize: 20, lineHeight: 1 }}>🌐</span>
+          <LanguageToggle lang={lang} mobile />
+        </div>
       </nav>
     </>
   )
