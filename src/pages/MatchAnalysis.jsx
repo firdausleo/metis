@@ -445,6 +445,20 @@ function StatsColumn({ match, teamStats, opponentStats, isHome, isAdmin, onRefre
   const teamCode = isHome ? match.home_team_code : match.away_team_code
   const hasStats = !!teamStats
 
+  // Compute actual V1 lambda (blended attack × clamped def factor × venue)
+  // so the display card shows the final model input, not raw xGF.
+  const v1AttackInput = teamStats ? blendInput(teamStats.xgf_per_game, teamStats.goals_scored_avg) : null
+  const v1DefRaw = opponentStats?.goals_conceded_avg != null
+    ? blendInput(opponentStats.xga_per_game, opponentStats.goals_conceded_avg)
+    : null
+  const v1DefFactor = v1DefRaw != null
+    ? Math.min(Math.max(LEAGUE_AVG_GOALS / v1DefRaw, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
+    : null
+  const v1VenueFactor = isHome ? getVenueAdvantage(match?.venue, match?.city) : 1.0
+  const v1Lambda = v1AttackInput != null && v1DefFactor != null
+    ? v1AttackInput * v1DefFactor * v1VenueFactor
+    : null
+
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       {/* Team header */}
@@ -476,11 +490,11 @@ function StatsColumn({ match, teamStats, opponentStats, isHome, isAdmin, onRefre
             </p>
           )}
 
-          {/* Lambda V1 */}
+          {/* Lambda V1 — show fully-computed λ (blended attack × defense × venue) */}
           <LambdaBlock
             label={`${t('analysis.lambda')} (V1)`}
-            value={teamStats.xgf_per_game ?? teamStats.goals_scored_avg}
-            dimLabel={`${teamStats.games_window || 0} games · ${teamStats.data_source || 'API-Football'}`}
+            value={v1Lambda != null ? v1Lambda.toFixed(3) : (v1AttackInput != null ? v1AttackInput.toFixed(3) : null)}
+            dimLabel={`${teamStats.games_window || 0} games · ${teamStats.xgf_per_game != null ? 'xG blend' : 'goals only'} · ${teamStats.data_source || 'API-Football'}`}
           />
 
           {/* Home / Away split — feeds V2 model */}
