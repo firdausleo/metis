@@ -1118,6 +1118,219 @@ function PreBetChecklist({ t, label, oc, freshHrs, composite, snapshotOdds, curr
   )
 }
 
+// Correct score section — top 20 scorelines from V1 matrix with per-line odds entry
+function CorrectScoreSection({ model, match }) {
+  const [csOdds,    setCsOdds]    = useState({})      // { "1-0": "8.50" }
+  const [csFilter,  setCsFilter]  = useState('all')
+  const [csBudget,  setCsBudget]  = useState('')
+  const [csPlaced,  setCsPlaced]  = useState({})      // { "1-0": true | 'error' }
+  const [csPending, setCsPending] = useState(null)    // score key awaiting inline confirm
+
+  const top20 = useMemo(() => {
+    if (!model) return []
+    const entries = []
+    for (let i = 0; i <= SCORE_MAX; i++) {
+      for (let j = 0; j <= SCORE_MAX; j++) {
+        entries.push({ score: `${i}-${j}`, h: i, a: j, v1p: model.v1.matrix[i][j], v2p: model.v2.matrix[i][j] })
+      }
+    }
+    return entries.sort((a, b) => b.v1p - a.v1p).slice(0, 20)
+  }, [model])
+
+  const displayed = useMemo(() => top20.filter(e => {
+    if (csFilter === 'home') return e.h > e.a
+    if (csFilter === 'away') return e.a > e.h
+    if (csFilter === 'draw') return e.h === e.a
+    return true
+  }), [top20, csFilter])
+
+  const budget    = parseFloat(csBudget)
+  const hasBudget = budget > 0
+
+  function edgeInfo(v1p, oddsStr) {
+    const odds = parseFloat(oddsStr)
+    if (!(odds > 1)) return null
+    const implied = 1 / odds
+    const edge    = (v1p - implied) / implied
+    const edgePct = edge * 100
+    const colour  = edgePct >= 10 ? 'green' : edgePct >= 5 ? 'amber' : 'red'
+    return { odds, implied, edge, edgePct, colour }
+  }
+
+  function kellyAmt(v1p, oddsStr) {
+    if (!hasBudget) return null
+    const info = edgeInfo(v1p, oddsStr)
+    if (!info) return null
+    const st = calcStake(v1p, info.odds)
+    return st.fraction > 0 ? st.fraction * budget : null
+  }
+
+  const summary = useMemo(() => {
+    if (!hasBudget) return null
+    let totalStake = 0, totalReturn = 0
+    for (const e of displayed) {
+      const info = edgeInfo(e.v1p, csOdds[e.score])
+      if (!info || info.edgePct < 10) continue
+      const st = calcStake(e.v1p, info.odds)
+      if (!(st.fraction > 0)) continue
+      const stake = st.fraction * budget
+      totalStake  += stake
+      totalReturn += stake * e.v1p * info.odds
+    }
+    if (totalStake === 0) return null
+    return { totalStake, totalReturn, profit: totalReturn - totalStake }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayed, csOdds, csBudget])
+
+  const placeCS = async (e) => {
+    const info  = edgeInfo(e.v1p, csOdds[e.score])
+    const stake = kellyAmt(e.v1p, csOdds[e.score])
+    if (!info || !stake) return
+    setCsPending(null)
+    try {
+      await placeBet({ matchId: match.id, betType: 'correct_score', selection: e.score, odds: info.odds, stake: Math.round(stake) })
+      setCsPlaced(p => ({ ...p, [e.score]: true }))
+    } catch {
+      setCsPlaced(p => ({ ...p, [e.score]: 'error' }))
+    }
+  }
+
+  const CS_FILTERS = [
+    { key: 'all',  label: 'All scores' },
+    { key: 'home', label: 'Home wins' },
+    { key: 'away', label: 'Away wins' },
+    { key: 'draw', label: 'Draws' },
+  ]
+  const chip = (active) => ({
+    minHeight: 30, padding: '0 11px',
+    borderRadius: 'var(--radius-full)',
+    border: active ? '0.5px solid var(--color-accent-border)' : '0.5px solid var(--color-border)',
+    background: active ? 'var(--color-accent-dim)' : 'transparent',
+    color: active ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+    fontSize: 12, fontWeight: active ? 600 : 400, cursor: 'pointer', fontFamily: 'var(--font-ui)',
+  })
+  const th = { padding: '6px 8px', fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', color: 'var(--color-text-muted)', background: 'var(--color-bg-elevated)', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap', textAlign: 'center' }
+  const td = { padding: '6px 8px', fontSize: 13, textAlign: 'center', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap' }
+  const ecol = (c) => ({ green: EDGE_COLOURS.green, amber: EDGE_COLOURS.amber, red: EDGE_COLOURS.red }[c] || 'var(--color-text-muted)')
+
+  return (
+    <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>CORRECT SCORE</p>
+        <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Top 20 by V1 probability · edge ≥ 10% → bet</span>
+      </div>
+
+      {/* Filter chips + budget */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+        {CS_FILTERS.map(f => (
+          <button key={f.key} onClick={() => setCsFilter(f.key)} style={chip(csFilter === f.key)}>{f.label}</button>
+        ))}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Budget ¥</label>
+          <input
+            type="number" inputMode="decimal" min="0" placeholder="10000"
+            value={csBudget} onChange={e => setCsBudget(e.target.value)}
+            style={{ width: 100, fontSize: 13, minHeight: 30, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }}
+          />
+        </div>
+      </div>
+
+      {/* Table */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 520 }}>
+          <thead>
+            <tr>
+              <th style={{ ...th, textAlign: 'left', paddingLeft: 10 }}>Score</th>
+              <th style={th}>V1%</th>
+              <th style={th}>V2%</th>
+              <th style={{ ...th, minWidth: 78 }}>Odds</th>
+              <th style={th}>Impl%</th>
+              <th style={th}>Edge</th>
+              {hasBudget && <th style={th}>Stake ¥</th>}
+              <th style={th}>Place</th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayed.map(e => {
+              const info   = edgeInfo(e.v1p, csOdds[e.score])
+              const stake  = kellyAmt(e.v1p, csOdds[e.score])
+              const green  = info?.colour === 'green'
+              const col    = info ? ecol(info.colour) : 'var(--color-text-muted)'
+              const canBet = info && stake && !csPlaced[e.score]
+              return (
+                <tr key={e.score} style={{ background: green ? 'rgba(45,122,79,0.06)' : 'transparent' }}>
+                  <td style={{ ...td, textAlign: 'left', paddingLeft: 10, fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15, color: 'var(--color-text-primary)' }}>
+                    {e.score}{green && <span style={{ marginLeft: 5, fontSize: 10, color: EDGE_COLOURS.green }}>★</span>}
+                  </td>
+                  <td style={{ ...td, color: 'var(--color-accent)', fontWeight: 600 }}>{(e.v1p * 100).toFixed(1)}</td>
+                  <td style={{ ...td, color: 'var(--color-info)' }}>{(e.v2p * 100).toFixed(1)}</td>
+                  <td style={td}>
+                    <input
+                      type="number" inputMode="decimal" step="0.10" min="1" placeholder="—"
+                      value={csOdds[e.score] || ''}
+                      onChange={ev => setCsOdds(o => ({ ...o, [e.score]: ev.target.value }))}
+                      style={{ width: 68, fontSize: 13, minHeight: 30, textAlign: 'center', padding: '0 4px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }}
+                    />
+                  </td>
+                  <td style={{ ...td, color: 'var(--color-text-secondary)' }}>{info ? `${(info.implied * 100).toFixed(1)}%` : '—'}</td>
+                  <td style={td}>
+                    {info ? (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: col, padding: '2px 6px', borderRadius: 'var(--radius-full)', background: `${col}22`, border: `0.5px solid ${col}` }}>
+                        {info.edgePct >= 0 ? '+' : ''}{info.edgePct.toFixed(1)}%
+                      </span>
+                    ) : '—'}
+                  </td>
+                  {hasBudget && (
+                    <td style={{ ...td, fontWeight: stake ? 600 : 400, color: 'var(--color-text-primary)' }}>
+                      {stake ? `¥${Math.round(stake).toLocaleString()}` : '—'}
+                    </td>
+                  )}
+                  <td style={td}>
+                    {csPlaced[e.score] === true ? (
+                      <span style={{ fontSize: 13, color: EDGE_COLOURS.green, fontWeight: 700 }}>✓</span>
+                    ) : csPending === e.score ? (
+                      <div style={{ display: 'flex', gap: 3 }}>
+                        <button onClick={() => placeCS(e)} style={{ minHeight: 26, padding: '0 7px', fontSize: 11, fontWeight: 700, borderRadius: 'var(--radius-sm)', border: 'none', background: EDGE_COLOURS.green, color: '#fff', cursor: 'pointer' }}>OK</button>
+                        <button onClick={() => setCsPending(null)} style={{ minHeight: 26, padding: '0 6px', fontSize: 11, borderRadius: 'var(--radius-sm)', border: '0.5px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer' }}>✕</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => canBet && setCsPending(e.score)}
+                        disabled={!canBet}
+                        style={{ minHeight: 26, padding: '0 8px', fontSize: 12, fontWeight: 700, borderRadius: 'var(--radius-sm)', border: 'none', cursor: canBet ? 'pointer' : 'not-allowed', background: canBet ? (green ? 'var(--color-accent)' : 'var(--color-bg-elevated)') : 'transparent', color: canBet ? (green ? 'var(--color-bg)' : 'var(--color-text-secondary)') : 'var(--color-text-muted)', opacity: canBet ? 1 : 0.35 }}>
+                        {csPlaced[e.score] === 'error' ? 'Retry' : 'Bet'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Summary */}
+      {summary && (
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 12, padding: '10px 12px', background: 'var(--color-bg-elevated)', borderRadius: 'var(--radius-sm)' }}>
+          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Total staked: <strong style={{ color: 'var(--color-text-primary)' }}>¥{Math.round(summary.totalStake).toLocaleString()}</strong></span>
+          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Exp. return: <strong style={{ color: 'var(--color-text-primary)' }}>¥{Math.round(summary.totalReturn).toLocaleString()}</strong></span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: summary.profit >= 0 ? EDGE_COLOURS.green : EDGE_COLOURS.red }}>
+            Exp. profit: {summary.profit >= 0 ? '+' : ''}¥{Math.round(summary.profit).toLocaleString()}
+          </span>
+        </div>
+      )}
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+        {[{ c: EDGE_COLOURS.green, l: '≥ 10% — Bet' }, { c: EDGE_COLOURS.amber, l: '5–9.9% — Marginal' }, { c: EDGE_COLOURS.red, l: '< 5% — Skip' }].map(({ c, l }) => (
+          <span key={l} style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--radius-full)', background: `${c}22`, color: c, border: `0.5px solid ${c}` }}>{l}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // Value tab — model probabilities + bookmaker odds entry → EV/edge per outcome
 function TabValue({ stats, match }) {
   const { t } = useTranslation()
@@ -1380,6 +1593,9 @@ function TabValue({ stats, match }) {
           onCancel={() => setPending(null)}
         />
       )}
+
+      {/* Correct score section */}
+      {model && <CorrectScoreSection model={model} match={match} />}
     </div>
   )
 }
