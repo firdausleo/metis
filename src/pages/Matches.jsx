@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTranslation } from '../lib/i18n'
 import { useMatchesByGroup } from '../hooks/useMatches'
@@ -69,8 +69,16 @@ function calcStandings(matches) {
 }
 
 function GroupStandings({ matches }) {
+  const navigate = useNavigate()
   const rows = calcStandings(matches)
   if (!rows.length) return null
+
+  // Build name → code map so team names become links to /team/:code
+  const nameToCode = {}
+  for (const m of matches) {
+    if (m.home_team && m.home_team_code) nameToCode[m.home_team] = m.home_team_code
+    if (m.away_team && m.away_team_code) nameToCode[m.away_team] = m.away_team_code
+  }
 
   const th = {
     padding: '5px 8px', fontSize: 11, fontWeight: 700,
@@ -121,8 +129,12 @@ function GroupStandings({ matches }) {
               <td style={{ ...td, paddingLeft: 10, color: 'var(--color-text-muted)', fontWeight: 600 }}>
                 {i + 1}
               </td>
-              <td style={{ ...td, textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: i < 2 ? 600 : 400 }}>
-                {getFlag(r.team)} {r.team}
+              <td style={{ ...td, textAlign: 'left' }}>
+                {nameToCode[r.team] ? (
+                  <button onClick={() => navigate(`/team/${nameToCode[r.team]}`, { state: { from: 'group' } })} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--color-text-primary)', fontWeight: i < 2 ? 600 : 400, textAlign: 'left' }}>
+                    {getFlag(r.team)} {r.team}
+                  </button>
+                ) : <span style={{ fontWeight: i < 2 ? 600 : 400 }}>{getFlag(r.team)} {r.team}</span>}
               </td>
               <td style={td}>{r.mp}</td>
               <td style={{ ...td, color: r.w > 0 ? 'var(--color-success)' : 'var(--color-text-muted)' }}>{r.w}</td>
@@ -189,7 +201,7 @@ function FlatMatchList({ matches, onAnalyze, statsMap }) {
   )
 }
 
-function GroupSection({ group, matches, onAnalyze, statsMap, showStandings = true }) {
+function GroupSection({ group, matches, onAnalyze, statsMap, showStandings = true, showMatches = true }) {
   const teamNames = [...new Set(
     matches.flatMap(m => [m.home_team, m.away_team])
   )].filter(n => n !== 'TBD')
@@ -225,7 +237,7 @@ function GroupSection({ group, matches, onAnalyze, statsMap, showStandings = tru
       </div>
       {showStandings && <GroupStandings matches={matches} />}
 
-      {matches.map(match => {
+      {showMatches && matches.map(match => {
         const s = statsMap[match.id] || {}
         return (
           <MatchCard
@@ -337,10 +349,12 @@ function SidebarNav({ filter, setFilter }) {
 
 export default function Matches() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useAuth()
   const { t } = useTranslation()
   const { matchesByGroup, matches, loading, error, refetch } = useMatchesByGroup()
-  const [filter, setFilter] = useState('all')
+  // Restore tab when navigating back from TeamProfile (state.from === 'group')
+  const [filter, setFilter] = useState(location.state?.from === 'group' ? 'group' : 'all')
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [refreshMsg, setRefreshMsg] = useState('')
   const [statsMap, setStatsMap] = useState({})
@@ -545,6 +559,7 @@ export default function Matches() {
                 onAnalyze={onAnalyze}
                 statsMap={statsMap}
                 showStandings={true}
+                showMatches={false}
               />
             ))}
           </div>
