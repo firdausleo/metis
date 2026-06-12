@@ -2322,7 +2322,7 @@ function SettlementPanel({ match }) {
         body: JSON.stringify({ match_id: match.id, home_score: hs, away_score: as }),
       })
       const d = await r.json()
-      setMsg(r.ok ? `✓ Settled ${d.settled}/${d.pending} bets` : `Failed: ${d.error}`)
+      setMsg(r.ok ? `✓ Settled ${d.settled}/${d.pending} bets` : `Failed: ${d.error}${d.detail ? ' — ' + d.detail : ''}`)
     } catch { setMsg('Save failed') }
   }
   const inp = { width: 56, fontSize: 16, minHeight: 44, textAlign: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }

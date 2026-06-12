@@ -86,10 +86,10 @@ export async function onRequestPost(context) {
     return res({ error: 'match_id and integer home_score/away_score required' }, 400)
   }
 
-  // Mark match finished with final score
+  // Mark match finished with final score (no updated_at — not in schema)
   const mu = await fetch(`${env.SUPABASE_URL}/rest/v1/matches?id=eq.${match_id}`, {
     method: 'PATCH', headers: { ...sb(env), 'Prefer': 'return=minimal' },
-    body: JSON.stringify({ home_score, away_score, status: 'finished', updated_at: new Date().toISOString() }),
+    body: JSON.stringify({ home_score, away_score, status: 'finished' }),
   })
   if (!mu.ok) return res({ error: 'Match update failed', detail: await mu.text() }, 502)
 
