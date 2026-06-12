@@ -678,9 +678,10 @@ function ScoreMatrix({ matrix, homeTeam, awayTeam, label, colour }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+      {/* Badge — top-right */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <span style={{
-          fontSize: 14, fontWeight: 700, letterSpacing: '0.06em',
+          fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
           color: colour, padding: '2px 8px',
           background: 'var(--color-bg)',
           border: `0.5px solid ${colour}`,
@@ -688,33 +689,55 @@ function ScoreMatrix({ matrix, homeTeam, awayTeam, label, colour }) {
         }}>
           {label}
         </span>
-        <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
-          rows = {homeTeam} goals · cols = {awayTeam} goals
-        </span>
       </div>
 
-      {/* Column headers (away goals) */}
-      <div style={{ display: 'grid', gridTemplateColumns: `28px repeat(${size}, 1fr)`, gap: 3, marginBottom: 3 }}>
-        <div />
-        {Array.from({ length: size }, (_, j) => (
-          <div key={j} style={{ textAlign: 'center', fontSize: 14, color: 'var(--color-text-primary)', fontWeight: 700 }}>
-            {j}
-          </div>
-        ))}
-      </div>
+      {/* Main layout: rotated home-team label + grid */}
+      <div style={{ display: 'flex', gap: 4, alignItems: 'stretch' }}>
 
-      {/* Rows */}
-      {matrix.map((row, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: `28px repeat(${size}, 1fr)`, gap: 3, marginBottom: 3 }}>
-          {/* Row header (home goals) */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: 'var(--color-text-muted)', fontWeight: 600 }}>
-            {i}
+        {/* Rotated home-team axis label (rows = home goals ↓) */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, flexShrink: 0 }}>
+          <span style={{
+            writingMode: 'vertical-rl',
+            transform: 'rotate(180deg)',
+            fontSize: 11, fontWeight: 600,
+            color: 'var(--color-text-muted)',
+            letterSpacing: '0.04em',
+            whiteSpace: 'nowrap',
+          }}>
+            {getFlag(homeTeam)} {homeTeam} goals ↓
+          </span>
+        </div>
+
+        {/* Grid area */}
+        <div style={{ flex: 1 }}>
+          {/* Away-team column axis label */}
+          <div style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', letterSpacing: '0.04em', marginBottom: 6 }}>
+            {getFlag(awayTeam)} {awayTeam} goals →
           </div>
-          {row.map((v, j) => (
-            <MatrixCell key={j} value={v} isMax={v === maxVal} />
+
+          {/* Column headers (away goals 0-8) */}
+          <div style={{ display: 'grid', gridTemplateColumns: `28px repeat(${size}, 1fr)`, gap: 3, marginBottom: 3 }}>
+            <div />
+            {Array.from({ length: size }, (_, j) => (
+              <div key={j} style={{ textAlign: 'center', fontSize: 14, color: 'var(--color-text-primary)', fontWeight: 700 }}>
+                {j}
+              </div>
+            ))}
+          </div>
+
+          {/* Rows (home goals 0-8) */}
+          {matrix.map((row, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: `28px repeat(${size}, 1fr)`, gap: 3, marginBottom: 3 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                {i}
+              </div>
+              {row.map((v, j) => (
+                <MatrixCell key={j} value={v} isMax={v === maxVal} />
+              ))}
+            </div>
           ))}
         </div>
-      ))}
+      </div>
     </div>
   )
 }
