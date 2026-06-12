@@ -42,6 +42,12 @@ export function useMatchesByGroup() {
     }
   }
 
+  // Sort each bucket by match_date ASC so group/knockout order is stable
+  // regardless of how the DB returns interleaved rows across groups.
+  for (const key of Object.keys(matchesByGroup)) {
+    matchesByGroup[key].sort((a, b) => new Date(a.match_date) - new Date(b.match_date))
+  }
+
   return { matchesByGroup, matches, loading, error, refetch }
 }
 
