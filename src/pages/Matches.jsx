@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTranslation } from '../lib/i18n'
-import { useMatchesByGroup, getTodaysMatches } from '../hooks/useMatches'
+import { useMatchesByGroup } from '../hooks/useMatches'
 import MatchCard from '../components/MatchCard'
 import { getFlag } from '../lib/teamFlags'
 import { syncAllStats } from '../lib/statsApi'
@@ -142,7 +142,54 @@ function GroupStandings({ matches }) {
   )
 }
 
-function GroupSection({ group, matches, onAnalyze, statsMap }) {
+// Returns YYYY-MM-DD (UTC) for grouping by day
+function dateKey(dateStr) {
+  return new Date(dateStr).toISOString().slice(0, 10)
+}
+
+function dayLabel(key) {
+  const [y, m, d] = key.split('-').map(Number)
+  const date = new Date(Date.UTC(y, m - 1, d))
+  return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
+function FlatMatchList({ matches, onAnalyze, statsMap }) {
+  const byDay = {}
+  for (const m of matches) {
+    const k = dateKey(m.match_date)
+    if (!byDay[k]) byDay[k] = []
+    byDay[k].push(m)
+  }
+  const days = Object.keys(byDay).sort()
+
+  if (!days.length) {
+    return (
+      <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '16px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>
+        No matches
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {days.map(day => (
+        <div key={day} style={{ marginBottom: 20 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 8 }}>
+            {dayLabel(day).toUpperCase()}
+          </p>
+          {byDay[day].map(m => {
+            const s = statsMap[m.id] || {}
+            return (
+              <MatchCard key={m.id} match={m} onAnalyze={onAnalyze} homeStats={s.home || null} awayStats={s.away || null} />
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function GroupSection({ group, matches, onAnalyze, statsMap, showStandings = true }) {
   const teamNames = [...new Set(
     matches.flatMap(m => [m.home_team, m.away_team])
   )].filter(n => n !== 'TBD')
@@ -176,7 +223,7 @@ function GroupSection({ group, matches, onAnalyze, statsMap }) {
           ))}
         </div>
       </div>
-      <GroupStandings matches={matches} />
+      {showStandings && <GroupStandings matches={matches} />}
 
       {matches.map(match => {
         const s = statsMap[match.id] || {}
@@ -237,10 +284,15 @@ function KnockoutSection({ matches, onAnalyze, statsMap }) {
   )
 }
 
-function SidebarNav({ filter }) {
+function SidebarNav({ filter, setFilter }) {
   const scrollTo = (id) => {
     const el = document.getElementById(id)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const jumpToGroup = (g) => {
+    setFilter('group')
+    setTimeout(() => scrollTo(`group-${g}`), 80)
   }
 
   const linkStyle = (active) => ({
@@ -265,28 +317,20 @@ function SidebarNav({ filter }) {
       borderRadius: 'var(--radius-md)',
       padding: '12px 8px',
     }}>
-      {(filter === 'all' || filter === 'group' || filter === 'upcoming') && (
-        <>
-          <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', letterSpacing: '0.06em', padding: '0 10px', marginBottom: 4 }}>
-            GROUPS
-          </p>
-          {GROUPS.map(g => (
-            <button key={g} onClick={() => scrollTo(`group-${g}`)} style={linkStyle(false)}>
-              Group {g}
-            </button>
-          ))}
-        </>
-      )}
-      {(filter === 'all' || filter === 'knockout') && (
-        <>
-          <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', letterSpacing: '0.06em', padding: '4px 10px 4px', marginTop: 8, marginBottom: 4 }}>
-            KNOCKOUT
-          </p>
-          <button onClick={() => scrollTo('knockout')} style={linkStyle(false)}>
-            Knockout Stage
-          </button>
-        </>
-      )}
+      <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', letterSpacing: '0.06em', padding: '0 10px', marginBottom: 4 }}>
+        GROUPS
+      </p>
+      {GROUPS.map(g => (
+        <button key={g} onClick={() => jumpToGroup(g)} style={linkStyle(filter === 'group')}>
+          Group {g}
+        </button>
+      ))}
+      <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', letterSpacing: '0.06em', padding: '4px 10px 4px', marginTop: 8, marginBottom: 4 }}>
+        KNOCKOUT
+      </p>
+      <button onClick={() => { setFilter('knockout'); setTimeout(() => scrollTo('knockout'), 80) }} style={linkStyle(filter === 'knockout')}>
+        Knockout Stage
+      </button>
     </nav>
   )
 }
@@ -339,16 +383,8 @@ export default function Matches() {
     setRefreshingAll(false)
   }
 
-  const today = getTodaysMatches(matches)
-
-  // Upcoming-only filter: status = 'upcoming', non-TBD
-  const upcomingMatches = matches.filter(m => m.status === 'upcoming' && m.home_team !== 'TBD' && m.away_team !== 'TBD')
-  const upcomingByGroup = {}
-  for (const m of upcomingMatches) {
-    const key = m.stage === 'group' ? m.group_name : 'knockout'
-    if (!upcomingByGroup[key]) upcomingByGroup[key] = []
-    upcomingByGroup[key].push(m)
-  }
+  // All non-finished (non-TBD) matches for the Upcoming tab and its badge count
+  const upcomingMatches = matches.filter(m => m.status !== 'finished' && m.home_team !== 'TBD' && m.away_team !== 'TBD')
 
   if (loading) {
     return (
@@ -403,14 +439,11 @@ export default function Matches() {
     { key: 'knockout', label: t('matches.filter.knockout') },
   ]
 
-  // Which matchesByGroup to display
-  const displayGroups = filter === 'upcoming' ? upcomingByGroup : matchesByGroup
-
   return (
     <div className="matches-page">
       {/* Desktop sidebar */}
       <div className="matches-sidebar">
-        <SidebarNav filter={filter} />
+        <SidebarNav filter={filter} setFilter={setFilter} />
       </div>
 
       {/* Main content */}
@@ -491,134 +524,44 @@ export default function Matches() {
           </div>
         </div>
 
-        {/* ── UPCOMING filter view ── */}
+        {/* ── ALL: flat list sorted date ASC, no standings ── */}
+        {filter === 'all' && (
+          <FlatMatchList matches={matches} onAnalyze={onAnalyze} statsMap={statsMap} />
+        )}
+
+        {/* ── UPCOMING: flat list of non-finished matches, no standings ── */}
         {filter === 'upcoming' && (
+          <FlatMatchList matches={upcomingMatches} onAnalyze={onAnalyze} statsMap={statsMap} />
+        )}
+
+        {/* ── GROUPS: standings + match cards per group ── */}
+        {filter === 'group' && (
           <div>
-            {upcomingMatches.length === 0 ? (
-              <div style={{
-                background: 'var(--color-bg-card)',
-                border: '0.5px solid var(--color-border)',
-                borderRadius: 'var(--radius-md)',
-                padding: '16px',
-                textAlign: 'center',
-                color: 'var(--color-text-muted)',
-                fontSize: 13,
-              }}>
-                No upcoming matches
-              </div>
-            ) : (
-              <>
-                {/* Group upcoming */}
-                {GROUPS.map(g => {
-                  const gMatches = upcomingByGroup[g] || []
-                  if (!gMatches.length) return null
-                  return (
-                    <GroupSection
-                      key={g}
-                      group={g}
-                      matches={gMatches}
-                      onAnalyze={onAnalyze}
-                      statsMap={statsMap}
-                    />
-                  )
-                })}
-                {/* Knockout upcoming */}
-                {upcomingByGroup['knockout']?.length > 0 && (
-                  <KnockoutSection
-                    matches={upcomingByGroup['knockout']}
-                    onAnalyze={onAnalyze}
-                    statsMap={statsMap}
-                  />
-                )}
-              </>
-            )}
+            {GROUPS.map(g => (
+              <GroupSection
+                key={g}
+                group={g}
+                matches={matchesByGroup[g] || []}
+                onAnalyze={onAnalyze}
+                statsMap={statsMap}
+                showStandings={true}
+              />
+            ))}
           </div>
         )}
 
-        {/* ── ALL / GROUP / KNOCKOUT views ── */}
-        {filter !== 'upcoming' && (
-          <>
-            {/* Today's matches */}
-            {today.length > 0 && filter === 'all' && (
-              <div style={{ marginBottom: 28 }}>
-                <p style={{
-                  fontSize: 11, fontWeight: 700,
-                  color: 'var(--color-text-muted)',
-                  letterSpacing: '0.06em',
-                  marginBottom: 10,
-                }}>
-                  {t('matches.today').toUpperCase()}
-                </p>
-                <div style={{
-                  display: 'flex',
-                  gap: 10,
-                  overflowX: 'auto',
-                  paddingBottom: 8,
-                  scrollbarWidth: 'none',
-                }}>
-                  {today.map(m => (
-                    <MatchCard key={m.id} match={m} onAnalyze={onAnalyze} compact />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {today.length === 0 && filter === 'all' && (
-              <div style={{
-                background: 'var(--color-bg-card)',
-                border: '0.5px solid var(--color-border)',
-                borderRadius: 'var(--radius-md)',
-                padding: '12px 16px',
-                marginBottom: 20,
-              }}>
-                <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-                  {t('matches.noToday')}
-                </p>
-              </div>
-            )}
-
-            {/* Group sections */}
-            {(filter === 'all' || filter === 'group') && (
-              <div>
-                <p style={{
-                  fontSize: 11, fontWeight: 700,
-                  color: 'var(--color-text-muted)',
-                  letterSpacing: '0.06em',
-                  marginBottom: 12,
-                }}>
-                  {t('matches.groupStage').toUpperCase()}
-                </p>
-                {GROUPS.map(g => (
-                  <GroupSection
-                    key={g}
-                    group={g}
-                    matches={displayGroups[g] || []}
-                    onAnalyze={onAnalyze}
-                    statsMap={statsMap}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Knockout section */}
-            {(filter === 'all' || filter === 'knockout') && (
-              <div>
-                <p style={{
-                  fontSize: 11, fontWeight: 700,
-                  color: 'var(--color-text-muted)',
-                  letterSpacing: '0.06em',
-                  marginBottom: 12,
-                }}>
-                  {t('matches.knockout').toUpperCase()}
-                </p>
-                <KnockoutSection
-                  matches={displayGroups['knockout'] || []}
-                  onAnalyze={onAnalyze}
-                  statsMap={statsMap}
-                />
-              </div>
-            )}
-          </>
+        {/* ── KNOCKOUT ── */}
+        {filter === 'knockout' && (
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 12 }}>
+              {t('matches.knockout').toUpperCase()}
+            </p>
+            <KnockoutSection
+              matches={matchesByGroup['knockout'] || []}
+              onAnalyze={onAnalyze}
+              statsMap={statsMap}
+            />
+          </div>
         )}
       </div>
     </div>
