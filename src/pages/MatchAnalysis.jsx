@@ -2322,18 +2322,27 @@ function SettlementPanel({ match }) {
         body: JSON.stringify({ match_id: match.id, home_score: hs, away_score: as }),
       })
       const d = await r.json()
-      setMsg(r.ok ? `✓ Settled ${d.settled}/${d.pending} bets` : `Failed: ${d.error}${d.detail ? ' — ' + d.detail : ''}`)
+      setMsg(r.ok
+        ? `✓ Settled: ${match.home_team} ${hs} – ${as} ${match.away_team} · ${d.settled}/${d.pending} bets settled`
+        : `Failed: ${d.error}${d.detail ? ' — ' + d.detail : ''}`)
     } catch { setMsg('Save failed') }
   }
-  const inp = { width: 56, fontSize: 16, minHeight: 44, textAlign: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }
+  const inp = { width: 56, fontSize: 18, fontWeight: 700, minHeight: 44, textAlign: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }
+  const teamLabel = { fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 100 }
   return (
     <div style={{ marginTop: 20, background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }}>
-      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>{t('settle.title').toUpperCase()}</p>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input type="number" min="0" value={h} onChange={e => setH(e.target.value)} style={inp} />
-        <span style={{ color: 'var(--color-text-muted)' }}>–</span>
-        <input type="number" min="0" value={a} onChange={e => setA(e.target.value)} style={inp} />
-        <button onClick={save} style={{ minHeight: 44, padding: '0 16px', fontWeight: 700, background: 'var(--color-accent)', color: 'var(--color-bg)', border: 'none', borderRadius: 'var(--radius-sm)' }}>{t('settle.save')}</button>
+      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 12 }}>{t('settle.title').toUpperCase()}</p>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <p style={teamLabel}>{getFlag(match.home_team)} {match.home_team}</p>
+          <input type="number" min="0" value={h} onChange={e => setH(e.target.value)} style={inp} />
+        </div>
+        <span style={{ color: 'var(--color-text-muted)', fontSize: 18, paddingBottom: 10 }}>–</span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <p style={teamLabel}>{getFlag(match.away_team)} {match.away_team}</p>
+          <input type="number" min="0" value={a} onChange={e => setA(e.target.value)} style={inp} />
+        </div>
+        <button onClick={save} style={{ minHeight: 44, padding: '0 16px', fontWeight: 700, background: 'var(--color-accent)', color: 'var(--color-bg)', border: 'none', borderRadius: 'var(--radius-sm)', alignSelf: 'flex-end' }}>{t('settle.save')}</button>
       </div>
       {msg && <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 8 }}>{msg}</p>}
     </div>
