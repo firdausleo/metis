@@ -18,6 +18,8 @@ export const LEAGUE_AVG_GOALS = 1.5    // tournament baseline
 export const DEF_FACTOR_MIN   = 0.5    // floor: cap elite defenses
 export const DEF_FACTOR_MAX   = 1.8    // ceiling: stops 0.3-conceded blowups
 export const RECENCY_WEIGHTS  = [0.10, 0.15, 0.20, 0.25, 0.30]  // oldest→newest
+export const XG_BLEND_XG      = 0.6   // weight given to xG figure in attack/defense blend
+export const XG_BLEND_GOAL    = 0.4   // remaining weight on goals-based figure
 export const WINDOW           = 5
 export const DIXON_COLES_RHO  = 0.1
 export const SCORE_MAX        = 8      // matrix dimension: 0..SCORE_MAX
@@ -104,23 +106,37 @@ export function validateStats(stats, role) {
 }
 
 /**
+ * Blend xG and goals figures when xG is available.
+ * xG blend: xg × XG_BLEND_XG + goals × XG_BLEND_GOAL
+ * Falls back to goals when xg is null (pre-xG data or unavailable plan).
+ */
+export function blendInput(xg, goals) {
+  if (xg != null && goals != null) return xg * XG_BLEND_XG + goals * XG_BLEND_GOAL
+  return goals
+}
+
+/**
  * V1 λ values — uses overall (home+away combined) stats.
  *
  * λ_home = attack_home × defense_away_factor × venueMult
  * λ_away = attack_away × defense_home_factor
  *
- * defense_X_factor = LEAGUE_AVG_GOALS / X.goals_conceded_avg, clamped 0.5–1.8
- *   (tiny conceded avgs like 0.30 would otherwise give factor 5.0 → λ≈8)
+ * attack input: xgf × 0.6 + goals_scored × 0.4 when xgf available, else goals_scored
+ * defense input: xga × 0.6 + goals_conceded × 0.4 when xga available, else goals_conceded
+ * defense_X_factor = LEAGUE_AVG_GOALS / defense_input, clamped 0.5–1.8
  * venueMult: 1.00 neutral default — venue table replaces flat HOME_ADVANTAGE.
  */
 export function calcLambdasV1(homeStats, awayStats, venueMult = VENUE_ADVANTAGE.NEUTRAL) {
   validateStats(homeStats, 'home')
   validateStats(awayStats, 'away')
 
-  const attackHome  = homeStats.goals_scored_avg
-  const attackAway  = awayStats.goals_scored_avg
-  const defHomeFactor = Math.min(Math.max(LEAGUE_AVG_GOALS / homeStats.goals_conceded_avg, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
-  const defAwayFactor = Math.min(Math.max(LEAGUE_AVG_GOALS / awayStats.goals_conceded_avg, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
+  const attackHome    = blendInput(homeStats.xgf_per_game, homeStats.goals_scored_avg)
+  const attackAway    = blendInput(awayStats.xgf_per_game, awayStats.goals_scored_avg)
+  const defHomeInput  = blendInput(homeStats.xga_per_game, homeStats.goals_conceded_avg)
+  const defAwayInput  = blendInput(awayStats.xga_per_game, awayStats.goals_conceded_avg)
+
+  const defHomeFactor = Math.min(Math.max(LEAGUE_AVG_GOALS / defHomeInput, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
+  const defAwayFactor = Math.min(Math.max(LEAGUE_AVG_GOALS / defAwayInput, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
 
   const lambdaHome = attackHome * defAwayFactor * venueMult
   const lambdaAway = attackAway * defHomeFactor

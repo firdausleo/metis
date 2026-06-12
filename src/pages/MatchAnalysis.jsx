@@ -6,7 +6,7 @@ import { useTranslation } from '../lib/i18n'
 import { getFlag } from '../lib/teamFlags'
 import { toBeijingTime } from '../lib/dateUtils'
 import { supabase } from '../lib/supabase'
-import { runModels, capProb, SCORE_MAX, monteCarlo, getVenueAdvantage, LEAGUE_AVG_GOALS, DEF_FACTOR_MIN, DEF_FACTOR_MAX } from '../lib/poisson'
+import { runModels, capProb, SCORE_MAX, monteCarlo, getVenueAdvantage, LEAGUE_AVG_GOALS, DEF_FACTOR_MIN, DEF_FACTOR_MAX, blendInput, XG_BLEND_XG, XG_BLEND_GOAL } from '../lib/poisson'
 import { formatProb, analyse1X2, calcStake } from '../lib/evEngine'
 import { placeBet } from '../lib/bets'
 
@@ -274,14 +274,24 @@ function LambdaCalcBox({ teamStats, opponentStats, isHome, match }) {
   if (!teamStats?.goals_scored_avg || !opponentStats?.goals_conceded_avg) return null
 
   const scored_avg  = teamStats.goals_scored_avg
-  const opp_conc    = opponentStats.goals_conceded_avg
   const xgf         = teamStats.xgf_per_game
+  const opp_conc    = opponentStats.goals_conceded_avg
+  const opp_xga     = opponentStats.xga_per_game
 
-  const def_factor_raw = LEAGUE_AVG_GOALS / opp_conc
-  const def_factor     = Math.min(Math.max(def_factor_raw, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
-  const venue_factor   = isHome ? getVenueAdvantage(match?.venue, match?.city) : 1.0
-  const venue_name     = isHome ? (match?.venue || match?.city || 'Neutral venue') : 'Away'
-  const lambda         = scored_avg * def_factor * venue_factor
+  const attack_input  = blendInput(xgf, scored_avg)
+  const def_input     = blendInput(opp_xga, opp_conc)
+  const def_factor    = Math.min(Math.max(LEAGUE_AVG_GOALS / def_input, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
+  const venue_factor  = isHome ? getVenueAdvantage(match?.venue, match?.city) : 1.0
+  const venue_name    = isHome ? (match?.venue || match?.city || 'Neutral venue') : 'Away'
+  const lambda        = attack_input * def_factor * venue_factor
+
+  const attackLine = xgf != null
+    ? `${xgf} xGF × ${XG_BLEND_XG} + ${scored_avg} goals × ${XG_BLEND_GOAL} = ${attack_input.toFixed(3)} (xG blend)`
+    : `${scored_avg} goals/game (xGF unavailable)`
+
+  const defLine = opp_xga != null
+    ? `${def_factor.toFixed(3)} [1.5 ÷ ${def_input.toFixed(3)} (xG blend), cap 1.8]`
+    : `${def_factor.toFixed(3)} [1.5 ÷ ${opp_conc} conceded, cap 1.8]`
 
   return (
     <div style={{
@@ -295,16 +305,16 @@ function LambdaCalcBox({ teamStats, opponentStats, isHome, match }) {
         λ CALCULATION
       </p>
       <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
-        Attack: {scored_avg} goals/game{xgf != null ? ` · xGF: ${xgf}` : ' · xGF unavailable'}
+        Attack: {attackLine}
       </p>
       <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
-        Defense factor: {def_factor.toFixed(3)} [1.5 ÷ {opp_conc} conceded, cap 1.8]
+        Defense factor: {defLine}
       </p>
       <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
         Venue: ×{venue_factor.toFixed(2)} [{venue_name}]
       </p>
       <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-accent)', lineHeight: 1.7, marginTop: 4 }}>
-        λ = {scored_avg} × {def_factor.toFixed(3)} × {venue_factor.toFixed(2)} = {lambda.toFixed(3)}
+        λ = {attack_input.toFixed(3)} × {def_factor.toFixed(3)} × {venue_factor.toFixed(2)} = {lambda.toFixed(3)}
       </p>
     </div>
   )
