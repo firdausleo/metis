@@ -9,6 +9,7 @@ import BetRecommendations from './pages/BetRecommendations'
 import MyBets from './pages/MyBets'
 import Settings from './pages/Settings'
 import Auth from './pages/Auth'
+import TeamProfile from './pages/TeamProfile'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -53,6 +54,7 @@ export default function App() {
           <Route path="/matches/:id/bets" element={<ProtectedRoute><BetRecommendations /></ProtectedRoute>} />
           <Route path="/my-bets" element={<ProtectedRoute><MyBets /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+          <Route path="/team/:teamCode" element={<ProtectedRoute><TeamProfile /></ProtectedRoute>} />
         </Routes>
       </Layout>
     </BrowserRouter>
