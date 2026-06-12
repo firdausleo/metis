@@ -6,7 +6,7 @@ import { useTranslation } from '../lib/i18n'
 import { getFlag } from '../lib/teamFlags'
 import { toBeijingTime } from '../lib/dateUtils'
 import { supabase } from '../lib/supabase'
-import { runModels, capProb, SCORE_MAX, monteCarlo, getVenueAdvantage } from '../lib/poisson'
+import { runModels, capProb, SCORE_MAX, monteCarlo, getVenueAdvantage, LEAGUE_AVG_GOALS, DEF_FACTOR_MIN, DEF_FACTOR_MAX } from '../lib/poisson'
 import { formatProb, analyse1X2, calcStake } from '../lib/evEngine'
 import { placeBet } from '../lib/bets'
 
@@ -154,6 +154,162 @@ function LambdaBlock({ label, value, dimLabel }) {
   )
 }
 
+// LAST 5 MATCHES table — shows per-fixture breakdown stored in recent_fixtures jsonb
+function Last5Table({ fixtures, goalsScoredAvg, goalsConcededAvg, xgfPerGame, xgaPerGame }) {
+  const [collapsed, setCollapsed] = useState(false)
+
+  if (!fixtures) {
+    return (
+      <p style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic', marginTop: 8 }}>
+        Re-fetch stats to see match breakdown
+      </p>
+    )
+  }
+
+  const RESULT_BG = {
+    W: 'rgba(45,122,79,0.28)',
+    D: 'rgba(204,136,0,0.22)',
+    L: 'rgba(185,60,60,0.22)',
+  }
+
+  const th = {
+    padding: '4px 6px', fontSize: 11, fontWeight: 700, letterSpacing: '0.05em',
+    color: 'var(--color-text-muted)', background: 'var(--color-bg-elevated)',
+    borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap', textAlign: 'center',
+  }
+  const td = {
+    padding: '5px 6px', fontSize: 12, color: 'var(--color-text-secondary)',
+    borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap', textAlign: 'center',
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button
+        onClick={() => setCollapsed(v => !v)}
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>
+          LAST 5 MATCHES
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{collapsed ? '▼' : '▲'}</span>
+      </button>
+
+      {!collapsed && (
+        <div style={{ overflowX: 'auto', marginTop: 4, borderRadius: 'var(--radius-sm)', border: '0.5px solid var(--color-border)' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 500 }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, textAlign: 'left' }}>Date</th>
+                <th style={{ ...th, textAlign: 'left', maxWidth: 90 }}>vs</th>
+                <th style={{ ...th, textAlign: 'left', maxWidth: 80 }}>Comp</th>
+                <th style={th}>H/A</th>
+                <th style={th}>Score</th>
+                <th style={th}>GF</th>
+                <th style={th}>GA</th>
+                <th style={th}>xGF</th>
+                <th style={th}>xGA</th>
+                <th style={th}>Wt</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fixtures.map((fx, i) => (
+                <tr key={i}>
+                  <td style={{ ...td, textAlign: 'left' }}>{fx.date}</td>
+                  <td style={{ ...td, textAlign: 'left', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {fx.opponent}
+                  </td>
+                  <td style={{ ...td, textAlign: 'left', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {fx.competition}
+                  </td>
+                  <td style={td}>{fx.home_away}</td>
+                  <td style={{ ...td, background: RESULT_BG[fx.result] || 'transparent', fontWeight: 700 }}>
+                    {fx.score_for}–{fx.score_against}
+                  </td>
+                  <td style={td}>{fx.score_for}</td>
+                  <td style={td}>{fx.score_against}</td>
+                  <td style={{ ...td, color: fx.xgf == null ? 'var(--color-text-muted)' : 'inherit' }}>
+                    {fx.xgf ?? 'N/A'}
+                  </td>
+                  <td style={{ ...td, color: fx.xga == null ? 'var(--color-text-muted)' : 'inherit' }}>
+                    {fx.xga ?? 'N/A'}
+                  </td>
+                  <td style={{ ...td, fontSize: 11, color: 'var(--color-text-muted)' }}>
+                    {fx.weight != null ? fx.weight : '—'}
+                  </td>
+                </tr>
+              ))}
+
+              {/* WEIGHTED AVG summary row */}
+              <tr style={{ background: 'var(--color-bg-elevated)' }}>
+                <td colSpan={5} style={{ ...td, textAlign: 'left', fontWeight: 700, fontSize: 11, letterSpacing: '0.06em', color: 'var(--color-text-muted)' }}>
+                  WEIGHTED AVG
+                </td>
+                <td style={{ ...td, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                  {goalsScoredAvg ?? '—'}
+                </td>
+                <td style={{ ...td, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                  {goalsConcededAvg ?? '—'}
+                </td>
+                <td style={{ ...td, fontWeight: 700, color: xgfPerGame == null ? 'var(--color-text-muted)' : 'var(--color-text-primary)' }}>
+                  {xgfPerGame ?? 'N/A'}
+                </td>
+                <td style={{ ...td, fontWeight: 700, color: xgaPerGame == null ? 'var(--color-text-muted)' : 'var(--color-text-primary)' }}>
+                  {xgaPerGame ?? 'N/A'}
+                </td>
+                <td style={td} />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// λ CALCULATION box — shows the full formula breakdown beneath the match table
+function LambdaCalcBox({ teamStats, opponentStats, isHome, match }) {
+  if (!teamStats?.goals_scored_avg || !opponentStats?.goals_conceded_avg) return null
+
+  const scored_avg  = teamStats.goals_scored_avg
+  const opp_conc    = opponentStats.goals_conceded_avg
+  const xgf         = teamStats.xgf_per_game
+
+  const def_factor_raw = LEAGUE_AVG_GOALS / opp_conc
+  const def_factor     = Math.min(Math.max(def_factor_raw, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
+  const venue_factor   = isHome ? getVenueAdvantage(match?.venue, match?.city) : 1.0
+  const venue_name     = isHome ? (match?.venue || match?.city || 'Neutral venue') : 'Away'
+  const lambda         = scored_avg * def_factor * venue_factor
+
+  return (
+    <div style={{
+      marginTop: 8,
+      padding: '10px 12px',
+      background: 'var(--color-bg)',
+      border: '0.5px solid var(--color-border)',
+      borderRadius: 'var(--radius-sm)',
+    }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.07em', marginBottom: 6 }}>
+        λ CALCULATION
+      </p>
+      <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
+        Attack: {scored_avg} goals/game{xgf != null ? ` · xGF: ${xgf}` : ' · xGF unavailable'}
+      </p>
+      <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
+        Defense factor: {def_factor.toFixed(3)} [1.5 ÷ {opp_conc} conceded, cap 1.8]
+      </p>
+      <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
+        Venue: ×{venue_factor.toFixed(2)} [{venue_name}]
+      </p>
+      <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-accent)', lineHeight: 1.7, marginTop: 4 }}>
+        λ = {scored_avg} × {def_factor.toFixed(3)} × {venue_factor.toFixed(2)} = {lambda.toFixed(3)}
+      </p>
+    </div>
+  )
+}
+
 function ManualInputForm({ teamCode, teamName, onSave, t }) {
   const [form, setForm] = useState({
     xgf_per_game: '',
@@ -273,7 +429,7 @@ function ManualInputForm({ teamCode, teamName, onSave, t }) {
   )
 }
 
-function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManual, refreshing, t }) {
+function StatsColumn({ match, teamStats, opponentStats, isHome, isAdmin, onRefresh, onSaveManual, refreshing, t }) {
   const [showManual, setShowManual] = useState(false)
   const teamName = isHome ? match.home_team : match.away_team
   const teamCode = isHome ? match.home_team_code : match.away_team_code
@@ -345,6 +501,21 @@ function StatsColumn({ match, teamStats, isHome, isAdmin, onRefresh, onSaveManua
               </span>
             )}
           </p>
+
+          {/* LAST 5 MATCHES + λ CALCULATION */}
+          <Last5Table
+            fixtures={teamStats.recent_fixtures}
+            goalsScoredAvg={teamStats.goals_scored_avg}
+            goalsConcededAvg={teamStats.goals_conceded_avg}
+            xgfPerGame={teamStats.xgf_per_game}
+            xgaPerGame={teamStats.xga_per_game}
+          />
+          <LambdaCalcBox
+            teamStats={teamStats}
+            opponentStats={opponentStats}
+            isHome={isHome}
+            match={match}
+          />
         </>
       ) : (
         /* No stats state */
@@ -1982,6 +2153,7 @@ export default function MatchAnalysis() {
                   <StatsColumn
                     match={match}
                     teamStats={stats.home}
+                    opponentStats={stats.away}
                     isHome={true}
                     isAdmin={isAdmin}
                     onRefresh={handleRefreshStats}
@@ -1992,6 +2164,7 @@ export default function MatchAnalysis() {
                   <StatsColumn
                     match={match}
                     teamStats={stats.away}
+                    opponentStats={stats.home}
                     isHome={false}
                     isAdmin={isAdmin}
                     onRefresh={handleRefreshStats}

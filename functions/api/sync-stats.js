@@ -120,7 +120,9 @@ async function fetchTeamStats(env, teamId, signal) {
   const chrono = [...recent].reverse()
   const n = chrono.length
 
-  const games = chrono.map(f => {
+  const games = []
+  const recentMeta = []  // parallel: raw fixture fields for recent_fixtures column
+  for (const f of chrono) {
     const isHome = f.teams.home.id === teamId
     const scored = isHome ? f.goals.home : f.goals.away
     const conceded = isHome ? f.goals.away : f.goals.home
@@ -129,8 +131,14 @@ async function fetchTeamStats(env, teamId, signal) {
     const lost = isHome ? f.teams.away.winner : f.teams.home.winner
     const result = won === true ? 'W' : lost === true ? 'L'
       : won == null && lost == null ? (scored > conceded ? 'W' : scored < conceded ? 'L' : 'D') : 'D'
-    return { fixtureId: f.fixture.id, isHome, scored, conceded, result, wc: f.league?.id === WC_LEAGUE }
-  })
+    games.push({ fixtureId: f.fixture.id, isHome, scored, conceded, result, wc: f.league?.id === WC_LEAGUE })
+    recentMeta.push({
+      date: (f.fixture.date || '').slice(0, 10),
+      opponent: isHome ? f.teams.away.name : f.teams.home.name,
+      competition: f.league?.name || '',
+      home_away: isHome ? 'H' : 'A',
+    })
+  }
 
   // xG per game (cached forever — finished fixtures don't change). Average only
   // non-null values. API-Football's plan returns null xG for international comps
@@ -150,6 +158,23 @@ async function fetchTeamStats(env, teamId, signal) {
   const awayGames = games.filter(g => !g.isHome)
   const simpleAvg = gs => gs.length ? gs.reduce((s, g) => s + g.scored, 0) / gs.length : null
 
+  // Build recent_fixtures array (newest first) for Stats tab transparency.
+  // Weights: [0.30, 0.25, 0.20, 0.15, 0.10] newest→oldest (RECENCY_WEIGHTS reversed).
+  // null weight for partial windows where simple average is used instead.
+  const recent_fixtures = games.map((g, i) => ({
+    fixture_id: g.fixtureId,
+    date: recentMeta[i].date,
+    opponent: recentMeta[i].opponent,
+    competition: recentMeta[i].competition,
+    home_away: recentMeta[i].home_away,
+    score_for: g.scored,
+    score_against: g.conceded,
+    result: g.result,
+    xgf: xgPairs[i]?.xgf ?? null,
+    xga: xgPairs[i]?.xga ?? null,
+    weight: n === WINDOW ? RECENCY_WEIGHTS[i] : null,
+  })).reverse()
+
   return {
     games_window: n,
     goals_scored_avg: r3(wAvg(games.map(g => g.scored))),
@@ -159,6 +184,7 @@ async function fetchTeamStats(env, teamId, signal) {
     form_string: games.map(g => g.result).reverse().join(''), // newest first
     wc_games_in_window: games.filter(g => g.wc).length,
     xgf: r3(avg(xgf)), xga: r3(avg(xga)),
+    recent_fixtures,
   }
 }
 
@@ -212,6 +238,7 @@ function buildStatsRow({ matchId, teamCode, footyData, existingRow }) {
       home_goals_avg: null, away_goals_avg: null, xgf_per_game: null, xga_per_game: null,
       form_string: existingRow?.form_string || null,
       wc_games_in_window: existingRow?.wc_games_in_window || 0,
+      recent_fixtures: null,
       data_source: 'not_found', updated_at: new Date().toISOString(),
     }
   }
@@ -225,6 +252,7 @@ function buildStatsRow({ matchId, teamCode, footyData, existingRow }) {
     xgf_per_game: w.xgf, xga_per_game: w.xga,
     form_string: w.form_string,
     wc_games_in_window: w.wc_games_in_window,
+    recent_fixtures: w.recent_fixtures || null,
     data_source: w.games_window < WINDOW ? 'api_football_partial' : 'api_football',
     updated_at: new Date().toISOString(),
   }

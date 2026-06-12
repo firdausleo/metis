@@ -23,7 +23,7 @@ export function useTeamStats(match) {
 
     const { data, error: err } = await supabase
       .from('team_stats')
-      .select('id, team_code, match_id, games_window, goals_scored_avg, goals_conceded_avg, home_goals_avg, away_goals_avg, xgf_per_game, xga_per_game, form_string, wc_games_in_window, data_source, updated_at')
+      .select('id, team_code, match_id, games_window, goals_scored_avg, goals_conceded_avg, home_goals_avg, away_goals_avg, xgf_per_game, xga_per_game, form_string, wc_games_in_window, recent_fixtures, data_source, updated_at')
       .eq('match_id', match.id)
 
     setLoading(false)
