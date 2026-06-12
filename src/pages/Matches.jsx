@@ -36,6 +36,112 @@ function buildStatsMap(statsRows, matchesArr) {
   return map
 }
 
+// Calculate group standings from settled matches.
+// Teams with 0 played games are included with all zeros.
+function calcStandings(matches) {
+  const allTeams = [...new Set(
+    matches.flatMap(m => [m.home_team, m.away_team])
+  )].filter(n => n !== 'TBD')
+
+  const table = {}
+  for (const t of allTeams) table[t] = { mp: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
+
+  for (const m of matches) {
+    if (m.status !== 'finished' || m.home_score == null || m.away_score == null) continue
+    const h = m.home_score, a = m.away_score
+    const ht = table[m.home_team], at = table[m.away_team]
+    if (!ht || !at) continue
+
+    ht.mp++; ht.gf += h; ht.ga += a
+    if (h > a)      { ht.w++; ht.pts += 3 }
+    else if (h === a){ ht.d++; ht.pts += 1 }
+    else              ht.l++
+
+    at.mp++; at.gf += a; at.ga += h
+    if (a > h)      { at.w++; at.pts += 3 }
+    else if (a === h){ at.d++; at.pts += 1 }
+    else              at.l++
+  }
+
+  return Object.entries(table)
+    .map(([team, s]) => ({ team, ...s, gd: s.gf - s.ga }))
+    .sort((a, b) => b.pts - a.pts || (b.gd - a.gd) || (b.gf - a.gf))
+}
+
+function GroupStandings({ matches }) {
+  const rows = calcStandings(matches)
+  if (!rows.length) return null
+
+  const th = {
+    padding: '5px 8px', fontSize: 11, fontWeight: 700,
+    letterSpacing: '0.05em', color: 'var(--color-text-muted)',
+    background: 'var(--color-bg-elevated)',
+    borderBottom: '0.5px solid var(--color-border)',
+    textAlign: 'center', whiteSpace: 'nowrap',
+  }
+  const td = {
+    padding: '6px 8px', fontSize: 12,
+    color: 'var(--color-text-secondary)',
+    borderBottom: '0.5px solid var(--color-border)',
+    textAlign: 'center', whiteSpace: 'nowrap',
+  }
+
+  const rowBg = (i) => {
+    if (i < 2)   return 'rgba(45,122,79,0.12)'   // top 2 qualify — green
+    if (i === 2) return 'rgba(204,136,0,0.10)'    // 3rd — potential playoff amber
+    return 'transparent'
+  }
+
+  return (
+    <div style={{
+      overflowX: 'auto',
+      marginBottom: 10,
+      border: '0.5px solid var(--color-border)',
+      borderRadius: 'var(--radius-sm)',
+      background: 'var(--color-bg-card)',
+    }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 360 }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: 'left', paddingLeft: 10 }}>#</th>
+            <th style={{ ...th, textAlign: 'left' }}>Team</th>
+            <th style={th}>MP</th>
+            <th style={th}>W</th>
+            <th style={th}>D</th>
+            <th style={th}>L</th>
+            <th style={th}>GF</th>
+            <th style={th}>GA</th>
+            <th style={th}>GD</th>
+            <th style={{ ...th, color: 'var(--color-text-primary)' }}>Pts</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.team} style={{ background: rowBg(i) }}>
+              <td style={{ ...td, paddingLeft: 10, color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                {i + 1}
+              </td>
+              <td style={{ ...td, textAlign: 'left', color: 'var(--color-text-primary)', fontWeight: i < 2 ? 600 : 400 }}>
+                {getFlag(r.team)} {r.team}
+              </td>
+              <td style={td}>{r.mp}</td>
+              <td style={{ ...td, color: r.w > 0 ? 'var(--color-success)' : 'var(--color-text-muted)' }}>{r.w}</td>
+              <td style={td}>{r.d}</td>
+              <td style={{ ...td, color: r.l > 0 ? 'var(--color-danger)' : 'var(--color-text-muted)' }}>{r.l}</td>
+              <td style={td}>{r.gf}</td>
+              <td style={td}>{r.ga}</td>
+              <td style={{ ...td, color: r.gd > 0 ? 'var(--color-success)' : r.gd < 0 ? 'var(--color-danger)' : 'var(--color-text-muted)' }}>
+                {r.gd > 0 ? `+${r.gd}` : r.gd}
+              </td>
+              <td style={{ ...td, fontWeight: 700, color: 'var(--color-text-primary)', fontSize: 13 }}>{r.pts}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function GroupSection({ group, matches, onAnalyze, statsMap }) {
   const teamNames = [...new Set(
     matches.flatMap(m => [m.home_team, m.away_team])
@@ -70,6 +176,8 @@ function GroupSection({ group, matches, onAnalyze, statsMap }) {
           ))}
         </div>
       </div>
+      <GroupStandings matches={matches} />
+
       {matches.map(match => {
         const s = statsMap[match.id] || {}
         return (
