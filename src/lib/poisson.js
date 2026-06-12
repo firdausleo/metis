@@ -106,13 +106,23 @@ export function validateStats(stats, role) {
 }
 
 /**
- * Blend xG and goals figures when xG is available.
- * xG blend: xg × XG_BLEND_XG + goals × XG_BLEND_GOAL
- * Falls back to goals when xg is null (pre-xG data or unavailable plan).
+ * Returns true when an xG reading is likely single-match noise.
+ * Condition: very low xG (< 0.3) against a solid goals average (> 0.8)
+ * signals a lucky shutout / defensive anomaly rather than true quality.
+ */
+export function isXgNoise(xg, goals) {
+  return xg != null && goals != null && xg < 0.3 && goals > 0.8
+}
+
+/**
+ * Blend xG and goals figures when xG is available and not noise.
+ * Noise guard: if xg < 0.3 and goals > 0.8, treat xG as unreliable and
+ * return goals-only to avoid depressing the lambda on a single bad match.
  */
 export function blendInput(xg, goals) {
-  if (xg != null && goals != null) return xg * XG_BLEND_XG + goals * XG_BLEND_GOAL
-  return goals
+  if (xg == null) return goals
+  if (isXgNoise(xg, goals)) return goals  // single bad game noise
+  return xg * XG_BLEND_XG + goals * XG_BLEND_GOAL
 }
 
 /**

@@ -6,7 +6,7 @@ import { useTranslation } from '../lib/i18n'
 import { getFlag } from '../lib/teamFlags'
 import { toBeijingTime } from '../lib/dateUtils'
 import { supabase } from '../lib/supabase'
-import { runModels, capProb, SCORE_MAX, monteCarlo, getVenueAdvantage, LEAGUE_AVG_GOALS, DEF_FACTOR_MIN, DEF_FACTOR_MAX, blendInput, XG_BLEND_XG, XG_BLEND_GOAL } from '../lib/poisson'
+import { runModels, capProb, SCORE_MAX, monteCarlo, getVenueAdvantage, LEAGUE_AVG_GOALS, DEF_FACTOR_MIN, DEF_FACTOR_MAX, blendInput, isXgNoise, XG_BLEND_XG, XG_BLEND_GOAL } from '../lib/poisson'
 import { formatProb, analyse1X2, calcStake } from '../lib/evEngine'
 import { placeBet } from '../lib/bets'
 
@@ -278,6 +278,8 @@ function LambdaCalcBox({ teamStats, opponentStats, isHome, match }) {
   const opp_conc    = opponentStats.goals_conceded_avg
   const opp_xga     = opponentStats.xga_per_game
 
+  const attackNoise   = isXgNoise(xgf, scored_avg)
+  const defNoise      = isXgNoise(opp_xga, opp_conc)
   const attack_input  = blendInput(xgf, scored_avg)
   const def_input     = blendInput(opp_xga, opp_conc)
   const def_factor    = Math.min(Math.max(LEAGUE_AVG_GOALS / def_input, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
@@ -285,13 +287,17 @@ function LambdaCalcBox({ teamStats, opponentStats, isHome, match }) {
   const venue_name    = isHome ? (match?.venue || match?.city || 'Neutral venue') : 'Away'
   const lambda        = attack_input * def_factor * venue_factor
 
-  const attackLine = xgf != null
-    ? `${xgf} xGF × ${XG_BLEND_XG} + ${scored_avg} goals × ${XG_BLEND_GOAL} = ${attack_input.toFixed(3)} (xG blend)`
-    : `${scored_avg} goals/game (xGF unavailable)`
+  const attackLine = xgf == null
+    ? `${scored_avg} goals/game (xGF unavailable)`
+    : attackNoise
+    ? `${scored_avg} goals/game (xGF ${xgf} noise detected — using goals only)`
+    : `${xgf} xGF × ${XG_BLEND_XG} + ${scored_avg} goals × ${XG_BLEND_GOAL} = ${attack_input.toFixed(3)} (xG blend)`
 
-  const defLine = opp_xga != null
-    ? `${def_factor.toFixed(3)} [1.5 ÷ ${def_input.toFixed(3)} (xG blend), cap 1.8]`
-    : `${def_factor.toFixed(3)} [1.5 ÷ ${opp_conc} conceded, cap 1.8]`
+  const defLine = opp_xga == null
+    ? `${def_factor.toFixed(3)} [1.5 ÷ ${opp_conc} conceded, cap 1.8]`
+    : defNoise
+    ? `${def_factor.toFixed(3)} [1.5 ÷ ${opp_conc} conceded (xGA ${opp_xga} noise — goals only), cap 1.8]`
+    : `${def_factor.toFixed(3)} [1.5 ÷ ${def_input.toFixed(3)} (xG blend), cap 1.8]`
 
   return (
     <div style={{
