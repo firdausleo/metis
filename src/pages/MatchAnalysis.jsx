@@ -1377,15 +1377,13 @@ function CorrectScoreSection({ model, match }) {
 }
 
 // Value tab — model probabilities + bookmaker odds entry → EV/edge per outcome
-function TabValue({ stats, match }) {
+function TabValue({ stats, match, odds, setOdds }) {
   const { t } = useTranslation()
   const model = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
     try { return runModels(stats.home, stats.away, { venueMult: getVenueAdvantage(match?.venue, match?.city) }) } catch { return null }
   }, [stats, match])
 
-  // Decimal odds entry (MT09). Empty until analyst inputs bookmaker prices.
-  const [odds, setOdds] = useState({ home: '', draw: '', away: '' })
   const [stake, setStake] = useState('')
   const [placed, setPlaced] = useState({})
   const [pending, setPending] = useState(null)   // outcome key awaiting checklist confirm
@@ -1645,29 +1643,200 @@ function TabValue({ stats, match }) {
   )
 }
 
-// Portfolio tab — Kelly formula reference + placeholder
-function TabPortfolio({ stats }) {
+// Portfolio tab — auto-populated from DB pending bets + Value tab odds
+function TabPortfolio({ stats, match, odds1x2 }) {
+  const { t } = useTranslation()
+  const [bankroll, setBankroll] = useState(1000)
+  const [pendingBets, setPendingBets] = useState([])
+  const [betsLoading, setBetsLoading] = useState(true)
+
   const model = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
-    try { return runModels(stats.home, stats.away) } catch { return null }
-  }, [stats])
+    try { return runModels(stats.home, stats.away, { venueMult: getVenueAdvantage(match?.venue, match?.city) }) } catch { return null }
+  }, [stats, match])
 
   const anchor = model?.v1.totalGoals.find(l => l.anchor)
+
+  useEffect(() => {
+    if (!match?.id) return
+    setBetsLoading(true)
+    supabase.from('bets').select('*').eq('match_id', match.id).eq('status', 'pending').order('created_at', { ascending: false })
+      .then(({ data }) => { setPendingBets(data || []); setBetsLoading(false) })
+  }, [match?.id])
+
+  const ev1x2 = useMemo(() => {
+    if (!model) return null
+    const o = { home: parseFloat(odds1x2?.home), draw: parseFloat(odds1x2?.draw), away: parseFloat(odds1x2?.away) }
+    if (![o.home, o.draw, o.away].every(v => v > 1)) return null
+    try { return analyse1X2(model.v2.probs, o) } catch { return null }
+  }, [model, odds1x2])
+
+  const recommendations = ev1x2 ? ['home', 'draw', 'away'].filter(k => ev1x2.outcomes[k].ev?.recommend) : []
+
+  function betLabel(bet) {
+    if (bet.bet_type === '1X2') {
+      if (bet.selection === 'home') return `${match?.home_team || 'Home'} Win`
+      if (bet.selection === 'draw') return 'Draw'
+      if (bet.selection === 'away') return `${match?.away_team || 'Away'} Win`
+    }
+    if (bet.bet_type === 'correct_score') return `Score ${bet.selection}`
+    if (bet.bet_type === 'total_goals') return bet.selection.charAt(0).toUpperCase() + bet.selection.slice(1)
+    return bet.selection
+  }
+
+  function modelProbForBet(bet) {
+    if (!model) return null
+    if (bet.bet_type === '1X2') return model.v2.probs[bet.selection] ?? null
+    if (bet.bet_type === 'correct_score') {
+      const [h, a] = bet.selection.split('-').map(Number)
+      return (h >= 0 && h <= SCORE_MAX && a >= 0 && a <= SCORE_MAX) ? model.v2.matrix[h][a] : null
+    }
+    if (bet.bet_type === 'total_goals') {
+      const n = parseInt(bet.selection)
+      return !isNaN(n) ? exactGoalsProb(n, model.v2.matrix) : null
+    }
+    return null
+  }
+
+  const totalExposure = pendingBets.reduce((s, b) => s + Number(b.stake), 0)
+  const exposurePct = bankroll > 0 ? (totalExposure / bankroll) * 100 : 0
+  const stressWin = pendingBets.reduce((s, b) => s + Number(b.stake) * (Number(b.odds) - 1), 0)
+  const stressLose = -totalExposure
+
+  const card = { background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
+  const inp = { fontSize: 16, minHeight: 44, padding: '0 10px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }
+  const hdr = { fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }
+
+  const hasOddsEntered = odds1x2?.home || odds1x2?.draw || odds1x2?.away
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-      {/* Model summary card */}
-      {model && (
-        <div style={{
-          background: 'var(--color-bg-card)',
-          border: '0.5px solid var(--color-border)',
-          borderRadius: 'var(--radius-md)',
-          padding: '14px 16px',
-        }}>
-          <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
-            MODEL SUMMARY
+      {/* Bankroll */}
+      <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <label style={{ fontSize: 14, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>{t('portfolio.bankroll')}</label>
+        <input type="number" inputMode="decimal" min="0" value={bankroll}
+          onChange={e => setBankroll(Math.max(0, parseFloat(e.target.value) || 0))}
+          style={{ ...inp, flex: 1 }} />
+      </div>
+
+      {/* Value tab recommendations */}
+      <div style={card}>
+        <p style={hdr}>VALUE TAB RECOMMENDATIONS</p>
+        {!hasOddsEntered ? (
+          <p style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
+            Enter 1×2 bookmaker odds in the Value tab to see edge-filtered recommendations here.
           </p>
+        ) : !ev1x2 ? (
+          <p style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
+            Complete all three 1×2 odds in the Value tab to compute edge.
+          </p>
+        ) : recommendations.length === 0 ? (
+          <p style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>
+            No positive edge at current odds (threshold: ≥5%).
+          </p>
+        ) : recommendations.map(key => {
+          const oc = ev1x2.outcomes[key]
+          const col = EDGE_COLOURS[oc.ev?.colour] || 'var(--color-text-muted)'
+          const label = key === 'home' ? `${match?.home_team || 'Home'} Win`
+                      : key === 'away' ? `${match?.away_team || 'Away'} Win` : 'Draw'
+          return (
+            <div key={key} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              flexWrap: 'wrap', padding: '8px 0', borderBottom: '0.5px solid var(--color-border)', gap: 8,
+            }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                {label} @ {oc.odds.toFixed(2)}
+              </span>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 14, fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--radius-full)', background: `${col}22`, color: col }}>
+                  {oc.ev?.edgeDisplay}
+                </span>
+                <span style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>
+                  Kelly {oc.stake.pct.toFixed(1)}%
+                </span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-accent)', fontFamily: 'var(--font-display)' }}>
+                  ¥{(bankroll * oc.stake.fraction).toFixed(0)}
+                </span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Active bets on this match */}
+      <div style={card}>
+        <p style={hdr}>ACTIVE BETS ON THIS MATCH</p>
+        {betsLoading ? (
+          <p style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>Loading…</p>
+        ) : pendingBets.length === 0 ? (
+          <p style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>No pending bets on this match.</p>
+        ) : (
+          <>
+            {pendingBets.length >= 2 && (
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-warning)', marginBottom: 8 }}>
+                ⚠ {pendingBets.length} correlated bets on same match
+              </p>
+            )}
+            {pendingBets.map(bet => {
+              const prob = modelProbForBet(bet)
+              const kellyAmt = prob != null && bet.odds > 1 ? bankroll * calcStake(prob, bet.odds).fraction : null
+              return (
+                <div key={bet.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  flexWrap: 'wrap', padding: '8px 0', borderBottom: '0.5px solid var(--color-border)', gap: 8,
+                }}>
+                  <div>
+                    <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                      {betLabel(bet)} @ {Number(bet.odds).toFixed(2)}
+                    </span>
+                    <span style={{ fontSize: 13, color: 'var(--color-text-muted)', marginLeft: 8 }}>
+                      {bet.bet_type}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {prob != null && (
+                      <span style={{ fontSize: 14, color: 'var(--color-info)' }}>
+                        V2 {formatProb(prob)}
+                      </span>
+                    )}
+                    {kellyAmt != null && (
+                      <span style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>
+                        Kelly ¥{kellyAmt.toFixed(0)}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-display)' }}>
+                      Placed ¥{Number(bet.stake).toFixed(0)}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 }}>
+                <span style={{ color: 'var(--color-text-muted)' }}>{t('portfolio.exposure')}</span>
+                <span style={{ color: exposurePct > 15 ? 'var(--color-warning)' : 'var(--color-text-primary)', fontWeight: 700 }}>
+                  ¥{totalExposure.toFixed(0)} · {exposurePct.toFixed(1)}%
+                </span>
+              </div>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', margin: '10px 0 6px' }}>
+                {t('portfolio.stress').toUpperCase()}
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-green)' }}>
+                <span>{t('portfolio.allWin')}</span><span>+¥{stressWin.toFixed(0)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-red)' }}>
+                <span>{t('portfolio.allLose')}</span><span>¥{stressLose.toFixed(0)}</span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Model summary */}
+      {model && (
+        <div style={card}>
+          <p style={hdr}>MODEL SUMMARY</p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {[
               { label: 'λ Home (V1)', value: model.v1.lambdaHome.toFixed(2) },
@@ -1676,12 +1845,9 @@ function TabPortfolio({ stats }) {
               { label: 'Anchor line', value: anchor ? `${anchor.line}` : '—' },
             ].map(({ label, value }) => (
               <div key={label} style={{
-                flex: '1 0 120px',
-                background: 'var(--color-bg)',
-                border: '0.5px solid var(--color-border)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '8px 10px',
-                textAlign: 'center',
+                flex: '1 0 120px', background: 'var(--color-bg)',
+                border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)',
+                padding: '8px 10px', textAlign: 'center',
               }}>
                 <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginBottom: 2 }}>{label}</p>
                 <p style={{ fontFamily: 'var(--font-display)', fontSize: 19, fontWeight: 600, color: 'var(--color-accent)' }}>{value}</p>
@@ -1691,115 +1857,24 @@ function TabPortfolio({ stats }) {
         </div>
       )}
 
-      {/* Kelly formula reference */}
-      <div style={{
-        background: 'var(--color-bg-card)',
-        border: '0.5px solid var(--color-border)',
-        borderRadius: 'var(--radius-md)',
-        padding: '14px 16px',
-      }}>
-        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
-          KELLY SIZING RULES
-        </p>
+      {/* Kelly rules */}
+      <div style={card}>
+        <p style={hdr}>KELLY SIZING RULES</p>
         {[
           { label: 'Full Kelly',    formula: 'f* = (b×p − q) / b',          note: 'b = odds−1, q = 1−p' },
           { label: 'Fractional',   formula: 'stake = f* × 0.25 × bankroll', note: 'always fractional' },
           { label: 'Hard cap',     formula: 'max 5% of bankroll',            note: 'MT24', accent: true },
           { label: 'Min threshold',formula: '< 1% → skip or min stake',      note: 'not worth placing' },
         ].map(({ label, formula, note, accent }) => (
-          <div key={label} style={{
-            display: 'flex', alignItems: 'flex-start', gap: 12,
-            padding: '8px 0',
-            borderBottom: '0.5px solid var(--color-border)',
-          }}>
+          <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '8px 0', borderBottom: '0.5px solid var(--color-border)' }}>
             <span style={{ fontSize: 15, color: 'var(--color-text-muted)', minWidth: 90 }}>{label}</span>
-            <span style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 15, flex: 1,
-              color: accent ? 'var(--color-accent)' : 'var(--color-text-primary)',
-            }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, flex: 1, color: accent ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
               {formula}
             </span>
             <span style={{ fontSize: 15, color: 'var(--color-text-secondary)' }}>{note}</span>
           </div>
         ))}
       </div>
-
-      {/* Kelly portfolio builder + stress test */}
-      <PortfolioBuilder />
-    </div>
-  )
-}
-
-// Portfolio builder — add legs (odds + model prob), Kelly stake, stress test
-function PortfolioBuilder() {
-  const { t } = useTranslation()
-  const [bankroll, setBankroll] = useState(1000)
-  const [legs, setLegs] = useState([])
-  const [draft, setDraft] = useState({ label: '', odds: '', prob: '' })
-
-  const addLeg = () => {
-    const odds = parseFloat(draft.odds), prob = parseFloat(draft.prob) / 100
-    if (!(odds > 1) || !(prob > 0 && prob < 1) || !draft.label.trim()) return
-    setLegs(l => [...l, { label: draft.label.trim(), odds, prob, stake: calcStake(prob, odds) }])
-    setDraft({ label: '', odds: '', prob: '' })
-  }
-  const removeLeg = i => setLegs(l => l.filter((_, idx) => idx !== i))
-
-  const sized = legs.map(leg => ({ ...leg, amount: bankroll * leg.stake.fraction }))
-  const totalStake = sized.reduce((s, l) => s + l.amount, 0)
-  const exposurePct = bankroll ? (totalStake / bankroll) * 100 : 0
-  // Stress test: all win, all lose, and each-only-wins
-  const allWin = sized.reduce((s, l) => s + l.amount * (l.odds - 1), 0)
-  const allLose = -totalStake
-
-  const inp = { fontSize: 16, minHeight: 44, padding: '0 10px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }
-
-  return (
-    <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }}>
-      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>{t('portfolio.title').toUpperCase()}</p>
-
-      <label style={{ fontSize: 13, color: 'var(--color-text-muted)', display: 'block', marginBottom: 4 }}>{t('portfolio.bankroll')}</label>
-      <input type="number" inputMode="decimal" min="0" value={bankroll} onChange={e => setBankroll(Math.max(0, parseFloat(e.target.value) || 0))} style={{ ...inp, width: '100%', marginBottom: 12 }} />
-
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <input placeholder="Bet" value={draft.label} onChange={e => setDraft(d => ({ ...d, label: e.target.value }))} style={{ ...inp, flex: 2 }} />
-        <input placeholder="Odds" type="number" step="0.01" value={draft.odds} onChange={e => setDraft(d => ({ ...d, odds: e.target.value }))} style={{ ...inp, flex: 1, minWidth: 0 }} />
-        <input placeholder="Prob%" type="number" value={draft.prob} onChange={e => setDraft(d => ({ ...d, prob: e.target.value }))} style={{ ...inp, flex: 1, minWidth: 0 }} />
-        <button onClick={addLeg} style={{ minHeight: 44, padding: '0 14px', fontWeight: 700, background: 'var(--color-accent)', color: 'var(--color-bg)', border: 'none', borderRadius: 'var(--radius-sm)' }}>+</button>
-      </div>
-
-      {sized.map((l, i) => (
-        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid var(--color-border)' }}>
-          <span style={{ fontSize: 14, color: 'var(--color-text-primary)' }}>{l.label} @ {l.odds.toFixed(2)}</span>
-          <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <span style={{ fontSize: 14, color: l.stake.pct >= 5 ? 'var(--color-warning)' : 'var(--color-text-secondary)' }}>{l.stake.pct.toFixed(1)}% · ¥{l.amount.toFixed(0)}</span>
-            <button onClick={() => removeLeg(i)} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', fontSize: 18, cursor: 'pointer' }}>×</button>
-          </span>
-        </div>
-      ))}
-
-      {sized.length >= 2 && (
-        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-warning)', margin: '8px 0' }}>
-          ⚠ {sized.length} {t('portfolio.correlated')}
-        </p>
-      )}
-
-      {sized.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 }}>
-            <span style={{ color: 'var(--color-text-muted)' }}>{t('portfolio.exposure')}</span>
-            <span style={{ color: exposurePct > 15 ? 'var(--color-warning)' : 'var(--color-text-primary)', fontWeight: 700 }}>¥{totalStake.toFixed(0)} · {exposurePct.toFixed(1)}%</span>
-          </div>
-          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', margin: '10px 0 6px' }}>{t('portfolio.stress').toUpperCase()}</p>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-green)' }}><span>{t('portfolio.allWin')}</span><span>+¥{allWin.toFixed(0)}</span></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--color-edge-red)' }}><span>{t('portfolio.allLose')}</span><span>¥{allLose.toFixed(0)}</span></div>
-          {sized.map((l, i) => {
-            const pnl = l.amount * (l.odds - 1) - (totalStake - l.amount)
-            return <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--color-text-secondary)' }}><span>Only {l.label} wins</span><span>{pnl >= 0 ? '+' : ''}¥{pnl.toFixed(0)}</span></div>
-          })}
-        </div>
-      )}
     </div>
   )
 }
@@ -2310,6 +2385,7 @@ export default function MatchAnalysis() {
   const [matchError, setMatchError] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
   const [dixonColes, setDixonColes] = useState(false)  // MT21 default OFF
+  const [v1x2Odds, setV1x2Odds] = useState({ home: '', draw: '', away: '' })
 
   const isAdmin = user?.id === ADMIN_UUID
 
@@ -2503,10 +2579,10 @@ export default function MatchAnalysis() {
         {activeTab === 'matrix' && <TabMatrix stats={stats} match={match} dixonColes={dixonColes} onToggleDixon={setDixonColes} />}
 
         {/* TAB 3: Value */}
-        {activeTab === 'value' && <TabValue stats={stats} match={match} />}
+        {activeTab === 'value' && <TabValue stats={stats} match={match} odds={v1x2Odds} setOdds={setV1x2Odds} />}
 
         {/* TAB 4: Portfolio */}
-        {activeTab === 'portfolio' && <TabPortfolio stats={stats} />}
+        {activeTab === 'portfolio' && <TabPortfolio stats={stats} match={match} odds1x2={v1x2Odds} />}
 
         {/* TAB 5: AI Roles */}
         {activeTab === 'ai' && <TabAI match={match} isAdmin={isAdmin} />}
