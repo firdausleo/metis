@@ -23,7 +23,7 @@ export const XG_BLEND_GOAL    = 0.4   // remaining weight on goals-based figure
 export const WINDOW           = 5
 export const DIXON_COLES_RHO  = 0.1
 export const SCORE_MAX        = 8      // matrix dimension: 0..SCORE_MAX
-export const GOALS_LINES      = [0.5, 1.5, 2.5, 3.5, 4.5]
+export const GOALS_LINES      = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]
 
 // ── Venue advantage table (WC2026 stadiums) ──────────────────────────────
 // Multiplier replaces HOME_ADVANTAGE on the home lambda. WC2026 is mostly
@@ -282,32 +282,33 @@ export function verifyProbSum(probs, tolerance = 0.005) {
 // ── Total goals ──────────────────────────────────────────────────────────
 
 /**
+ * Determine anchor line from totalLambda.
+ * Anchors are the betting line most representative of the expected game tempo.
+ */
+function anchorLineForLambda(totalLambda) {
+  if (totalLambda < 2.0) return 1.5
+  if (totalLambda < 2.8) return 2.5
+  if (totalLambda < 3.8) return 3.5
+  if (totalLambda < 4.8) return 4.5
+  return 5.5
+}
+
+/**
  * Calculate over/under probabilities for each goals line.
  *
  * Returns array of { line, over, under, anchor }
- * The anchor line is the one whose over/under split is closest to 50/50.
+ * Anchor line is determined by totalLambda thresholds (not closest-to-50/50).
  */
 export function calcTotalGoals(lambdaHome, lambdaAway) {
   const lambdaTotal = lambdaHome + lambdaAway
+  const anchorLine  = anchorLineForLambda(lambdaTotal)
 
-  const lines = GOALS_LINES.map(line => {
-    const n = Math.floor(line)   // e.g. line=2.5 → n=2
+  return GOALS_LINES.map(line => {
+    const n     = Math.floor(line)   // e.g. line=2.5 → n=2
     const under = poissonCDF(n, lambdaTotal)
     const over  = 1 - under
-    const balance = Math.abs(over - under)   // 0 = perfectly balanced
-    return { line, over, under, balance }
+    return { line, over, under, anchor: line === anchorLine }
   })
-
-  // Find anchor: closest to 50/50
-  const minBalance = Math.min(...lines.map(l => l.balance))
-  const result = lines.map(l => ({
-    line: l.line,
-    over: l.over,
-    under: l.under,
-    anchor: l.balance === minBalance,
-  }))
-
-  return result
 }
 
 // ── Full model run ────────────────────────────────────────────────────────
