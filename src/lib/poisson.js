@@ -140,10 +140,14 @@ export function calcLambdasV1(homeStats, awayStats, venueMult = VENUE_ADVANTAGE.
   validateStats(homeStats, 'home')
   validateStats(awayStats, 'away')
 
-  const attackHome    = blendInput(homeStats.xgf_per_game, homeStats.goals_scored_avg)
-  const attackAway    = blendInput(awayStats.xgf_per_game, awayStats.goals_scored_avg)
-  const defHomeInput  = blendInput(homeStats.xga_per_game, homeStats.goals_conceded_avg)
-  const defAwayInput  = blendInput(awayStats.xga_per_game, awayStats.goals_conceded_avg)
+  // Use xG blend only when BOTH teams have xG data — avoids unfair asymmetry
+  const bothHaveXgF = homeStats.xgf_per_game != null && awayStats.xgf_per_game != null
+  const bothHaveXgA = homeStats.xga_per_game != null && awayStats.xga_per_game != null
+
+  const attackHome   = bothHaveXgF ? blendInput(homeStats.xgf_per_game, homeStats.goals_scored_avg) : homeStats.goals_scored_avg
+  const attackAway   = bothHaveXgF ? blendInput(awayStats.xgf_per_game, awayStats.goals_scored_avg) : awayStats.goals_scored_avg
+  const defHomeInput = bothHaveXgA ? blendInput(homeStats.xga_per_game, homeStats.goals_conceded_avg) : homeStats.goals_conceded_avg
+  const defAwayInput = bothHaveXgA ? blendInput(awayStats.xga_per_game, awayStats.goals_conceded_avg) : awayStats.goals_conceded_avg
 
   const defHomeFactor = Math.min(Math.max(LEAGUE_AVG_GOALS / defHomeInput, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
   const defAwayFactor = Math.min(Math.max(LEAGUE_AVG_GOALS / defAwayInput, DEF_FACTOR_MIN), DEF_FACTOR_MAX)

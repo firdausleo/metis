@@ -278,24 +278,29 @@ function LambdaCalcBox({ teamStats, opponentStats, isHome, match }) {
   const opp_conc    = opponentStats.goals_conceded_avg
   const opp_xga     = opponentStats.xga_per_game
 
-  const attackNoise   = isXgNoise(xgf, scored_avg)
-  const defNoise      = isXgNoise(opp_xga, opp_conc)
-  const attack_input  = blendInput(xgf, scored_avg)
-  const def_input     = blendInput(opp_xga, opp_conc)
+  // Mirror calcLambdasV1: blend only when BOTH teams have xG data
+  const bothHaveXgF   = xgf != null && opponentStats.xgf_per_game != null
+  const bothHaveXgA   = opp_xga != null && teamStats.xga_per_game != null
+  const attack_input  = bothHaveXgF ? blendInput(xgf, scored_avg) : scored_avg
+  const def_input     = bothHaveXgA ? blendInput(opp_xga, opp_conc) : opp_conc
   const def_factor    = Math.min(Math.max(LEAGUE_AVG_GOALS / def_input, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
   const venue_factor  = isHome ? getVenueAdvantage(match?.venue, match?.city) : 1.0
   const venue_name    = isHome ? (match?.venue || match?.city || 'Neutral venue') : 'Away'
   const lambda        = attack_input * def_factor * venue_factor
 
-  const attackLine = xgf == null
-    ? `${scored_avg} goals/game (xGF unavailable)`
-    : attackNoise
-    ? `${scored_avg} goals/game (xGF ${xgf} noise detected — using goals only)`
-    : `${xgf} xGF × ${XG_BLEND_XG} + ${scored_avg} goals × ${XG_BLEND_GOAL} = ${attack_input.toFixed(3)} (xG blend)`
+  const xgNote   = bothHaveXgF
+    ? 'xG blend applied (both teams have xG data)'
+    : 'Goals only (one or both teams lack xG data)'
 
-  const defLine = opp_xga == null
+  const attackLine = !bothHaveXgF
+    ? `${scored_avg} goals/game`
+    : isXgNoise(xgf, scored_avg)
+    ? `${scored_avg} goals/game (xGF ${xgf} noise — using goals only)`
+    : `${xgf} xGF × ${XG_BLEND_XG} + ${scored_avg} goals × ${XG_BLEND_GOAL} = ${attack_input.toFixed(3)}`
+
+  const defLine = !bothHaveXgA
     ? `${def_factor.toFixed(3)} [1.5 ÷ ${opp_conc} conceded, cap 1.8]`
-    : defNoise
+    : isXgNoise(opp_xga, opp_conc)
     ? `${def_factor.toFixed(3)} [1.5 ÷ ${opp_conc} conceded (xGA ${opp_xga} noise — goals only), cap 1.8]`
     : `${def_factor.toFixed(3)} [1.5 ÷ ${def_input.toFixed(3)} (xG blend), cap 1.8]`
 
@@ -307,9 +312,14 @@ function LambdaCalcBox({ teamStats, opponentStats, isHome, match }) {
       border: '0.5px solid var(--color-border)',
       borderRadius: 'var(--radius-sm)',
     }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.07em', marginBottom: 6 }}>
-        λ CALCULATION
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.07em' }}>
+          λ CALCULATION
+        </p>
+        <span style={{ fontSize: 11, color: bothHaveXgF ? 'var(--color-info)' : 'var(--color-text-muted)' }}>
+          {xgNote}
+        </span>
+      </div>
       <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.7 }}>
         Attack: {attackLine}
       </p>
