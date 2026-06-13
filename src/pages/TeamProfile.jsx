@@ -204,9 +204,12 @@ export default function TeamProfile() {
   const leftForm = stats ? (
     <div style={card}>
       <p style={secTitle}>CURRENT FORM</p>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-        <FormDots formString={stats.form_string} />
-        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Last {stats.games_window || 5} games</span>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+          <FormDots formString={stats.form_string} />
+          <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Last {stats.games_window || 5} games</span>
+        </div>
+        <p style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Last 5 competitive games, pre-tournament included</p>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <StatCard label="SCORED"   value={stats.goals_scored_avg?.toFixed(2)}   sub="per game" />
@@ -251,6 +254,12 @@ export default function TeamProfile() {
               </p>
               <p style={{ fontSize: 14, color: 'var(--color-text-primary)', fontWeight: 500 }}>
                 {isHome ? 'vs' : '@'} {getFlag(opponent)} {opponent}
+                {m.status === 'finished' && m.home_score != null && (
+                  <span style={{ marginLeft: 10, fontFamily: 'var(--font-display)', fontWeight: 700 }}>
+                    {m.home_score}–{m.away_score}
+                    <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: 3 }}>(H–A)</span>
+                  </span>
+                )}
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
@@ -306,6 +315,9 @@ export default function TeamProfile() {
           })}
         </tbody>
       </table>
+      <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 10, lineHeight: 1.6 }}>
+        ▲ Qualifies for Round of 32 · 3rd place may qualify via best 3rd place playoff
+      </p>
     </div>
   )
 
