@@ -5,6 +5,7 @@ import { useTranslation, setLanguage } from '../lib/i18n'
 const NAV_ITEMS = [
   { key: 'nav.dashboard', icon: '📊', path: '/' },
   { key: 'nav.matches', icon: '⚽', path: '/matches' },
+  { key: 'nav.picks', icon: '💡', path: '/recommendations' },
   { key: 'nav.myBets', icon: '🎯', path: '/my-bets' },
   { key: 'nav.settings', icon: '⚙️', path: '/settings' },
 ]

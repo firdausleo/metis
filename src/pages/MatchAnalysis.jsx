@@ -2410,9 +2410,25 @@ export default function MatchAnalysis() {
       setMatchLoading(false)
       if (error) { setMatchError(error.message); return }
       setMatch(data)
+      if (data.odds_home) setV1x2Odds({
+        home: String(data.odds_home),
+        draw: String(data.odds_draw ?? ''),
+        away: String(data.odds_away ?? ''),
+      })
     }
     if (id) loadMatch()
   }, [id])
+
+  // Auto-save odds to matches table (admin only) when all 3 valid
+  useEffect(() => {
+    if (!isAdmin || !id) return
+    const h = parseFloat(v1x2Odds.home), d = parseFloat(v1x2Odds.draw), a = parseFloat(v1x2Odds.away)
+    if (![h, d, a].every(v => v > 1)) return
+    const t = setTimeout(() => {
+      supabase.from('matches').update({ odds_home: h, odds_draw: d, odds_away: a }).eq('id', id)
+    }, 600)
+    return () => clearTimeout(t)
+  }, [v1x2Odds, id, isAdmin])
 
   const {
     stats, loading: statsLoading, error: statsError,

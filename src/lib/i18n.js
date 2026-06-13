@@ -4,6 +4,7 @@ const translations = {
   en: {
     'nav.dashboard': 'Dashboard',
     'nav.matches': 'Matches',
+    'nav.picks': 'Tips',
     'nav.myBets': 'My Bets',
     'nav.settings': 'Settings',
     'settings.language': 'Language',
@@ -129,6 +130,7 @@ const translations = {
   zh: {
     'nav.dashboard': '首页',
     'nav.matches': '赛程',
+    'nav.picks': '精选',
     'nav.myBets': '我的投注',
     'nav.settings': '设置',
     'settings.language': '语言',

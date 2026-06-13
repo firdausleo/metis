@@ -52,6 +52,7 @@ export default function App() {
           <Route path="/matches/:id" element={<ProtectedRoute><MatchAnalysis /></ProtectedRoute>} />
           <Route path="/matches/:id/odds" element={<ProtectedRoute><MatchOdds /></ProtectedRoute>} />
           <Route path="/matches/:id/bets" element={<ProtectedRoute><BetRecommendations /></ProtectedRoute>} />
+          <Route path="/recommendations" element={<ProtectedRoute><BetRecommendations /></ProtectedRoute>} />
           <Route path="/my-bets" element={<ProtectedRoute><MyBets /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/team/:teamCode" element={<ProtectedRoute><TeamProfile /></ProtectedRoute>} />
