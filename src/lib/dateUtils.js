@@ -33,13 +33,8 @@ export function toBeijingTime(utcDate, format = 'full') {
 }
 
 export function isToday(utcDate) {
-  const beijing = new Date(
-    new Date(utcDate).toLocaleString('en-US', { timeZone: 'Asia/Shanghai' })
-  )
-  const now = new Date(
-    new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' })
-  )
-  return beijing.toDateString() === now.toDateString()
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' })
+  return fmt.format(new Date(utcDate)) === fmt.format(new Date())
 }
 
 export function isUpcoming(utcDate) {
