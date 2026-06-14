@@ -427,9 +427,23 @@ export async function onRequestPost(context) {
   } catch (err) {
     clearTimeout(timeout)
     if (err.name === 'AbortError') {
-      return jsonResponse({ error: 'Worker timeout (MT25)', details: 'Operation took > 28s' }, 504)
+      return jsonResponse({
+        ok: false,
+        error: 'Worker timeout',
+        details: 'Sync took > 28s — reduce batch size or try individual matches',
+        matches_processed: 0,
+        synced: 0,
+      })
     }
-    return jsonResponse({ error: 'Sync failed', details: err.message }, 500)
+    // Never let the Worker return 500 — always structured JSON so the client
+    // can display a useful message instead of a generic network error.
+    return jsonResponse({
+      ok: false,
+      error: err.message || 'Sync failed',
+      details: err.stack?.split('\n')[0] || null,
+      matches_processed: 0,
+      synced: 0,
+    })
   }
 }
 

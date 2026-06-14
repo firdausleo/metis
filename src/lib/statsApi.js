@@ -49,9 +49,7 @@ export async function syncAllStats(matchIds) {
     body: JSON.stringify(body),
   })
 
-  if (!response.ok) {
-    throw new Error(`Sync failed: ${response.status}`)
-  }
-
+  // Worker always returns 200 with structured JSON; only throw on real network failures
+  if (response.status === 403) throw new Error('Admin access required')
   return response.json()
 }
