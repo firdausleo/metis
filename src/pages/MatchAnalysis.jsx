@@ -2400,19 +2400,24 @@ export default function MatchAnalysis() {
   const isAdmin = user?.id === ADMIN_UUID
 
   useEffect(() => {
+    let cancelled = false
+
+    // Synchronous reset — happens before the async fetch so odds clear immediately
+    // on every match navigation, regardless of fetch timing.
+    setV1x2Odds({ home: '', draw: '', away: '' })
+
     async function loadMatch() {
       setMatchLoading(true)
-      // Always reset odds before loading so a different match never leaks into this one
-      setV1x2Odds({ home: '', draw: '', away: '' })
       const { data, error } = await supabase
         .from('matches')
         .select('*')
         .eq('id', id)
         .single()
+      if (cancelled) return   // stale response — a newer id took over
       setMatchLoading(false)
       if (error) { setMatchError(error.message); return }
       setMatch(data)
-      // Restore saved odds for this specific match (null-safe — all 3 required)
+      // Restore saved odds only when all 3 columns are present for this match
       if (data.odds_home != null && data.odds_draw != null && data.odds_away != null) {
         setV1x2Odds({
           home: String(data.odds_home),
@@ -2421,7 +2426,9 @@ export default function MatchAnalysis() {
         })
       }
     }
+
     if (id) loadMatch()
+    return () => { cancelled = true }
   }, [id])
 
   // Auto-save odds to matches table (admin only) when all 3 valid
