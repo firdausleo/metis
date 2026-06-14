@@ -2402,6 +2402,8 @@ export default function MatchAnalysis() {
   useEffect(() => {
     async function loadMatch() {
       setMatchLoading(true)
+      // Always reset odds before loading so a different match never leaks into this one
+      setV1x2Odds({ home: '', draw: '', away: '' })
       const { data, error } = await supabase
         .from('matches')
         .select('*')
@@ -2410,11 +2412,14 @@ export default function MatchAnalysis() {
       setMatchLoading(false)
       if (error) { setMatchError(error.message); return }
       setMatch(data)
-      if (data.odds_home) setV1x2Odds({
-        home: String(data.odds_home),
-        draw: String(data.odds_draw ?? ''),
-        away: String(data.odds_away ?? ''),
-      })
+      // Restore saved odds for this specific match (null-safe — all 3 required)
+      if (data.odds_home != null && data.odds_draw != null && data.odds_away != null) {
+        setV1x2Odds({
+          home: String(data.odds_home),
+          draw: String(data.odds_draw),
+          away: String(data.odds_away),
+        })
+      }
     }
     if (id) loadMatch()
   }, [id])
