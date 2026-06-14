@@ -2747,6 +2747,96 @@ function TabAI({ match, isAdmin }) {
   )
 }
 
+// ── Final Signal ─────────────────────────────────────────────────────────────
+// Combines Value tab edge with AI composite — shown at top of right sidebar.
+
+function FinalSignal({ ev1x2, aiComposite, match }) {
+  const rawRec  = aiComposite?.recommendation
+  const normRec =
+    rawRec === 'home_win' || rawRec === 'value_home' ? 'home' :
+    rawRec === 'away_win' || rawRec === 'value_away' ? 'away' :
+    rawRec === 'draw'                                 ? 'draw' : null
+  const aiConf  = aiComposite?.confidence != null ? Math.round(aiComposite.confidence * 100) : null
+  const bestBet = ev1x2?.bestBet ?? null
+
+  const signal = !ev1x2                                           ? 'NO_ODDS'
+    : bestBet && normRec === bestBet && aiConf >= 65              ? 'STRONG'
+    : bestBet && normRec && normRec !== bestBet                   ? 'CAUTION'
+    : bestBet                                                      ? 'WEAK'
+    : aiConf >= 75 && normRec                                     ? 'AI_ONLY'
+    : 'SKIP'
+
+  const LABEL = { home: match?.home_team || 'Home', draw: 'Draw', away: match?.away_team || 'Away' }
+
+  const CFG = {
+    NO_ODDS: { label: null,          icon: null,  border: 'var(--color-border)',      col: 'var(--color-text-muted)',    bg: 'transparent' },
+    STRONG:  { label: 'STRONG BET', icon: '✅',  border: 'var(--color-accent)',      col: 'var(--color-accent)',        bg: 'var(--color-accent-dim)' },
+    CAUTION: { label: 'CAUTION',    icon: '⚠️', border: '#cc8800',                   col: '#cc8800',                   bg: 'rgba(204,136,0,0.08)' },
+    WEAK:    { label: 'WEAK SIGNAL',icon: '〰️', border: 'var(--color-border)',        col: 'var(--color-text-secondary)',bg: 'var(--color-bg-elevated)' },
+    AI_ONLY: { label: 'AI ONLY',    icon: '🎯',  border: 'var(--color-info)',         col: 'var(--color-info)',          bg: 'rgba(56,120,180,0.07)' },
+    SKIP:    { label: 'SKIP',       icon: '❌',  border: 'var(--color-danger)',       col: 'var(--color-danger)',        bg: 'rgba(185,60,60,0.06)' },
+  }
+  const cfg = CFG[signal]
+
+  const msg =
+    signal === 'NO_ODDS'  ? 'Enter odds in Value tab to see final signal'
+    : signal === 'STRONG' ? `Both model and AI agree — bet ${LABEL[bestBet]}`
+    : signal === 'CAUTION'? `Math finds edge but AI disagrees — reduce stake 50%`
+    : signal === 'WEAK'   ? 'Edge found but low AI confidence — small stake only'
+    : signal === 'AI_ONLY'? `No mathematical edge but high AI conviction — consider small bet on ${LABEL[normRec]}`
+    :                       'No edge, low confidence — skip this match'
+
+  const bestOc   = bestBet ? ev1x2.outcomes[bestBet] : null
+  const edgePct  = bestOc?.ev?.edgePct
+  const bestOdds = bestOc?.odds
+  const kellyFrac = bestOc?.stake?.fraction  // already fractional × 0.25, capped 5%
+  const adjKelly  = kellyFrac && aiConf ? Math.min(kellyFrac * (aiConf / 100), 0.05) : kellyFrac
+
+  return (
+    <div style={{ background: cfg.bg, border: `2px solid ${cfg.border}`, borderRadius: 'var(--radius-md)', padding: '14px 14px', marginBottom: 10 }}>
+      <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: cfg.col, textTransform: 'uppercase', marginBottom: 6 }}>FINAL SIGNAL</p>
+
+      {signal === 'NO_ODDS' ? (
+        <p style={{ fontSize: 13, color: 'var(--color-text-muted)', fontStyle: 'italic', lineHeight: 1.4 }}>{msg}</p>
+      ) : (
+        <>
+          <p style={{ fontSize: 21, fontWeight: 700, color: cfg.col, fontFamily: 'var(--font-display)', lineHeight: 1.1, marginBottom: 8 }}>
+            {cfg.icon} {cfg.label}
+          </p>
+          <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>{msg}</p>
+
+          {signal === 'STRONG' && bestOdds != null && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: cfg.col }}>
+                @ {bestOdds.toFixed(2)} · +{edgePct?.toFixed(1)}% edge
+              </p>
+              {adjKelly > 0 && (
+                <p style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  Kelly stake: {(adjKelly * 100).toFixed(1)}% of bankroll
+                </p>
+              )}
+              {aiConf != null && <p style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>AI confidence: {aiConf}%</p>}
+            </div>
+          )}
+          {signal === 'CAUTION' && (
+            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 6 }}>
+              AI recommends: <strong>{normRec ? LABEL[normRec] : '—'}</strong>{aiConf != null ? ` (${aiConf}%)` : ''}
+            </p>
+          )}
+          {signal === 'AI_ONLY' && aiConf != null && (
+            <p style={{ fontSize: 12, color: cfg.col, marginTop: 6, fontWeight: 600 }}>AI confidence: {aiConf}%</p>
+          )}
+          {signal === 'WEAK' && edgePct != null && (
+            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 6 }}>
+              Edge: +{edgePct.toFixed(1)}% on {LABEL[bestBet]}{aiConf != null ? ` · AI: ${aiConf}%` : ''}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────
 
 export default function MatchAnalysis() {
@@ -2761,8 +2851,28 @@ export default function MatchAnalysis() {
   const [refreshing, setRefreshing] = useState(false)
   const [dixonColes, setDixonColes] = useState(false)  // MT21 default OFF
   const [v1x2Odds, setV1x2Odds] = useState({ home: '', draw: '', away: '' })
+  const [aiComposite, setAiComposite] = useState(null)
 
   const isAdmin = user?.id === ADMIN_UUID
+
+  // Fetch Role 10 (composite verdict) for sidebar Final Signal
+  useEffect(() => {
+    if (!match?.id) return
+    setAiComposite(null)
+    supabase
+      .from('role_outputs')
+      .select('output_json, ai_roles(role_number)')
+      .eq('match_id', match.id)
+      .then(({ data }) => {
+        const r10 = data?.find(o => o.ai_roles?.role_number === 10)
+        if (!r10) return
+        let json = r10.output_json
+        if (typeof json === 'string') {
+          try { json = JSON.parse(json.replace(/```json\n?|\n?```/g, '').trim()) } catch { json = null }
+        }
+        if (json) setAiComposite(json)
+      })
+  }, [match?.id])
 
   useEffect(() => {
     let cancelled = false
@@ -2811,6 +2921,19 @@ export default function MatchAnalysis() {
     stats, loading: statsLoading, error: statsError,
     confidence, refreshStats, saveManualStats, lastUpdated,
   } = useTeamStats(match)
+
+  // Sidebar model + EV for Final Signal (independent of tab state)
+  const sidebarModel = useMemo(() => {
+    if (!stats?.home || !stats?.away) return null
+    try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team }) } catch { return null }
+  }, [stats, match])
+
+  const sidebarEv = useMemo(() => {
+    if (!sidebarModel) return null
+    const o = { home: parseFloat(v1x2Odds.home), draw: parseFloat(v1x2Odds.draw), away: parseFloat(v1x2Odds.away) }
+    if (![o.home, o.draw, o.away].every(v => v > 1)) return null
+    try { return analyse1X2(sidebarModel.v2.probs, o) } catch { return null }
+  }, [sidebarModel, v1x2Odds])
 
   async function handleRefreshStats() {
     if (!match) return
@@ -2999,6 +3122,7 @@ export default function MatchAnalysis() {
 
       {/* ── Right panel (desktop): live summary ── */}
       <aside className="analysis-right">
+        <FinalSignal ev1x2={sidebarEv} aiComposite={aiComposite} match={match} />
         <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '16px 14px' }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-blue)', letterSpacing: '0.06em', marginBottom: 12 }}>SUMMARY</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
