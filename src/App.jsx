@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { useAuth } from './hooks/useAuth'
 import { UserProvider, useUser } from './context/UserContext'
 import NavBar from './components/NavBar'
+import LoadingScreen from './components/LoadingScreen'
 import Dashboard from './pages/Dashboard'
 import Matches from './pages/Matches'
 import MatchAnalysis from './pages/MatchAnalysis'
@@ -17,28 +17,17 @@ import AdminUsers from './pages/AdminUsers'
 import FAQ from './pages/FAQ'
 
 function ProtectedRoute({ children, adminOnly = false }) {
-  const { user, loading } = useAuth()
-  const { profile, profileLoading, tier } = useUser()
+  const { session, sessionLoading, profile, profileLoading, tier } = useUser()
 
-  if (loading || profileLoading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
-        <span style={{ color: 'var(--color-text-secondary)' }}>Loading...</span>
-      </div>
-    )
-  }
+  if (sessionLoading || profileLoading) return <LoadingScreen />
 
-  if (!user) return <Navigate to="/auth" replace />
+  if (!session) return <Navigate to="/auth" replace />
 
-  // Block anyone who isn't explicitly approved — null profile also goes to /pending
-  if (!profile || profile.status !== 'approved') {
-    return <Navigate to="/pending" replace />
-  }
+  if (!profile || profile.status === 'pending') return <Navigate to="/pending" replace />
 
-  // Admin-only routes
-  if (adminOnly && tier !== 'admin') {
-    return <Navigate to="/" replace />
-  }
+  if (profile.status === 'rejected') return <Navigate to="/pending" replace />
+
+  if (adminOnly && tier !== 'admin') return <Navigate to="/" replace />
 
   return children
 }
