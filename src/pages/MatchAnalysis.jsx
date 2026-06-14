@@ -24,7 +24,7 @@ const CONFIDENCE_CONFIG = {
   max:    { icon: '🔥', color: 'var(--color-accent)',  desc: '4–5 WC games' },
 }
 
-const TABS = ['stats', 'matrix', 'value', 'portfolio', 'ai']
+const TABS = ['stats', 'matrix', 'value', 'asian', 'portfolio', 'ai']
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
@@ -1647,7 +1647,372 @@ function TabValue({ stats, match, odds, setOdds }) {
         />
       )}
 
-      {/* Correct score section */}
+    </div>
+  )
+}
+
+// ── Asian handicap / total-goals helpers ──────────────────────────────────────
+
+const AH_LINES = [
+  { val: -2,    label: '-2'     }, { val: -1.75, label: '-1.3/4' },
+  { val: -1.5,  label: '-1.1/2' }, { val: -1.25, label: '-1.1/4' },
+  { val: -1,    label: '-1'     }, { val: -0.75, label: '-3/4'   },
+  { val: -0.5,  label: '-1/2'  }, { val: -0.25, label: '-1/4'   },
+  { val: 0,     label: '0'     }, { val: 0.25,  label: '+1/4'   },
+  { val: 0.5,   label: '+1/2'  }, { val: 0.75,  label: '+3/4'   },
+  { val: 1,     label: '+1'    }, { val: 1.25,  label: '+1.1/4' },
+  { val: 1.5,   label: '+1.1/2' }, { val: 1.75, label: '+1.3/4' },
+  { val: 2,     label: '+2'    },
+]
+
+const TG_LINES = [
+  { val: 1,    label: '1'     }, { val: 1.25, label: '1.1/4' },
+  { val: 1.5,  label: '1.1/2' }, { val: 1.75, label: '1.3/4' },
+  { val: 2,    label: '2'     }, { val: 2.25, label: '2.1/4' },
+  { val: 2.5,  label: '2.1/2' }, { val: 2.75, label: '2.3/4' },
+  { val: 3,    label: '3'     }, { val: 3.25, label: '3.1/4' },
+  { val: 3.5,  label: '3.1/2' }, { val: 3.75, label: '3.3/4' },
+  { val: 4,    label: '4'     }, { val: 4.25, label: '4.1/4' },
+  { val: 4.5,  label: '4.1/2' },
+]
+
+function isQtrLine(line) { return Math.round(Math.abs(line) * 4) % 2 === 1 }
+function ahModToDecimal(mod) { return (100 + mod) / 100 + 1 }
+function ahCompanion(mod) { return 200 / (100 + mod) }
+
+function singleAHResult(h, a, line) {
+  const adj = h + line
+  if (Math.abs(adj - a) < 0.0001) return 'push'
+  return adj > a ? 'home' : 'away'
+}
+
+function ahCoverResult(h, a, line) {
+  if (!isQtrLine(line)) return singleAHResult(h, a, line)
+  const r1 = singleAHResult(h, a, line - 0.25)
+  const r2 = singleAHResult(h, a, line + 0.25)
+  if (r1 === r2) return r1
+  if (r1 === 'push' || r2 === 'push') {
+    const other = r1 === 'push' ? r2 : r1
+    return other === 'home' ? 'home_half' : 'away_half'
+  }
+  return 'split'
+}
+
+function calcAHLine(matrix, line) {
+  const N = matrix.length
+  let pHome = 0, pAway = 0, pPush = 0
+  for (let i = 0; i < N; i++)
+    for (let j = 0; j < N; j++) {
+      const r = singleAHResult(i, j, line), p = matrix[i][j]
+      if (r === 'home') pHome += p
+      else if (r === 'away') pAway += p
+      else pPush += p
+    }
+  return { pHome, pAway, pPush }
+}
+
+function calcAHProbs(matrix, line) {
+  if (!isQtrLine(line)) return calcAHLine(matrix, line)
+  const r1 = calcAHLine(matrix, line - 0.25)
+  const r2 = calcAHLine(matrix, line + 0.25)
+  return { pHome: (r1.pHome + r2.pHome) / 2, pAway: (r1.pAway + r2.pAway) / 2, pPush: (r1.pPush + r2.pPush) / 2 }
+}
+
+function singleTGResult(total, line) {
+  if (total === line) return 'push'
+  return total > line ? 'over' : 'under'
+}
+
+function tgCoverResult(total, line) {
+  if (!isQtrLine(line)) return singleTGResult(total, line)
+  const r1 = singleTGResult(total, line - 0.25)
+  const r2 = singleTGResult(total, line + 0.25)
+  if (r1 === r2) return r1
+  if (r1 === 'push' || r2 === 'push') {
+    const other = r1 === 'push' ? r2 : r1
+    return other === 'over' ? 'over_half' : 'under_half'
+  }
+  return 'split'
+}
+
+function calcTGLine(matrix, line) {
+  const N = matrix.length
+  let pOver = 0, pUnder = 0, pPush = 0
+  for (let i = 0; i < N; i++)
+    for (let j = 0; j < N; j++) {
+      const r = singleTGResult(i + j, line), p = matrix[i][j]
+      if (r === 'over') pOver += p
+      else if (r === 'under') pUnder += p
+      else pPush += p
+    }
+  return { pOver, pUnder, pPush }
+}
+
+function calcTGProbs(matrix, line) {
+  if (!isQtrLine(line)) return calcTGLine(matrix, line)
+  const r1 = calcTGLine(matrix, line - 0.25)
+  const r2 = calcTGLine(matrix, line + 0.25)
+  return { pOver: (r1.pOver + r2.pOver) / 2, pUnder: (r1.pUnder + r2.pUnder) / 2, pPush: (r1.pPush + r2.pPush) / 2 }
+}
+
+function topScorelines(matrix, n = 8) {
+  const N = matrix.length, rows = []
+  for (let i = 0; i < N; i++)
+    for (let j = 0; j < N; j++)
+      rows.push({ h: i, a: j, p: matrix[i][j] })
+  return rows.sort((a, b) => b.p - a.p).slice(0, n)
+}
+
+// ── Asian tab ─────────────────────────────────────────────────────────────────
+
+function TabAsian({ stats, match }) {
+  const model = useMemo(() => {
+    if (!stats?.home || !stats?.away) return null
+    try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team }) } catch { return null }
+  }, [stats, match])
+
+  const [ahLine, setAhLine] = useState(-0.5)
+  const [ahMod,  setAhMod]  = useState(0)
+  const [tgLine, setTgLine] = useState(2.5)
+  const [tgMod,  setTgMod]  = useState(0)
+  const [budget, setBudget] = useState('')
+
+  const bgt    = parseFloat(budget)
+  const hasBgt = bgt > 0
+
+  const ah       = useMemo(() => model ? calcAHProbs(model.v2.matrix, ahLine) : null, [model, ahLine])
+  const homeDec  = ahCompanion(ahMod)
+  const awayDec  = ahModToDecimal(ahMod)
+  const ahHomeStake = (hasBgt && ah) ? calcStake(ah.pHome, homeDec) : null
+  const ahAwayStake = (hasBgt && ah) ? calcStake(ah.pAway, awayDec) : null
+
+  const tg       = useMemo(() => model ? calcTGProbs(model.v2.matrix, tgLine) : null, [model, tgLine])
+  const overDec  = ahModToDecimal(tgMod)
+  const underDec = ahCompanion(tgMod)
+  const tgOverStake  = (hasBgt && tg) ? calcStake(tg.pOver,  overDec)  : null
+  const tgUnderStake = (hasBgt && tg) ? calcStake(tg.pUnder, underDec) : null
+
+  const topLines   = useMemo(() => model ? topScorelines(model.v2.matrix) : [], [model])
+  const homeTeam   = match?.home_team || 'Home'
+  const awayTeam   = match?.away_team || 'Away'
+  const ahLineObj  = AH_LINES.find(l => Math.abs(l.val - ahLine) < 0.001) || { label: String(ahLine) }
+  const awayAhObj  = AH_LINES.find(l => Math.abs(l.val - (-ahLine)) < 0.001) || { label: String(-ahLine) }
+  const tgLineObj  = TG_LINES.find(l => Math.abs(l.val - tgLine) < 0.001) || { label: String(tgLine) }
+
+  const cardStyle = { background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
+  const SH  = { fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-accent)', textTransform: 'uppercase', borderBottom: '1px solid var(--color-accent)', paddingBottom: 6, marginBottom: 14, display: 'block' }
+  const sel = { fontSize: 13, minHeight: 34, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)', cursor: 'pointer' }
+  const th  = { padding: '5px 8px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--color-text-muted)', background: 'var(--color-bg-elevated)', borderBottom: '0.5px solid var(--color-border)', textAlign: 'center', whiteSpace: 'nowrap' }
+  const td  = { padding: '6px 8px', fontSize: 12, borderBottom: '0.5px solid var(--color-border)', textAlign: 'center' }
+
+  function edgeBadge(edge) {
+    if (edge == null) return null
+    const green = edge >= 0.05, amber = edge >= 0 && edge < 0.05
+    const col = green ? EDGE_COLOURS.green : amber ? EDGE_COLOURS.amber : EDGE_COLOURS.red
+    return (
+      <span style={{ fontSize: 11, fontWeight: 700, color: col, padding: '2px 7px', borderRadius: 'var(--radius-full)', background: `${col}22`, border: `0.5px solid ${col}` }}>
+        {edge >= 0 ? '+' : ''}{(edge * 100).toFixed(1)}% {green ? '✅ BET' : amber ? '— Marginal' : '❌ SKIP'}
+      </span>
+    )
+  }
+
+  function betCard(label, pWin, pPush, decimal, stakeResult) {
+    const implied = decimal > 1 ? 1 / decimal : null
+    const edge    = implied != null ? pWin - implied : null
+    return (
+      <div style={{ flex: 1, minWidth: 0, background: 'var(--color-bg-elevated)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)' }}>{label}</p>
+        <p style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Pays <strong>{decimal.toFixed(2)}</strong></p>
+        <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-accent)' }}>Model: {(pWin * 100).toFixed(1)}%</p>
+        {pPush > 0.005 && <p style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Push: {(pPush * 100).toFixed(1)}%</p>}
+        {implied != null && <p style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Implied: {(implied * 100).toFixed(1)}%</p>}
+        {edgeBadge(edge)}
+        {hasBgt && stakeResult?.fraction > 0 && (
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>Stake: ¥{Math.round(stakeResult.fraction * bgt).toLocaleString()}</p>
+        )}
+      </div>
+    )
+  }
+
+  function ahCell(result, side) {
+    const textMap = {
+      home:      { home: 'HOME WIN ✅', away: 'AWAY LOSE ❌' },
+      away:      { home: 'HOME LOSE ❌', away: 'AWAY WIN ✅' },
+      push:      { home: 'PUSH ↔', away: 'PUSH ↔' },
+      home_half: { home: 'WIN ½ ✅', away: 'LOSE ½ ❌' },
+      away_half: { home: 'LOSE ½ ❌', away: 'WIN ½ ✅' },
+    }
+    const colMap = {
+      home:      side === 'home' ? EDGE_COLOURS.green : EDGE_COLOURS.red,
+      away:      side === 'away' ? EDGE_COLOURS.green : EDGE_COLOURS.red,
+      push:      EDGE_COLOURS.amber,
+      home_half: side === 'home' ? EDGE_COLOURS.green : EDGE_COLOURS.red,
+      away_half: side === 'away' ? EDGE_COLOURS.green : EDGE_COLOURS.red,
+    }
+    return <span style={{ fontSize: 10, fontWeight: 600, color: colMap[result] || 'var(--color-text-muted)' }}>{textMap[result]?.[side] || '—'}</span>
+  }
+
+  function tgCell(result, side) {
+    const textMap = {
+      over:       { over: 'WIN FULL ✅',  under: 'LOSE FULL ❌' },
+      under:      { over: 'LOSE FULL ❌', under: 'WIN FULL ✅'  },
+      push:       { over: 'PUSH ↔',      under: 'PUSH ↔'       },
+      over_half:  { over: 'WIN ½ ✅',   under: 'LOSE ½ ❌'    },
+      under_half: { over: 'LOSE ½ ❌',  under: 'WIN ½ ✅'     },
+    }
+    const colMap = {
+      over:       side === 'over'  ? EDGE_COLOURS.green : EDGE_COLOURS.red,
+      under:      side === 'under' ? EDGE_COLOURS.green : EDGE_COLOURS.red,
+      push:       EDGE_COLOURS.amber,
+      over_half:  side === 'over'  ? EDGE_COLOURS.green : EDGE_COLOURS.red,
+      under_half: side === 'under' ? EDGE_COLOURS.green : EDGE_COLOURS.red,
+    }
+    return <span style={{ fontSize: 10, fontWeight: 600, color: colMap[result] || 'var(--color-text-muted)' }}>{textMap[result]?.[side] || '—'}</span>
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+      {!model && (
+        <div style={{ ...cardStyle, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 14, padding: 20 }}>
+          Stats required for Asian handicap calculations (MT06)
+        </div>
+      )}
+
+      {/* Budget */}
+      <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Budget ¥</label>
+        <input type="number" inputMode="decimal" min="0" placeholder="10000" value={budget}
+          onChange={e => setBudget(e.target.value)}
+          style={{ width: 110, fontSize: 13, minHeight: 30, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
+        {hasBgt && <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>¼ Kelly · 5% cap (MT24)</span>}
+      </div>
+
+      {/* ── SECTION 1: ASIAN HANDICAP ── */}
+      {model && ah && (
+        <div style={cardStyle}>
+          <span style={SH}>亚让球 · Asian Handicap</span>
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14, alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Handicap line</label>
+              <select value={ahLine} onChange={e => setAhLine(parseFloat(e.target.value))} style={sel}>
+                {AH_LINES.map(l => <option key={l.val} value={l.val}>{l.label}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Away modifier +</label>
+              <input type="number" inputMode="numeric" min="-50" max="50" step="1" value={ahMod}
+                onChange={e => setAhMod(parseInt(e.target.value, 10) || 0)}
+                style={{ width: 80, fontSize: 13, minHeight: 34, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
+            </div>
+          </div>
+
+          {/* Market label */}
+          <p style={{ fontSize: 14, fontFamily: 'var(--font-display)', color: 'var(--color-text-secondary)', marginBottom: 12 }}>
+            <strong style={{ color: 'var(--color-text-primary)' }}>{homeTeam}</strong>
+            {' '}<span style={{ color: 'var(--color-accent)', fontWeight: 700 }}>{ahLineObj.label}</span>{' '}
+            <strong style={{ color: 'var(--color-text-primary)' }}>{awayTeam}</strong>
+            {' '}<span style={{ color: 'var(--color-info)' }}>{awayAhObj.label}</span>
+            {ahMod !== 0 && <span style={{ marginLeft: 6, color: 'var(--color-info)', fontWeight: 700 }}>+{ahMod}</span>}
+          </p>
+
+          {/* Bet cards */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+            {betCard(`Bet HOME · ${homeTeam} ${ahLineObj.label}`, ah.pHome, ah.pPush, homeDec, ahHomeStake)}
+            {betCard(`Bet AWAY · ${awayTeam} ${awayAhObj.label}${ahMod !== 0 ? ' +' + ahMod : ''}`, ah.pAway, ah.pPush, awayDec, ahAwayStake)}
+          </div>
+
+          {/* Simulator */}
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 6 }}>RESULT SIMULATOR · V2 TOP SCORELINES</p>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 340 }}>
+              <thead>
+                <tr>
+                  <th style={th}>Score</th>
+                  <th style={th}>%</th>
+                  <th style={{ ...th, color: 'var(--color-accent)' }}>HOME {ahLineObj.label}</th>
+                  <th style={{ ...th, color: 'var(--color-info)' }}>AWAY {awayAhObj.label}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topLines.map(({ h, a, p }) => {
+                  const res = ahCoverResult(h, a, ahLine)
+                  return (
+                    <tr key={`${h}-${a}`}>
+                      <td style={{ ...td, fontWeight: 700, color: 'var(--color-text-primary)' }}>{h}–{a}</td>
+                      <td style={{ ...td, color: 'var(--color-text-muted)' }}>{(p * 100).toFixed(1)}%</td>
+                      <td style={td}>{ahCell(res, 'home')}</td>
+                      <td style={td}>{ahCell(res, 'away')}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── SECTION 2: TOTAL GOALS ── */}
+      {model && tg && (
+        <div style={cardStyle}>
+          <span style={SH}>大/小球 · Total Goals (Besar / Kecil)</span>
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14, alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Goals line</label>
+              <select value={tgLine} onChange={e => setTgLine(parseFloat(e.target.value))} style={sel}>
+                {TG_LINES.map(l => <option key={l.val} value={l.val}>{l.label}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Besar (Over) modifier +</label>
+              <input type="number" inputMode="numeric" min="-50" max="50" step="1" value={tgMod}
+                onChange={e => setTgMod(parseInt(e.target.value, 10) || 0)}
+                style={{ width: 80, fontSize: 13, minHeight: 34, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
+            </div>
+          </div>
+
+          {/* Market label */}
+          <p style={{ fontSize: 14, fontFamily: 'var(--font-display)', color: 'var(--color-text-secondary)', marginBottom: 12 }}>
+            <strong>B.{tgLineObj.label}</strong>
+            {tgMod !== 0 && <span style={{ marginLeft: 3, color: 'var(--color-info)', fontWeight: 700 }}>+{tgMod}</span>}
+            <span style={{ margin: '0 8px', color: 'var(--color-text-muted)' }}>/</span>
+            <strong>K.{tgLineObj.label}</strong>
+          </p>
+
+          {/* Bet cards */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+            {betCard(`Besar · Over ${tgLineObj.label}`, tg.pOver, tg.pPush, overDec, tgOverStake)}
+            {betCard(`Kecil · Under ${tgLineObj.label}`, tg.pUnder, tg.pPush, underDec, tgUnderStake)}
+          </div>
+
+          {/* Result grid */}
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 6 }}>RESULT GRID</p>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 260 }}>
+              <thead>
+                <tr>
+                  <th style={th}>Total Goals</th>
+                  <th style={{ ...th, color: 'var(--color-accent)' }}>Besar (Over)</th>
+                  <th style={{ ...th, color: 'var(--color-info)' }}>Kecil (Under)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[0, 1, 2, 3, 4, 5, 6].map(n => (
+                  <tr key={n}>
+                    <td style={{ ...td, fontWeight: 700, color: 'var(--color-text-primary)' }}>{n === 6 ? '6+' : n}</td>
+                    <td style={td}>{tgCell(tgCoverResult(n, tgLine), 'over')}</td>
+                    <td style={td}>{tgCell(tgCoverResult(n, tgLine), 'under')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── SECTION 3: CORRECT SCORE ── */}
       {model && <CorrectScoreSection model={model} match={match} />}
     </div>
   )
@@ -2619,10 +2984,13 @@ export default function MatchAnalysis() {
         {/* TAB 3: Value */}
         {activeTab === 'value' && <TabValue stats={stats} match={match} odds={v1x2Odds} setOdds={setV1x2Odds} />}
 
-        {/* TAB 4: Portfolio */}
+        {/* TAB 4: Asian */}
+        {activeTab === 'asian' && <TabAsian stats={stats} match={match} />}
+
+        {/* TAB 5: Portfolio */}
         {activeTab === 'portfolio' && <TabPortfolio stats={stats} match={match} odds1x2={v1x2Odds} />}
 
-        {/* TAB 5: AI Roles */}
+        {/* TAB 6: AI Roles */}
         {activeTab === 'ai' && <TabAI match={match} isAdmin={isAdmin} />}
 
         {isAdmin && <SettlementPanel match={match} />}
