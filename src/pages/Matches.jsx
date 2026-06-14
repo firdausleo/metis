@@ -367,7 +367,7 @@ export default function Matches() {
     const matchIds = matches.map(m => m.id)
     supabase
       .from('team_stats')
-      .select('match_id, team_code, goals_scored_avg, goals_conceded_avg, form_string, xgf_per_game, xga_per_game, home_goals_avg, away_goals_avg, games_window')
+      .select('match_id, team_code, goals_scored_avg, goals_conceded_avg, form_string, xgf_per_game, xga_per_game, home_goals_avg, away_goals_avg, games_window, updated_at')
       .in('match_id', matchIds)
       .then(({ data }) => {
         if (data) setStatsMap(buildStatsMap(data, matches))
@@ -381,19 +381,87 @@ export default function Matches() {
   async function handleRefreshAll() {
     setRefreshingAll(true)
     setRefreshMsg('')
-    try {
-      // Use CF Worker sync-stats endpoint (MT03 — bulk scrape + Supabase write stays server-side)
-      const result = await syncAllStats()
-      const teams = result.teams_found || 0
-      const partial = result.partial_data?.length || 0
-      let msg = `Synced ${result.synced || 0} rows (${teams} teams)`
-      if (partial > 0) msg += ` · ${partial} partial`
-      if (result.scrape_error) msg += ` · ⚠ ${result.scrape_error}`
-      setRefreshMsg(msg)
-      refetch()
-    } catch (err) {
-      setRefreshMsg('Refresh failed: ' + err.message)
+
+    const SIX_HOURS  = 6  * 60 * 60 * 1000
+    const DAY_MS     = 24 * 60 * 60 * 1000
+    const now        = Date.now()
+
+    // Determine which matches need syncing
+    const needsSync = matches.filter(m => {
+      if (m.home_team === 'TBD' || m.away_team === 'TBD') return false
+
+      // Finished matches: skip if stats updated within last 24h
+      if (m.status === 'finished') {
+        const s = statsMap[m.id]
+        const oldestUpdate = Math.min(
+          s?.home?.updated_at ? new Date(s.home.updated_at).getTime() : 0,
+          s?.away?.updated_at ? new Date(s.away.updated_at).getTime() : 0,
+        )
+        return oldestUpdate === 0 || (now - oldestUpdate) > DAY_MS
+      }
+
+      // Upcoming/live: skip if BOTH teams have stats updated within 6h
+      const s = statsMap[m.id]
+      if (s?.home?.updated_at && s?.away?.updated_at) {
+        const oldest = Math.min(
+          new Date(s.home.updated_at).getTime(),
+          new Date(s.away.updated_at).getTime(),
+        )
+        if ((now - oldest) < SIX_HOURS) return false
+      }
+      return true
+    })
+
+    if (!needsSync.length) {
+      setRefreshMsg('All stats are fresh — nothing to sync')
+      setRefreshingAll(false)
+      return
     }
+
+    // Batch into groups of 3
+    const BATCH = 3
+    const batches = []
+    for (let i = 0; i < needsSync.length; i += BATCH) {
+      batches.push(needsSync.slice(i, i + BATCH).map(m => m.id))
+    }
+
+    const total      = needsSync.length
+    let synced       = 0
+    let failed       = 0
+    let failReasons  = []
+
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i]
+      const done  = i * BATCH
+      setRefreshMsg(`Syncing ${Math.min(done + BATCH, total)}/${total} matches…`)
+
+      try {
+        const result = await syncAllStats(batch)
+        if (result.ok === false) {
+          failed += batch.length
+          failReasons.push(result.error || 'unknown error')
+        } else {
+          synced += result.synced || 0
+        }
+      } catch (err) {
+        failed += batch.length
+        failReasons.push(err.message)
+      }
+
+      // Rate-limit pause between batches (skip after last)
+      if (i < batches.length - 1) {
+        await new Promise(r => setTimeout(r, 2000))
+      }
+    }
+
+    // Summary
+    let msg = `Synced ${synced} stat rows across ${total - failed}/${total} matches`
+    if (failed > 0) {
+      const reason = failReasons[0] || 'rate limit'
+      msg += ` · ${failed} failed (${reason})`
+    }
+    setRefreshMsg(msg)
+    refetch()
     setRefreshingAll(false)
   }
 
