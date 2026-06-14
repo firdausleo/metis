@@ -12,54 +12,67 @@ const EDGE_COLOURS = {
   red:   'var(--color-edge-red)',
 }
 
-const OUTCOME_LABELS = { home: 'Home Win', draw: 'Draw', away: 'Away Win' }
-
 function edgeColourStr(edge) {
   if (edge >= 0.05) return 'green'
   if (edge >= 0)    return 'amber'
   return 'red'
 }
 
+const STAGE_LABELS = {
+  group: 'Group', r32: 'R32', r16: 'R16', qf: 'QF', sf: 'SF', '3rd': '3rd', final: 'Final',
+}
+
 export default function BetRecommendations() {
   const navigate = useNavigate()
-  const [picks, setPicks] = useState(null)   // null = loading, [] = no picks
+  const [picks, setPicks] = useState(null)         // null = loading
+  const [noOdds, setNoOdds] = useState([])
   const [error, setError] = useState(null)
 
   useEffect(() => {
     async function load() {
       setError(null)
 
-      // 1. Fetch all upcoming matches that have odds entered
-      const { data: matches, error: mErr } = await supabase
-        .from('matches')
-        .select('*')
-        .neq('status', 'finished')
-        .not('odds_home', 'is', null)
-        .not('odds_draw', 'is', null)
-        .not('odds_away', 'is', null)
-        .order('match_date', { ascending: true })
+      // Run both fetches in parallel
+      const [withOddsRes, withoutOddsRes] = await Promise.all([
+        supabase
+          .from('matches')
+          .select('*')
+          .neq('status', 'finished')
+          .not('odds_home', 'is', null)
+          .not('odds_draw', 'is', null)
+          .not('odds_away', 'is', null)
+          .order('match_date', { ascending: true }),
+        supabase
+          .from('matches')
+          .select('id, home_team, away_team, home_team_code, away_team_code, match_date, group_name, stage, status')
+          .neq('status', 'finished')
+          .is('odds_home', null)
+          .neq('home_team', 'TBD')
+          .neq('away_team', 'TBD')
+          .order('match_date', { ascending: true })
+          .limit(15),
+      ])
 
-      if (mErr) { setError(mErr.message); return }
-      if (!matches?.length) { setPicks([]); return }
+      if (withOddsRes.error) { setError(withOddsRes.error.message); return }
 
-      // 2. Fetch team_stats for all teams in those matches in one query
-      const teamCodes = [...new Set(matches.flatMap(m => [m.home_team_code, m.away_team_code]))]
-      const matchIds  = matches.map(m => m.id)
+      setNoOdds(withoutOddsRes.data || [])
 
+      const matches = withOddsRes.data || []
+      if (!matches.length) { setPicks([]); return }
+
+      // Fetch team_stats for all matches with odds in one query
+      const matchIds = matches.map(m => m.id)
       const { data: allStats } = await supabase
         .from('team_stats')
         .select('*')
         .in('match_id', matchIds)
 
-      // Index stats: { match_id:team_code → row }
       const statsIndex = {}
       for (const s of (allStats || [])) {
         statsIndex[`${s.match_id}:${s.team_code}`] = s
       }
 
-      // 3. For each match, run model + edge for all 3 outcomes
       const candidates = []
-
       for (const m of matches) {
         const homeStats = statsIndex[`${m.id}:${m.home_team_code}`]
         const awayStats = statsIndex[`${m.id}:${m.away_team_code}`]
@@ -78,10 +91,9 @@ export default function BetRecommendations() {
           const oc = ev.outcomes[key]
           if (!oc?.ev) continue
           const edge = oc.ev.edge
-          if (edge <= 0) continue          // only positive edge bets
+          if (edge <= 0) continue
 
           const stake = calcStake(oc.modelProb, oc.odds)
-
           candidates.push({
             matchId:     m.id,
             matchDate:   m.match_date,
@@ -97,12 +109,10 @@ export default function BetRecommendations() {
             edgeDisplay: oc.ev.edgeDisplay,
             colour:      edgeColourStr(edge),
             stakePct:    stake.pct.toFixed(1),
-            stakeLabel:  stake.label,
           })
         }
       }
 
-      // 4. Sort by edge descending, keep top 5
       candidates.sort((a, b) => b.edgePct - a.edgePct)
       setPicks(candidates.slice(0, 5))
     }
@@ -120,56 +130,52 @@ export default function BetRecommendations() {
     borderBottom: '0.5px solid var(--color-border)', verticalAlign: 'middle',
   }
 
+  const loading = picks === null && !error
+
   return (
     <div style={{ padding: '24px 16px', maxWidth: 820, margin: '0 auto' }}>
 
-      {/* Header */}
-      <div style={{ marginBottom: 20 }}>
+      {/* ── Header ── */}
+      <div style={{ marginBottom: 16 }}>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 4 }}>
           💡 Top Picks
         </h1>
         <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-          Top 5 positive-edge 1X2 bets across all upcoming matches · ¼ Kelly · V2 model · MT22 vig-stripped
+          Top 5 positive-edge 1X2 bets · ¼ Kelly · V2 model · MT22 vig-stripped
         </p>
       </div>
 
-      {/* Loading */}
-      {picks === null && !error && (
+      {/* ── Activation note — always visible ── */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px',
+        background: 'var(--color-info-dim)', border: '0.5px solid var(--color-info)',
+        borderRadius: 'var(--radius-md)', marginBottom: 20,
+      }}>
+        <span style={{ fontSize: 16, flexShrink: 0 }}>ℹ️</span>
+        <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+          <strong style={{ color: 'var(--color-text-primary)' }}>How to activate:</strong> Open a match → go to the <strong>Value tab</strong> → enter bookmaker odds for Home / Draw / Away. Picks appear here automatically once odds are saved.
+        </p>
+      </div>
+
+      {/* ── Loading ── */}
+      {loading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {[1, 2, 3].map(i => (
-            <div key={i} className="skeleton" style={{ height: 60, borderRadius: 'var(--radius-md)' }} />
+            <div key={i} className="skeleton" style={{ height: 56, borderRadius: 'var(--radius-md)' }} />
           ))}
         </div>
       )}
 
-      {/* Error */}
+      {/* ── Error ── */}
       {error && (
         <div style={{ padding: 16, background: 'var(--color-danger-dim)', border: '0.5px solid var(--color-danger)', borderRadius: 'var(--radius-md)', color: 'var(--color-danger)', fontSize: 14 }}>
           {error}
         </div>
       )}
 
-      {/* No picks */}
-      {picks !== null && !error && picks.length === 0 && (
-        <div style={{ padding: 24, background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
-          <p style={{ fontSize: 15, color: 'var(--color-text-muted)', marginBottom: 8 }}>
-            No positive-edge bets found yet.
-          </p>
-          <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-            Enter odds in the Value tab on match analysis pages to enable scanning.
-          </p>
-          <button
-            onClick={() => navigate('/matches')}
-            style={{ marginTop: 14, minHeight: 40, padding: '0 20px', fontSize: 14, fontWeight: 700, borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--color-accent)', color: 'var(--color-bg)', cursor: 'pointer' }}
-          >
-            View Matches →
-          </button>
-        </div>
-      )}
-
-      {/* Picks table */}
-      {picks?.length > 0 && (
-        <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+      {/* ── Picks table ── */}
+      {!loading && !error && picks?.length > 0 && (
+        <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', marginBottom: 24 }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 560 }}>
               <thead>
@@ -193,13 +199,9 @@ export default function BetRecommendations() {
                         {i + 1}
                       </td>
                       <td style={{ ...td, textAlign: 'left', minWidth: 160 }}>
-                        <span style={{ fontSize: 13, color: 'var(--color-text-primary)', fontWeight: 600 }}>
-                          {getFlag(p.homeTeam)} {p.homeTeam}
-                        </span>
-                        <span style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 4px' }}>vs</span>
-                        <span style={{ fontSize: 13, color: 'var(--color-text-primary)', fontWeight: 600 }}>
-                          {getFlag(p.awayTeam)} {p.awayTeam}
-                        </span>
+                        <p style={{ fontSize: 13, color: 'var(--color-text-primary)', fontWeight: 600, margin: 0 }}>
+                          {getFlag(p.homeTeam)} {p.homeTeam} <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}>vs</span> {getFlag(p.awayTeam)} {p.awayTeam}
+                        </p>
                         <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
                           {toBeijingTime(p.matchDate, 'date')}
                         </p>
@@ -229,12 +231,7 @@ export default function BetRecommendations() {
                       <td style={{ ...td, textAlign: 'center' }}>
                         <button
                           onClick={() => navigate(`/matches/${p.matchId}`)}
-                          style={{
-                            minHeight: 32, padding: '0 12px', fontSize: 12, fontWeight: 700,
-                            borderRadius: 'var(--radius-sm)', border: 'none',
-                            background: 'var(--color-accent)', color: 'var(--color-bg)',
-                            cursor: 'pointer',
-                          }}
+                          style={{ minHeight: 32, padding: '0 12px', fontSize: 12, fontWeight: 700, borderRadius: 'var(--radius-sm)', border: 'none', background: 'var(--color-accent)', color: 'var(--color-bg)', cursor: 'pointer' }}
                         >
                           Analyze →
                         </button>
@@ -245,8 +242,6 @@ export default function BetRecommendations() {
               </tbody>
             </table>
           </div>
-
-          {/* Legend */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '10px 14px', borderTop: '0.5px solid var(--color-border)' }}>
             {[
               { c: EDGE_COLOURS.green, l: '≥ 5% — Recommend' },
@@ -257,8 +252,72 @@ export default function BetRecommendations() {
               </span>
             ))}
             <span style={{ fontSize: 11, color: 'var(--color-text-muted)', alignSelf: 'center' }}>
-              Kelly = ¼ Kelly × 5% cap (MT24) · V2 model · vig stripped (MT22)
+              ¼ Kelly · 5% cap (MT24) · V2 · vig stripped (MT22)
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── No picks yet ── */}
+      {!loading && !error && picks?.length === 0 && (
+        <div style={{ padding: '16px 18px', background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', marginBottom: 24 }}>
+          <p style={{ fontSize: 14, color: 'var(--color-text-muted)', fontWeight: 600, marginBottom: 4 }}>
+            No positive-edge bets found yet
+          </p>
+          <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+            Either no odds have been entered, or none of the entered odds show positive model edge. Enter odds for upcoming matches below.
+          </p>
+        </div>
+      )}
+
+      {/* ── Matches without odds — "Add odds" list ── */}
+      {!loading && !error && noOdds.length > 0 && (
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 10 }}>
+            UPCOMING MATCHES — ODDS NOT YET ENTERED
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {noOdds.map(m => {
+              const stageLabel = m.stage === 'group'
+                ? `Group ${m.group_name}`
+                : (STAGE_LABELS[m.stage] || m.stage)
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    gap: 12, padding: '10px 14px',
+                    background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)',
+                    borderRadius: 'var(--radius-md)',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 14, color: 'var(--color-text-primary)', fontWeight: 600, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {getFlag(m.home_team)} {m.home_team}
+                      <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', margin: '0 6px' }}>vs</span>
+                      {getFlag(m.away_team)} {m.away_team}
+                    </p>
+                    <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                      {stageLabel} · {toBeijingTime(m.match_date, 'date')} {toBeijingTime(m.match_date, 'time')} 北京
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => navigate(`/matches/${m.id}`)}
+                    style={{
+                      flexShrink: 0, minHeight: 34, padding: '0 12px',
+                      fontSize: 12, fontWeight: 700,
+                      borderRadius: 'var(--radius-sm)',
+                      border: '0.5px solid var(--color-accent-border)',
+                      background: 'var(--color-accent-dim)',
+                      color: 'var(--color-accent)',
+                      cursor: 'pointer', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Add odds →
+                  </button>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
