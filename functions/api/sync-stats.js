@@ -23,6 +23,19 @@
  *   xga_per_game        — overall xG against / match
  */
 
+/*
+ * MANUAL CLEANUP (run once if stale/null rows appear in team_stats):
+ *   node scripts/cleanTeamStats.js
+ *
+ * Or directly in Supabase SQL editor:
+ *   DELETE FROM team_stats
+ *   WHERE goals_scored_avg IS NULL AND xgf_per_game IS NULL AND games_window = 0;
+ *
+ *   DELETE FROM team_stats
+ *   WHERE team_code = 'SEN'
+ *     AND match_id = '3f78c57c-39dd-4331-b47c-0fed05f700b5';
+ */
+
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
 const WINDOW = 5
@@ -41,6 +54,8 @@ const NAME_MAP = {
   'DR Congo': 'Congo DR',
   'Czechia': 'Czech Republic',
 }
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -207,31 +222,55 @@ async function getFixtureXg(env, fixtureId, teamId, signal) {
 }
 
 // Sync all needed teams: map names→ids, fetch stats. Returns metisName→stats.
+// Sequential fetches with 2s inter-team delay and single retry on empty result.
+// Never stores null/empty in the output — uses { data_source:'insufficient_data' }
+// as the marker for "tried twice, API returned nothing".
 async function fetchApiFootball(env, teamNames, signal) {
   if (!env.API_FOOTBALL_KEY) throw new Error('API_FOOTBALL_KEY not set in worker env')
   const idMap = await buildTeamIdMap(env, signal)
   if (!Object.keys(idMap).length) throw new Error('API-Football returned no WC teams (check key/plan)')
   const out = {}
   const unresolved = []
+  let first = true
   for (const name of teamNames) {
     const id = resolveTeamId(idMap, name)
     if (!id) { unresolved.push(name); continue }
-    // Record the team even if stats are empty (pre-tournament: 0 fixtures) so
-    // it still maps; rolling-window guard handles partial data downstream.
+
+    // 2s delay between teams to respect API-Football rate limits
+    if (!first) await sleep(2000)
+    first = false
+
+    // First attempt
     let st = null
     try { st = await fetchTeamStats(env, id, signal) } catch { /* keep null */ }
-    out[name] = st || { games_window: 0 }
+
+    // If empty (rate-limited or pre-tournament) → wait 3s and retry once
+    if (!st || (st.games_window ?? 0) === 0) {
+      await sleep(3000)
+      st = null
+      try { st = await fetchTeamStats(env, id, signal) } catch { /* keep null */ }
+
+      if (!st || (st.games_window ?? 0) === 0) {
+        // After retry: mark explicitly so caller can write an informative row
+        out[name] = { games_window: 0, data_source: 'insufficient_data' }
+        continue
+      }
+    }
+
+    out[name] = st
   }
   if (unresolved.length) out.__unresolved = unresolved
   return out
 }
 
 // ── Stats row builder ──────────────────────────────────────────────────────
-// fetchTeamStats already computed the 5-game rolling window; map it to a
-// team_stats row. No window → empty row (algorithm guards on games_window).
+// Returns null when footyData is absent (caller must skip null rows — never
+// write empty rows to DB). Returns an insufficient_data marker row only when
+// the fetch was explicitly retried and the API still returned nothing.
 function buildStatsRow({ matchId, teamCode, footyData, existingRow }) {
-  const w = footyData?.games_window ? footyData : null
-  if (!w) {
+  // Explicit retry-exhausted marker: write a row so the UI can show "insufficient data"
+  // rather than silently showing nulls from a stale/missing row.
+  if (footyData?.data_source === 'insufficient_data') {
     return {
       team_code: teamCode, match_id: matchId, games_window: 0,
       goals_scored_avg: null, goals_conceded_avg: null,
@@ -239,9 +278,13 @@ function buildStatsRow({ matchId, teamCode, footyData, existingRow }) {
       form_string: existingRow?.form_string || null,
       wc_games_in_window: existingRow?.wc_games_in_window || 0,
       recent_fixtures: null,
-      data_source: 'not_found', updated_at: new Date().toISOString(),
+      data_source: 'insufficient_data', updated_at: new Date().toISOString(),
     }
   }
+
+  const w = footyData?.games_window ? footyData : null
+  if (!w) return null  // No data and no retry marker — caller skips this row entirely
+
   return {
     team_code: teamCode, match_id: matchId,
     games_window: w.games_window,
@@ -391,7 +434,7 @@ export async function onRequestPost(context) {
       // Continue — rows will be built with null stats
     }
 
-    // 5. Build rows for each team × match
+    // 5. Build rows for each team × match — skip null (no data, no retry marker)
     const rows = []
     const partial = []
 
@@ -400,9 +443,9 @@ export async function onRequestPost(context) {
         const fd = footyData[teamName] || null
         const existingRow = existingMap[`${m.id}:${code}`] || null
         const row = buildStatsRow({ matchId: m.id, teamCode: code, footyData: fd, existingRow })
-        rows.push(row)
+        if (row) rows.push(row)  // null = team unresolved or not in API — don't write
         if (!fd || (fd.games_window || 0) < WINDOW) {
-          partial.push({ team: teamName, games: fd?.games_window || 0 })
+          partial.push({ team: teamName, games: fd?.games_window || 0, source: fd?.data_source || 'missing' })
         }
       }
     }

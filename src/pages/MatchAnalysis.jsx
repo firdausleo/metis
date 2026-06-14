@@ -492,6 +492,32 @@ function StatsColumn({ match, teamStats, opponentStats, isHome, isAdmin, onRefre
         </p>
       </div>
 
+      {/* Data quality badge */}
+      {(() => {
+        const gw = teamStats?.games_window ?? 0
+        const src = teamStats?.data_source
+        let bg, color, label
+        if (!teamStats || gw === 0) {
+          bg = '#FCEBEB'; color = '#791F1F'
+          label = src === 'insufficient_data' ? 'Insufficient data' : 'No data'
+        } else if (gw >= 5) {
+          bg = '#EAF3DE'; color = '#27500A'; label = `${gw} games`
+        } else if (gw >= 3) {
+          bg = '#FAEEDA'; color = '#633806'; label = `${gw} games`
+        } else {
+          bg = '#FCEBEB'; color = '#791F1F'; label = `${gw} games (limited)`
+        }
+        return (
+          <span style={{
+            display: 'inline-block', fontSize: 11, fontWeight: 700,
+            padding: '2px 8px', borderRadius: 99,
+            background: bg, color, marginBottom: 10,
+          }}>
+            {label}
+          </span>
+        )
+      })()}
+
       {hasStats ? (
         <>
           {/* Core stat cards */}
@@ -3077,28 +3103,35 @@ export default function MatchAnalysis() {
               </div>
             )}
 
-            {isAdmin && (
-              <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
+              {lastUpdated && (
+                <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  {t('analysis.lastUpdated')} {new Date(lastUpdated).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false, month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+              {isAdmin && (
                 <button
                   onClick={handleRefreshStats}
                   disabled={refreshing}
                   style={{
                     minHeight: 36,
                     padding: '0 14px',
+                    display: 'flex', alignItems: 'center', gap: 6,
                     background: 'var(--color-accent-dim)',
                     border: '0.5px solid var(--color-accent-border)',
                     borderRadius: 'var(--radius-sm)',
                     color: 'var(--color-accent)',
                     fontFamily: 'var(--font-ui)',
-                    fontSize: 14,
+                    fontSize: 12,
                     cursor: refreshing ? 'not-allowed' : 'pointer',
                     opacity: refreshing ? 0.7 : 1,
                   }}
                 >
-                  {refreshing ? t('common.loading') : `↻ ${t('analysis.fetchStats')}`}
+                  <span style={{ display: 'inline-block', transition: 'transform 0.6s linear', transform: refreshing ? 'rotate(360deg)' : 'none' }}>↻</span>
+                  {refreshing ? t('common.loading') : t('analysis.fetchLatest')}
                 </button>
-              </div>
-            )}
+              )}
+            </div>
 
             {statsLoading ? (
               <div style={{ display: 'flex', gap: 12 }}>
