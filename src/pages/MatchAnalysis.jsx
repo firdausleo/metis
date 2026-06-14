@@ -284,7 +284,7 @@ function LambdaCalcBox({ teamStats, opponentStats, isHome, match }) {
   const attack_input  = bothHaveXgF ? blendInput(xgf, scored_avg) : scored_avg
   const def_input     = bothHaveXgA ? blendInput(opp_xga, opp_conc) : opp_conc
   const def_factor    = Math.min(Math.max(LEAGUE_AVG_GOALS / def_input, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
-  const venue_factor  = isHome ? getVenueAdvantage(match?.venue, match?.city) : 1.0
+  const venue_factor  = isHome ? getVenueAdvantage(match?.venue, match?.city, match?.home_team) : 1.0
   const venue_name    = isHome ? (match?.venue || match?.city || 'Neutral venue') : 'Away'
   const lambda        = attack_input * def_factor * venue_factor
 
@@ -470,7 +470,7 @@ function StatsColumn({ match, teamStats, opponentStats, isHome, isAdmin, onRefre
   const v1DefFactor = v1DefRaw != null
     ? Math.min(Math.max(LEAGUE_AVG_GOALS / v1DefRaw, DEF_FACTOR_MIN), DEF_FACTOR_MAX)
     : null
-  const v1VenueFactor = isHome ? getVenueAdvantage(match?.venue, match?.city) : 1.0
+  const v1VenueFactor = isHome ? getVenueAdvantage(match?.venue, match?.city, match?.home_team) : 1.0
   const v1Lambda = v1AttackInput != null && v1DefFactor != null
     ? v1AttackInput * v1DefFactor * v1VenueFactor
     : null
@@ -925,7 +925,7 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
     if (!stats?.home || !stats?.away) return null
     try {
       setModelError(null)
-      return runModels(stats.home, stats.away, { dixonColes, venueMult: getVenueAdvantage(match?.venue, match?.city) })
+      return runModels(stats.home, stats.away, { dixonColes, venue: match?.venue, city: match?.city, homeTeam: match?.home_team })
     } catch (err) {
       setModelError(err.message)
       return null
@@ -1391,7 +1391,7 @@ function TabValue({ stats, match, odds, setOdds }) {
   const { t } = useTranslation()
   const model = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
-    try { return runModels(stats.home, stats.away, { venueMult: getVenueAdvantage(match?.venue, match?.city) }) } catch { return null }
+    try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team }) } catch { return null }
   }, [stats, match])
 
   const [stake, setStake] = useState('')
@@ -1662,7 +1662,7 @@ function TabPortfolio({ stats, match, odds1x2 }) {
 
   const model = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
-    try { return runModels(stats.home, stats.away, { venueMult: getVenueAdvantage(match?.venue, match?.city) }) } catch { return null }
+    try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team }) } catch { return null }
   }, [stats, match])
 
   const anchor = model?.v1.totalGoals.find(l => l.anchor)

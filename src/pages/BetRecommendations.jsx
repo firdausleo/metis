@@ -80,7 +80,7 @@ export default function BetRecommendations() {
 
         let model
         try {
-          model = runModels(homeStats, awayStats, { venueMult: getVenueAdvantage(m.venue, m.city) })
+          model = runModels(homeStats, awayStats, { venue: m.venue, city: m.city, homeTeam: m.home_team })
         } catch { continue }
 
         const odds = { home: m.odds_home, draw: m.odds_draw, away: m.odds_away }

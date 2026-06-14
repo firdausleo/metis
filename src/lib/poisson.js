@@ -35,12 +35,13 @@ export const VENUE_ADVANTAGE = {
   NEUTRAL: 1.00,  // default — no venue edge
 }
 
-/** Venue multiplier from a match's venue/city text. Falls back to NEUTRAL. */
-export function getVenueAdvantage(venue = '', city = '') {
+/** Venue multiplier — only applies to the HOST NATION playing at their own stadium. */
+export function getVenueAdvantage(venue = '', city = '', homeTeam = '') {
   const v = `${venue} ${city}`.toLowerCase()
-  if (v.includes('azteca') || v.includes('mexico city')) return VENUE_ADVANTAGE.AZTECA
-  if (/canada|toronto|vancouver/.test(v))                 return VENUE_ADVANTAGE.CANADA
-  if (/usa|united states|new york|dallas|atlanta|houston|miami|seattle|los angeles|kansas|philadelphia|boston|san francisco/.test(v)) return VENUE_ADVANTAGE.USA
+  const t = homeTeam.toLowerCase().trim()
+  if ((v.includes('azteca') || v.includes('mexico city')) && t === 'mexico') return VENUE_ADVANTAGE.AZTECA
+  if (/canada|toronto|vancouver/.test(v) && t === 'canada')                  return VENUE_ADVANTAGE.CANADA
+  if (/usa|united states|new york|dallas|atlanta|houston|miami|seattle|los angeles|kansas|philadelphia|boston|san francisco/.test(v) && t === 'usa') return VENUE_ADVANTAGE.USA
   return VENUE_ADVANTAGE.NEUTRAL
 }
 
@@ -327,7 +328,8 @@ export function calcTotalGoals(lambdaHome, lambdaAway) {
  *
  * Throws on MT06 violations (caller must catch).
  */
-export function runModels(homeStats, awayStats, { dixonColes = false, venueMult = VENUE_ADVANTAGE.NEUTRAL } = {}) {
+export function runModels(homeStats, awayStats, { dixonColes = false, venue = '', city = '', homeTeam = '' } = {}) {
+  const venueMult = getVenueAdvantage(venue, city, homeTeam)
   // V1
   const { lambdaHome: lhV1, lambdaAway: laV1 } = calcLambdasV1(homeStats, awayStats, venueMult)
   const matrixV1  = buildScoreMatrix(lhV1, laV1, dixonColes)

@@ -165,11 +165,12 @@ function calcTotalGoals(lh, la) {
   })
 }
 
-function getVenueMult(venue = '', city = '') {
+function getVenueMult(venue = '', city = '', homeTeam = '') {
   const v = `${venue} ${city}`.toLowerCase()
-  if (v.includes('azteca') || v.includes('mexico city')) return 1.35
-  if (/canada|toronto|vancouver/.test(v)) return 1.05
-  if (/usa|united states|new york|dallas|atlanta|houston|miami|seattle|los angeles|kansas|philadelphia|boston|san francisco/.test(v)) return 1.10
+  const t = homeTeam.toLowerCase().trim()
+  if ((v.includes('azteca') || v.includes('mexico city')) && t === 'mexico') return 1.35
+  if (/canada|toronto|vancouver/.test(v) && t === 'canada') return 1.05
+  if (/usa|united states|new york|dallas|atlanta|houston|miami|seattle|los angeles|kansas|philadelphia|boston|san francisco/.test(v) && t === 'usa') return 1.10
   return 1.0
 }
 
@@ -178,7 +179,7 @@ function getVenueMult(venue = '', city = '') {
 async function trackModelPredictions(env, matchId, h, a) {
   // Fetch match for team codes + venue
   const matchRes = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/matches?id=eq.${matchId}&select=home_team_code,away_team_code,venue,city`,
+    `${env.SUPABASE_URL}/rest/v1/matches?id=eq.${matchId}&select=home_team,home_team_code,away_team_code,venue,city`,
     { headers: sb(env) }
   )
   if (!matchRes.ok) return 0
@@ -201,7 +202,7 @@ async function trackModelPredictions(env, matchId, h, a) {
 
   let v1, v2
   try {
-    const vMult = getVenueMult(match.venue, match.city)
+    const vMult = getVenueMult(match.venue, match.city, match.home_team)
     v1 = calcLambdasV1(hs, as_, vMult)
     v2 = calcLambdasV2(hs, as_, vMult)
   } catch { return 0 }
