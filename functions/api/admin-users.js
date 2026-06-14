@@ -212,5 +212,27 @@ export async function onRequestPost(context) {
     return jsonRes({ ok: true, codes: await res.json() })
   }
 
+  // ── update_knockout_match ─────────────────────────────────────────────────
+  if (action === 'update_knockout_match') {
+    const { matchId, homeTeam, awayTeam, homeTeamCode, awayTeamCode } = body
+    if (!matchId || !homeTeam || !awayTeam) return jsonRes({ error: 'matchId, homeTeam, awayTeam required' }, 400)
+    const res = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/matches?id=eq.${matchId}`,
+      {
+        method: 'PATCH',
+        headers: { ...sbHeaders(env), 'Prefer': 'return=minimal' },
+        body: JSON.stringify({
+          home_team: homeTeam,
+          away_team: awayTeam,
+          home_team_code: homeTeamCode || homeTeam.slice(0, 3).toUpperCase(),
+          away_team_code: awayTeamCode || awayTeam.slice(0, 3).toUpperCase(),
+          status: 'upcoming',
+        }),
+      }
+    )
+    if (!res.ok) return jsonRes({ error: 'Failed to update knockout match' }, 500)
+    return jsonRes({ ok: true })
+  }
+
   return jsonRes({ error: `Unknown action: ${action}` }, 400)
 }

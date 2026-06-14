@@ -156,21 +156,36 @@ export default function NavBar() {
             ⚙️
           </button>
 
-          {/* Admin link — admin tier only */}
+          {/* Admin links — admin tier only */}
           {isAdmin && (
-            <button
-              onClick={() => navigate('/admin/users')}
-              style={{
-                border: 'none', cursor: 'pointer', padding: '5px 12px',
-                borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-ui)',
-                fontSize: 13, fontWeight: 700, minHeight: 'var(--touch-target)',
-                color: isActive('/admin', location.pathname) ? '#000' : 'var(--color-accent)',
-                background: isActive('/admin', location.pathname) ? 'var(--color-accent)' : 'var(--color-accent-dim)',
-                transition: 'background 0.15s, color 0.15s',
-              }}
-            >
-              {t('nav.admin')}
-            </button>
+            <>
+              <button
+                onClick={() => navigate('/admin/users')}
+                style={{
+                  border: 'none', cursor: 'pointer', padding: '5px 12px',
+                  borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-ui)',
+                  fontSize: 13, fontWeight: 700, minHeight: 'var(--touch-target)',
+                  color: location.pathname === '/admin/users' ? '#000' : 'var(--color-accent)',
+                  background: location.pathname === '/admin/users' ? 'var(--color-accent)' : 'var(--color-accent-dim)',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+              >
+                {t('nav.admin')}
+              </button>
+              <button
+                onClick={() => navigate('/admin/knockout')}
+                style={{
+                  border: 'none', cursor: 'pointer', padding: '5px 12px',
+                  borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-ui)',
+                  fontSize: 13, fontWeight: 700, minHeight: 'var(--touch-target)',
+                  color: location.pathname === '/admin/knockout' ? '#000' : 'var(--color-accent)',
+                  background: location.pathname === '/admin/knockout' ? 'var(--color-accent)' : 'var(--color-accent-dim)',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+              >
+                Knockout
+              </button>
+            </>
           )}
 
           {user && (
@@ -234,13 +249,32 @@ export default function NavBar() {
               alignItems: 'center', justifyContent: 'center',
               gap: 3, padding: '10px 0',
               background: 'none', border: 'none', cursor: 'pointer',
-              color: isActive('/admin', location.pathname) ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
+              color: location.pathname === '/admin/users' ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
               minHeight: 'var(--touch-target)',
             }}
           >
             <span style={{ fontSize: 20, lineHeight: 1 }}>🔧</span>
-            <span style={{ fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: isActive('/admin', location.pathname) ? 600 : 400 }}>
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: location.pathname === '/admin/users' ? 600 : 400 }}>
               {t('nav.admin')}
+            </span>
+          </button>
+        )}
+        {/* Knockout tab — mobile, admin only */}
+        {isAdmin && (
+          <button
+            onClick={() => navigate('/admin/knockout')}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              gap: 3, padding: '10px 0',
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: location.pathname === '/admin/knockout' ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
+              minHeight: 'var(--touch-target)',
+            }}
+          >
+            <span style={{ fontSize: 20, lineHeight: 1 }}>🏆</span>
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: location.pathname === '/admin/knockout' ? 600 : 400 }}>
+              淘汰赛
             </span>
           </button>
         )}

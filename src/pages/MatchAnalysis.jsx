@@ -1799,6 +1799,192 @@ function topScorelines(matrix, n = 8) {
   return rows.sort((a, b) => b.p - a.p).slice(0, n)
 }
 
+// ── Chinese Handicap 1X2 (让球胜平负) ──────────────────────────────────────
+
+function ChineseHandicapSection({ model, homeTeam, awayTeam }) {
+  const CH_LINES = [-3, -2, -1, 0, 1, 2, 3]
+  const [line, setLine] = useState(-1)
+  const [oddsH, setOddsH] = useState('')
+  const [oddsD, setOddsD] = useState('')
+  const [oddsA, setOddsA] = useState('')
+
+  const cardStyle = { background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
+  const SH = { fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-accent)', textTransform: 'uppercase', borderBottom: '1px solid var(--color-accent)', paddingBottom: 6, marginBottom: 14, display: 'block' }
+  const inp = { textAlign: 'center', padding: '4px 6px', fontSize: 16, minHeight: 44, border: '0.5px solid var(--color-border)', borderRadius: 4, background: 'var(--color-bg)', color: 'var(--color-text-primary)', fontFamily: 'monospace' }
+
+  const matrix = model?.v2?.matrix
+  let probs = null
+  if (matrix) {
+    const N = matrix.length
+    let pH = 0, pD = 0, pA = 0
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const diff = i - j
+        if (diff > -line) pH += matrix[i][j]
+        else if (diff === -line) pD += matrix[i][j]
+        else pA += matrix[i][j]
+      }
+    }
+    probs = { pH, pD, pA }
+  }
+
+  function edge(p, oddsStr) {
+    const o = parseFloat(oddsStr)
+    if (!o || !p || o <= 1) return null
+    return (p - 1 / o) / (1 / o) * 100
+  }
+
+  function EdgeBadge({ e }) {
+    if (e == null) return null
+    const bg = e >= 5 ? '#EAF3DE' : e >= 0 ? '#FAEEDA' : '#FCEBEB'
+    const col = e >= 5 ? '#27500A' : e >= 0 ? '#633806' : '#791F1F'
+    return <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: bg, color: col }}>{e >= 0 ? '+' : ''}{e.toFixed(1)}%</span>
+  }
+
+  const lineLabel = line > 0 ? `主让${line}球` : line < 0 ? `客让${-line}球` : '平手'
+  const thS = { padding: '5px 8px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--color-text-muted)', background: 'var(--color-bg-elevated)', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap' }
+  const tdS = { padding: '8px 8px', fontSize: 12, borderBottom: '0.5px solid var(--color-border)' }
+
+  return (
+    <div style={cardStyle}>
+      <span style={SH}>让球胜平负 · Chinese Handicap 1X2</span>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
+        <label style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>让球盘口：</label>
+        <select value={line} onChange={e => setLine(Number(e.target.value))}
+          style={{ fontSize: 16, minHeight: 44, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)', cursor: 'pointer' }}>
+          {CH_LINES.map(l => <option key={l} value={l}>{l > 0 ? `主让${l}` : l < 0 ? `客让${-l}` : '平手 (0)'}</option>)}
+        </select>
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{lineLabel}</span>
+      </div>
+      {probs ? (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ ...thS, textAlign: 'left' }}>结果</th>
+                <th style={{ ...thS, textAlign: 'center' }}>V2概率</th>
+                <th style={{ ...thS, textAlign: 'center' }}>您的赔率</th>
+                <th style={{ ...thS, textAlign: 'center' }}>边际</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { label: `${homeTeam} 让球胜`, p: probs.pH, odds: oddsH, set: setOddsH },
+                { label: '让球平', p: probs.pD, odds: oddsD, set: setOddsD },
+                { label: `${awayTeam} 让球胜`, p: probs.pA, odds: oddsA, set: setOddsA },
+              ].map(row => (
+                <tr key={row.label}>
+                  <td style={tdS}>{row.label}</td>
+                  <td style={{ ...tdS, textAlign: 'center', fontFamily: 'monospace' }}>{(row.p * 100).toFixed(1)}%</td>
+                  <td style={{ ...tdS, textAlign: 'center' }}>
+                    <input type="number" step="0.01" min="1" max="99" value={row.odds} onChange={e => row.set(e.target.value)} placeholder="—"
+                      style={{ ...inp, width: 70 }} />
+                  </td>
+                  <td style={{ ...tdS, textAlign: 'center' }}><EdgeBadge e={edge(row.p, row.odds)} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>需要球队统计数据才能计算让球概率。</p>
+      )}
+    </div>
+  )
+}
+
+// ── Chinese Correct Score (比分固定奖金) ────────────────────────────────────
+
+function ChineseCorrectScoreSection({ model, homeTeam, awayTeam }) {
+  const [userOdds, setUserOdds] = useState({})
+  const [customH, setCustomH] = useState('')
+  const [customA, setCustomA] = useState('')
+
+  const cardStyle = { background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
+  const SH = { fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-accent)', textTransform: 'uppercase', borderBottom: '1px solid var(--color-accent)', paddingBottom: 6, marginBottom: 14, display: 'block' }
+  const inp = { textAlign: 'center', padding: '4px 6px', fontSize: 16, minHeight: 44, border: '0.5px solid var(--color-border)', borderRadius: 4, background: 'var(--color-bg)', color: 'var(--color-text-primary)', fontFamily: 'monospace' }
+
+  const matrix = model?.v2?.matrix
+  const top12 = matrix ? topScorelines(matrix, 12) : []
+
+  const cH = parseInt(customH), cA = parseInt(customA)
+  const hasCustom = customH !== '' && customA !== '' && !isNaN(cH) && !isNaN(cA)
+  const customInTop = top12.some(s => s.h === cH && s.a === cA)
+  const customP = hasCustom && matrix && cH < matrix.length && cA < (matrix[cH]?.length || 0) ? matrix[cH][cA] : null
+  const allLines = hasCustom && !customInTop ? [...top12, { h: cH, a: cA, p: customP || 0 }] : top12
+
+  function edge(p, oddsStr) {
+    const o = parseFloat(oddsStr)
+    if (!o || !p || o <= 1) return null
+    return (p - 1 / o) / (1 / o) * 100
+  }
+
+  function EdgeBadge({ e }) {
+    if (e == null) return null
+    const bg = e >= 5 ? '#EAF3DE' : e >= 0 ? '#FAEEDA' : '#FCEBEB'
+    const col = e >= 5 ? '#27500A' : e >= 0 ? '#633806' : '#791F1F'
+    return <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: bg, color: col }}>{e >= 0 ? '+' : ''}{e.toFixed(1)}%</span>
+  }
+
+  const thS = { padding: '5px 8px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--color-text-muted)', background: 'var(--color-bg-elevated)', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap' }
+  const tdS = { padding: '7px 8px', fontSize: 12, borderBottom: '0.5px solid var(--color-border)' }
+
+  if (allLines.length === 0) return null
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+        <span style={SH}>比分固定奖金 · Chinese Correct Score</span>
+        <button onClick={() => setUserOdds({})}
+          style={{ fontSize: 11, color: 'var(--color-text-muted)', background: 'none', border: '0.5px solid var(--color-border)', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', minHeight: 30, fontFamily: 'var(--font-ui)', marginBottom: 14 }}>
+          清空赔率
+        </button>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={{ ...thS, textAlign: 'left' }}>比分</th>
+              <th style={{ ...thS, textAlign: 'center' }}>V2概率</th>
+              <th style={{ ...thS, textAlign: 'center' }}>彩票赔率</th>
+              <th style={{ ...thS, textAlign: 'center' }}>边际</th>
+            </tr>
+          </thead>
+          <tbody>
+            {allLines.map(s => {
+              const key = `${s.h}:${s.a}`
+              const odds = userOdds[key] || ''
+              const e = edge(s.p, odds)
+              return (
+                <tr key={key} style={{ background: e != null && e >= 5 ? '#EAF3DE22' : undefined }}>
+                  <td style={{ ...tdS, fontFamily: 'monospace', fontWeight: e != null && e >= 5 ? 700 : 400 }}>
+                    {homeTeam.slice(0, 3)} {s.h}:{s.a} {awayTeam.slice(0, 3)}
+                  </td>
+                  <td style={{ ...tdS, textAlign: 'center', fontFamily: 'monospace' }}>{(s.p * 100).toFixed(2)}%</td>
+                  <td style={{ ...tdS, textAlign: 'center' }}>
+                    <input type="number" step="1" min="1" value={odds} onChange={ev => setUserOdds(p => ({ ...p, [key]: ev.target.value }))} placeholder="—"
+                      style={{ ...inp, width: 70 }} />
+                  </td>
+                  <td style={{ ...tdS, textAlign: 'center' }}><EdgeBadge e={e} /></td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>自定义比分：</span>
+        <input type="number" min="0" max="20" value={customH} onChange={e => setCustomH(e.target.value)} placeholder="主"
+          style={{ ...inp, width: 50 }} />
+        <span style={{ color: 'var(--color-text-muted)' }}>:</span>
+        <input type="number" min="0" max="20" value={customA} onChange={e => setCustomA(e.target.value)} placeholder="客"
+          style={{ ...inp, width: 50 }} />
+        {customP != null && <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>V2概率: {(customP * 100).toFixed(2)}%</span>}
+      </div>
+    </div>
+  )
+}
+
 // ── Asian tab ─────────────────────────────────────────────────────────────────
 
 function TabAsian({ stats, match }) {
@@ -1839,7 +2025,7 @@ function TabAsian({ stats, match }) {
 
   const cardStyle = { background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
   const SH  = { fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-accent)', textTransform: 'uppercase', borderBottom: '1px solid var(--color-accent)', paddingBottom: 6, marginBottom: 14, display: 'block' }
-  const sel = { fontSize: 13, minHeight: 34, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)', cursor: 'pointer' }
+  const sel = { fontSize: 16, minHeight: 44, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)', cursor: 'pointer' }
   const th  = { padding: '5px 8px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--color-text-muted)', background: 'var(--color-bg-elevated)', borderBottom: '0.5px solid var(--color-border)', textAlign: 'center', whiteSpace: 'nowrap' }
   const td  = { padding: '6px 8px', fontSize: 12, borderBottom: '0.5px solid var(--color-border)', textAlign: 'center' }
 
@@ -1922,7 +2108,7 @@ function TabAsian({ stats, match }) {
         <label style={{ fontSize: 12, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Budget ¥</label>
         <input type="number" inputMode="decimal" min="0" placeholder="10000" value={budget}
           onChange={e => setBudget(e.target.value)}
-          style={{ width: 110, fontSize: 13, minHeight: 30, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
+          style={{ width: 110, fontSize: 16, minHeight: 44, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
         {hasBgt && <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>¼ Kelly · 5% cap (MT24)</span>}
       </div>
 
@@ -1942,14 +2128,14 @@ function TabAsian({ stats, match }) {
               <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Modifier +</label>
               <input type="number" inputMode="numeric" min="-50" max="50" step="1" value={ahMod}
                 onChange={e => setAhMod(parseInt(e.target.value, 10) || 0)}
-                style={{ width: 80, fontSize: 13, minHeight: 34, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
+                style={{ width: 80, fontSize: 16, minHeight: 44, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Gets +</label>
               <div style={{ display: 'flex', gap: 4 }}>
                 {['home', 'away'].map(side => (
                   <button key={side} onClick={() => setAhModSide(side)} style={{
-                    minHeight: 34, padding: '0 12px', borderRadius: 'var(--radius-sm)',
+                    minHeight: 44, padding: '0 12px', borderRadius: 'var(--radius-sm)',
                     border: ahModSide === side ? '0.5px solid var(--color-accent-border)' : '0.5px solid var(--color-border)',
                     background: ahModSide === side ? 'var(--color-accent-dim)' : 'transparent',
                     color: ahModSide === side ? 'var(--color-accent)' : 'var(--color-text-secondary)',
@@ -2031,14 +2217,14 @@ function TabAsian({ stats, match }) {
               <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Modifier +</label>
               <input type="number" inputMode="numeric" min="-50" max="50" step="1" value={tgMod}
                 onChange={e => setTgMod(parseInt(e.target.value, 10) || 0)}
-                style={{ width: 80, fontSize: 13, minHeight: 34, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
+                style={{ width: 80, fontSize: 16, minHeight: 44, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Gets +</label>
               <div style={{ display: 'flex', gap: 4 }}>
                 {['over', 'under'].map(side => (
                   <button key={side} onClick={() => setTgModSide(side)} style={{
-                    minHeight: 34, padding: '0 12px', borderRadius: 'var(--radius-sm)',
+                    minHeight: 44, padding: '0 12px', borderRadius: 'var(--radius-sm)',
                     border: tgModSide === side ? '0.5px solid var(--color-accent-border)' : '0.5px solid var(--color-border)',
                     background: tgModSide === side ? 'var(--color-accent-dim)' : 'transparent',
                     color: tgModSide === side ? 'var(--color-accent)' : 'var(--color-text-secondary)',
@@ -2099,6 +2285,12 @@ function TabAsian({ stats, match }) {
 
       {/* ── SECTION 3: CORRECT SCORE ── */}
       {model && <CorrectScoreSection model={model} match={match} />}
+
+      {/* ── SECTION 4: 让球胜平负 CHINESE HANDICAP ── */}
+      {model && <ChineseHandicapSection model={model} homeTeam={homeTeam} awayTeam={awayTeam} />}
+
+      {/* ── SECTION 5: 比分固定奖金 CHINESE CORRECT SCORE ── */}
+      {model && <ChineseCorrectScoreSection model={model} homeTeam={homeTeam} awayTeam={awayTeam} />}
     </div>
   )
 }

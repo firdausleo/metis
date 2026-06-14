@@ -14,6 +14,7 @@ import TeamProfile from './pages/TeamProfile'
 import ModelPerformance from './pages/ModelPerformance'
 import Pending from './pages/Pending'
 import AdminUsers from './pages/AdminUsers'
+import AdminKnockout from './pages/AdminKnockout'
 import FAQ from './pages/FAQ'
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -67,6 +68,7 @@ export default function App() {
             <Route path="/model-performance" element={<ProtectedRoute><ModelPerformance /></ProtectedRoute>} />
             <Route path="/faq" element={<ProtectedRoute><FAQ /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute adminOnly><AdminUsers /></ProtectedRoute>} />
+            <Route path="/admin/knockout" element={<ProtectedRoute adminOnly><AdminKnockout /></ProtectedRoute>} />
           </Routes>
         </Layout>
       </UserProvider>

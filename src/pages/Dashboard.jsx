@@ -244,6 +244,7 @@ export default function Dashboard() {
   const [settledStats, setSettledStats] = useState({ pnl: 0, staked: 0, roi: 0 })
   const [accuracy, setAccuracy] = useState([])
   const [valuePicks, setValuePicks] = useState(null)
+  const [hasAnyOdds, setHasAnyOdds] = useState(false)
   const [noOddsMatches, setNoOddsMatches] = useState([])
   const [groupStandings, setGroupStandings] = useState({})
   const [standingsOpen, setStandingsOpen] = useState(false)
@@ -292,6 +293,7 @@ export default function Dashboard() {
       setAccuracy(accuracyRes.data || [])
 
       const oddsMatches = oddsRes.data || []
+      setHasAnyOdds(oddsMatches.length > 0)
       setNoOddsMatches(
         allM.filter(m => m.status !== 'finished' && !m.odds_home && m.home_team !== 'TBD' && m.away_team !== 'TBD').slice(0, 8)
       )
@@ -411,7 +413,11 @@ export default function Dashboard() {
           {valuePicks === null
             ? <SkeletonRow />
             : valuePicks.length === 0
-            ? <p style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Enter bookmaker odds in the Value tab to see value picks</p>
+            ? <p style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                {hasAnyOdds
+                  ? 'No value bets today — all current odds are below the 5% edge threshold'
+                  : 'Enter bookmaker odds in the Value tab to see value picks'}
+              </p>
             : valuePicks.slice(0, 3).map((p, i) => <ValuePickRow key={i} pick={p} onAnalyze={onAnalyze} />)
           }
         </div>
@@ -544,6 +550,10 @@ export default function Dashboard() {
               {valuePicks.map((p, i) => <ValuePickRow key={i} pick={p} onAnalyze={onAnalyze} />)}
               <button onClick={() => navigate('/recommendations')} style={{ ...GOLD_LINK, marginTop: 8 }}>View all tips →</button>
             </>
+          ) : hasAnyOdds ? (
+            <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+              No value bets found today. All current odds are below the 5% edge threshold.
+            </p>
           ) : (
             <div>
               <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 12 }}>
