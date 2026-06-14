@@ -1,17 +1,17 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '../context/UserContext'
-import { useTranslation } from '../lib/i18n'
+import { useTranslation, setLanguage } from '../lib/i18n'
 import { supabase } from '../lib/supabase'
 
 const DEFAULT_CREDITS = { standard: 20, power: 50, ultra: 9999, admin: 9999 }
 const TIERS = ['standard', 'power', 'ultra']
 const TIER_LABELS = { admin: 'Admin', ultra: 'Ultra', power: 'Power', standard: 'Standard' }
 const TIER_COLORS = {
-  admin:    { bg: 'rgba(201,168,76,0.15)',  color: 'var(--color-accent)' },
-  ultra:    { bg: 'rgba(128,0,200,0.12)',   color: '#8B00C8' },
-  power:    { bg: 'var(--color-blue-dim)',  color: 'var(--color-blue)' },
-  standard: { bg: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' },
+  admin:    { bg: '#C9A84C', color: '#633806' },
+  ultra:    { bg: '#EEEDFE', color: '#3C3489' },
+  power:    { bg: '#E6F1FB', color: '#0C447C' },
+  standard: { bg: '#F1EFE8', color: '#5F5E5A' },
 }
 
 function TierBadge({ tier }) {
@@ -33,10 +33,10 @@ function fmtDate(ts) {
 }
 
 function codeStatus(code) {
-  if (code.revoked) return { label: 'Revoked', color: 'var(--color-danger)' }
-  if (code.used_by) return { label: 'Used', color: 'var(--color-text-muted)' }
-  if (new Date(code.expires_at) < new Date()) return { label: 'Expired', color: 'var(--color-warning)' }
-  return { label: 'Active', color: 'var(--color-success)' }
+  if (code.revoked) return { label: 'Revoked', bg: '#FCEBEB', color: '#791F1F' }
+  if (code.used_by) return { label: 'Used',    bg: '#F1EFE8', color: '#5F5E5A' }
+  if (new Date(code.expires_at) < new Date()) return { label: 'Expired', bg: '#FCEBEB', color: '#791F1F' }
+  return { label: 'Unused', bg: '#EAF3DE', color: '#27500A' }
 }
 
 async function adminPost(action, body = {}) {
@@ -55,7 +55,7 @@ async function adminPost(action, body = {}) {
 export default function AdminUsers() {
   const { tier } = useUser()
   const navigate = useNavigate()
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
 
   const [users, setUsers] = useState([])
   const [codes, setCodes] = useState([])
@@ -145,7 +145,8 @@ export default function AdminUsers() {
   const filteredCodes = codes.filter(c => {
     if (codeFilter === 'unused')  return !c.used_by && !c.revoked && new Date(c.expires_at) >= new Date()
     if (codeFilter === 'used')    return !!c.used_by
-    if (codeFilter === 'expired') return !c.revoked && new Date(c.expires_at) < new Date()
+    if (codeFilter === 'expired') return !c.revoked && !c.used_by && new Date(c.expires_at) < new Date()
+    if (codeFilter === 'revoked') return !!c.revoked
     return true
   })
 
@@ -197,13 +198,56 @@ export default function AdminUsers() {
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 16px' }}>
-      <h1 style={{
-        fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800,
-        color: 'var(--color-text-primary)', marginBottom: 24,
+    <div>
+      {/* Navy page header */}
+      <div style={{
+        background: '#1A3A6C',
+        padding: '16px 24px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        {t('admin.title')}
-      </h1>
+        <h1 style={{
+          fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800,
+          color: '#fff', margin: 0,
+        }}>
+          {lang === 'en' ? 'User Management' : '用户管理'}
+        </h1>
+        <div style={{ display: 'flex', gap: 0 }}>
+          {[['en','EN'],['zh','中文']].map(([code, label], i) => (
+            <span key={code} style={{ display: 'flex', alignItems: 'center' }}>
+              {i > 0 && <span style={{ color: 'rgba(255,255,255,0.30)', fontSize: 13, margin: '0 4px' }}>|</span>}
+              <button
+                onClick={() => setLanguage(code)}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '4px 6px', fontSize: 13, fontWeight: 700,
+                  fontFamily: 'var(--font-ui)',
+                  color: lang === code ? 'var(--color-accent)' : 'rgba(255,255,255,0.40)',
+                }}
+              >
+                {label}
+              </button>
+            </span>
+          ))}
+        </div>
+      </div>
+
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 16px' }}>
+      {/* Amber banner for pending count */}
+      {pending.length > 0 && (
+        <div style={{
+          background: 'rgba(201,168,76,0.12)',
+          border: '1px solid var(--color-accent-border)',
+          borderRadius: 'var(--radius-sm)',
+          padding: '12px 16px',
+          marginBottom: 24,
+          fontSize: 14, fontWeight: 600,
+          color: '#633806',
+        }}>
+          {lang === 'en'
+            ? `You have ${pending.length} pending registration${pending.length > 1 ? 's' : ''} awaiting approval`
+            : `有${pending.length}个注册申请待审核`}
+        </div>
+      )}
 
       {/* ── SECTION A: Pending Approvals ──────────────────────── */}
       <div style={{
@@ -417,18 +461,23 @@ export default function AdminUsers() {
               {t('admin.generateCode')}
             </button>
             {generatedCode && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <code style={{
-                  background: 'var(--color-bg-card)', border: '1px solid var(--color-accent-border)',
-                  padding: '6px 12px', borderRadius: 'var(--radius-sm)',
-                  fontSize: 15, fontWeight: 700, color: 'var(--color-accent)',
-                  letterSpacing: '0.08em',
-                }}>
-                  {generatedCode}
-                </code>
-                <button onClick={() => handleCopy(generatedCode)} style={btnSm('var(--color-accent)')}>
-                  {copied ? t('admin.copied') : t('admin.copyCode')}
-                </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <code style={{
+                    background: 'var(--color-bg-card)', border: '1px solid var(--color-accent-border)',
+                    padding: '6px 12px', borderRadius: 'var(--radius-sm)',
+                    fontSize: 15, fontWeight: 700, color: 'var(--color-accent)',
+                    letterSpacing: '0.08em',
+                  }}>
+                    {generatedCode}
+                  </code>
+                  <button onClick={() => handleCopy(generatedCode)} style={btnSm('var(--color-accent)')}>
+                    {copied ? t('admin.copied') : t('admin.copyCode')}
+                  </button>
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                  {lang === 'en' ? 'Expires in 7 days' : '7天后过期'}
+                </span>
               </div>
             )}
           </div>
@@ -436,7 +485,7 @@ export default function AdminUsers() {
 
         {/* Filter tabs */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
-          {['all','unused','used','expired'].map(f => (
+          {['all','unused','used','expired','revoked'].map(f => (
             <button
               key={f}
               onClick={() => setCodeFilter(f)}
@@ -484,7 +533,14 @@ export default function AdminUsers() {
                     <td style={tdStyle}>{fmtDate(c.created_at)}</td>
                     <td style={tdStyle}>{fmtDate(c.expires_at)}</td>
                     <td style={tdStyle}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: status.color }}>{status.label}</span>
+                      <span style={{
+                        fontSize: 12, fontWeight: 600,
+                        color: status.color, background: status.bg,
+                        padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+                        display: 'inline-block',
+                      }}>
+                        {status.label}
+                      </span>
                     </td>
                     <td style={tdStyle}>
                       {!c.revoked && !c.used_by && (
@@ -511,6 +567,7 @@ export default function AdminUsers() {
           </table>
         </div>
       </div>
+    </div>
     </div>
   )
 }

@@ -46,24 +46,24 @@ function LanguageToggle({ lang, mobile = false }) {
 }
 
 function CreditPill({ credits, navigate, t }) {
-  let color = 'var(--color-success)'
-  if (credits <= 4) color = 'var(--color-danger)'
-  else if (credits <= 10) color = 'var(--color-warning)'
+  let bg = '#EAF3DE', color = '#27500A'
+  if (credits < 5)       { bg = '#FCEBEB'; color = '#791F1F' }
+  else if (credits <= 10) { bg = '#FAEEDA'; color = '#633806' }
 
   return (
     <button
-      onClick={() => navigate('/faq#credits')}
+      onClick={() => navigate('/faq')}
       title={t('credits.tooltip')}
       style={{
         display: 'flex', alignItems: 'center', gap: 4,
-        padding: '4px 10px', borderRadius: 12,
-        background: `${color}18`, border: `1px solid ${color}55`,
+        padding: '3px 10px', borderRadius: 99,
+        background: bg, border: 'none',
         color, cursor: 'pointer',
-        fontFamily: 'var(--font-ui)', fontSize: 12, fontWeight: 700,
-        whiteSpace: 'nowrap',
+        fontFamily: 'var(--font-ui)', fontSize: 12, fontWeight: 500,
+        whiteSpace: 'nowrap', minHeight: 44,
       }}
     >
-      ⚡ {credits} credits
+      ⚡ {credits}
     </button>
   )
 }

@@ -158,6 +158,7 @@ const translations = {
     'admin.codeFilter.unused':  'Unused',
     'admin.codeFilter.used':    'Used',
     'admin.codeFilter.expired': 'Expired',
+    'admin.codeFilter.revoked': 'Revoked',
     'faq.title': 'FAQ',
   },
   zh: {
@@ -317,6 +318,7 @@ const translations = {
     'admin.codeFilter.unused':  '未使用',
     'admin.codeFilter.used':    '已使用',
     'admin.codeFilter.expired': '已过期',
+    'admin.codeFilter.revoked': '已撤销',
     'faq.title': '常见问题',
   },
 }
