@@ -14,7 +14,6 @@
  * Auth: admin-only (verified via Supabase JWT → user id check)
  */
 
-const ADMIN_UUID      = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 const HAIKU_MODEL     = 'claude-haiku-4-5-20251001'
 const SONNET_MODEL    = 'claude-sonnet-4-6'
 const ANTHROPIC_API   = 'https://api.anthropic.com/v1/messages'
@@ -39,15 +38,41 @@ export async function onRequestOptions() {
 
 // ── Auth ──────────────────────────────────────────────────────
 
-async function verifyAdmin(request, env) {
+async function verifyUser(request, env) {
   const auth = request.headers.get('Authorization')
   if (!auth?.startsWith('Bearer ')) return null
+
   const res = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
     headers: { 'Authorization': auth, 'apikey': env.SUPABASE_ANON_KEY },
   })
   if (!res.ok) return null
   const user = await res.json()
-  return user?.id === ADMIN_UUID ? user : null
+  if (!user?.id) return null
+
+  const profileRes = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/user_profiles?id=eq.${user.id}&select=*&limit=1`,
+    { headers: sbHeaders(env) }
+  )
+  if (!profileRes.ok) return null
+  const profiles = await profileRes.json()
+  if (!profiles.length) return null
+
+  return { user, profile: profiles[0] }
+}
+
+async function deductCredits(env, userId, currentCredits) {
+  const res = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/user_profiles?id=eq.${userId}`,
+    {
+      method: 'PATCH',
+      headers: { ...sbHeaders(env), 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ credits_remaining: Math.max(0, currentCredits - 5) }),
+    }
+  )
+  if (!res.ok) {
+    const txt = await res.text()
+    throw new Error(`deductCredits failed: ${res.status} ${txt}`)
+  }
 }
 
 // ── Supabase helpers ──────────────────────────────────────────
@@ -329,9 +354,23 @@ export async function onRequestPost(context) {
   const timeout    = setTimeout(() => controller.abort(), 55_000)
 
   try {
-    // Auth check — admin only
-    const user = await verifyAdmin(request, env)
-    if (!user) return jsonRes({ error: 'Admin access required' }, 403)
+    // Auth check — any approved user
+    const authResult = await verifyUser(request, env)
+    if (!authResult) return jsonRes({ error: 'Unauthorized' }, 401)
+
+    const { profile } = authResult
+
+    // Status check
+    if (profile.status !== 'approved') return jsonRes({ error: 'ACCESS_DENIED' }, 403)
+
+    // Credit check and deduction BEFORE Claude calls (prevent race conditions)
+    if (profile.tier === 'power' || profile.tier === 'standard') {
+      if (profile.credits_remaining < 5) {
+        return jsonRes({ error: 'INSUFFICIENT_CREDITS', credits_remaining: profile.credits_remaining }, 402)
+      }
+      await deductCredits(env, profile.id, profile.credits_remaining)
+    }
+    // admin / ultra: unlimited — skip credit check
 
     // Parse body
     let body = {}

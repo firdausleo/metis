@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTranslation, setLanguage } from '../lib/i18n'
+import { supabase } from '../lib/supabase'
 
 export default function Auth() {
   const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -19,16 +21,43 @@ export default function Auth() {
     setError('')
     setSubmitting(true)
 
-    const { error: authError } = mode === 'login'
-      ? await signIn(email, password)
-      : await signUp(email, password)
+    if (mode === 'login') {
+      const { error: authError } = await signIn(email, password)
+      setSubmitting(false)
+      if (authError) {
+        setError(t('auth.error.invalid'))
+      } else {
+        navigate('/')
+      }
+      return
+    }
 
+    // Signup flow
+    const signupOptions = inviteCode.trim()
+      ? { data: { invite_code: inviteCode.trim().toUpperCase() } }
+      : {}
+
+    const { data, error: authError } = await signUp(email, password, signupOptions)
     setSubmitting(false)
 
     if (authError) {
-      setError(mode === 'login' ? t('auth.error.invalid') : t('auth.error.signup'))
+      setError(t('auth.error.signup'))
+      return
+    }
+
+    // Give the DB trigger a moment to run, then check profile status
+    await new Promise(r => setTimeout(r, 600))
+
+    const { data: profileData } = await supabase
+      .from('user_profiles')
+      .select('status')
+      .eq('id', data.user.id)
+      .single()
+
+    if (profileData?.status === 'pending') {
+      navigate('/pending', { replace: true })
     } else {
-      navigate('/')
+      navigate('/', { replace: true })
     }
   }
 
@@ -67,7 +96,7 @@ export default function Auth() {
           {['login', 'signup'].map(m => (
             <button
               key={m}
-              onClick={() => { setMode(m); setError('') }}
+              onClick={() => { setMode(m); setError(''); setInviteCode('') }}
               style={{
                 flex: 1,
                 padding: '8px 0',
@@ -102,7 +131,7 @@ export default function Auth() {
             />
           </div>
 
-          <div style={{ marginBottom: 20 }}>
+          <div style={{ marginBottom: mode === 'signup' ? 14 : 20 }}>
             <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: 'var(--color-text-secondary)' }}>
               {t('auth.password')}
             </label>
@@ -115,6 +144,23 @@ export default function Auth() {
               style={inputStyle}
             />
           </div>
+
+          {/* Invite code — signup only */}
+          {mode === 'signup' && (
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontSize: 13, color: 'var(--color-text-secondary)' }}>
+                {t('auth.inviteCode')}
+              </label>
+              <input
+                type="text"
+                value={inviteCode}
+                onChange={e => setInviteCode(e.target.value.toUpperCase())}
+                placeholder={t('auth.inviteCodePlaceholder')}
+                maxLength={10}
+                style={{ ...inputStyle, letterSpacing: '0.08em', fontWeight: 500 }}
+              />
+            </div>
+          )}
 
           {error && (
             <div style={{ background: 'var(--color-danger-dim)', border: '1px solid var(--color-danger)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', marginBottom: 16 }}>

@@ -22,8 +22,8 @@ export function useAuth() {
     return supabase.auth.signInWithPassword({ email, password })
   }
 
-  async function signUp(email, password) {
-    return supabase.auth.signUp({ email, password })
+  async function signUp(email, password, options = {}) {
+    return supabase.auth.signUp({ email, password, options })
   }
 
   async function signOut() {

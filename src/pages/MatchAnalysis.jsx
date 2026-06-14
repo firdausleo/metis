@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useUser } from '../context/UserContext'
 import { useTeamStats } from '../hooks/useTeamStats'
 import { useTranslation } from '../lib/i18n'
 import { getFlag } from '../lib/teamFlags'
@@ -2590,7 +2591,7 @@ function CompositeScore({ output }) {
   )
 }
 
-function TabAI({ match, isAdmin }) {
+function TabAI({ match, isAdmin, onAnalysisComplete }) {
   const [roleOutputs, setRoleOutputs]   = useState([])   // { role_id, output_json, confidence }[]
   const [aiRoles, setAiRoles]           = useState([])   // ai_roles rows
   const [loading, setLoading]           = useState(true)
@@ -2648,6 +2649,9 @@ function TabAI({ match, isAdmin }) {
         .select('*')
         .eq('match_id', match.id)
       if (fresh) setRoleOutputs(fresh)
+
+      // Refresh user profile to update credit display
+      onAnalysisComplete?.()
 
     } catch (err) {
       setError(err.message)
@@ -2912,6 +2916,9 @@ export default function MatchAnalysis() {
   const [aiComposite, setAiComposite] = useState(null)
 
   const isAdmin = user?.id === ADMIN_UUID
+  const { profile, refreshProfile } = useUser()
+  // All approved users can run AI analysis (credit check enforced in worker)
+  const canRunAI = profile?.status === 'approved'
 
   // Fetch Role 10 (composite verdict) for sidebar Final Signal
   useEffect(() => {
@@ -3172,7 +3179,7 @@ export default function MatchAnalysis() {
         {activeTab === 'portfolio' && <TabPortfolio stats={stats} match={match} odds1x2={v1x2Odds} />}
 
         {/* TAB 6: AI Roles */}
-        {activeTab === 'ai' && <TabAI match={match} isAdmin={isAdmin} />}
+        {activeTab === 'ai' && <TabAI match={match} isAdmin={canRunAI} onAnalysisComplete={refreshProfile} />}
 
         {isAdmin && <SettlementPanel match={match} />}
         </div>
