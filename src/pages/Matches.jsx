@@ -154,15 +154,18 @@ function GroupStandings({ matches }) {
   )
 }
 
-// Returns YYYY-MM-DD (UTC) for grouping by day
+// Returns YYYY-MM-DD in Beijing time (UTC+8) for grouping by local day
 function dateKey(dateStr) {
-  return new Date(dateStr).toISOString().slice(0, 10)
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date(dateStr))
 }
 
 function dayLabel(key) {
   const [y, m, d] = key.split('-').map(Number)
   const date = new Date(Date.UTC(y, m - 1, d))
-  return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }).toUpperCase()
+  const day = String(d).padStart(2, '0')
+  const month = date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }).toUpperCase()
+  return `${weekday} ${day} ${month} ${y}`
 }
 
 function FlatMatchList({ matches, onAnalyze, statsMap }) {
@@ -186,9 +189,13 @@ function FlatMatchList({ matches, onAnalyze, statsMap }) {
     <div>
       {days.map(day => (
         <div key={day} style={{ marginBottom: 20 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 8 }}>
-            {dayLabel(day).toUpperCase()}
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--color-accent-border)' }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-accent)', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
+              {dayLabel(day)}
+            </span>
+            <div style={{ flex: 1, height: 1, background: 'var(--color-accent-border)' }} />
+          </div>
           {byDay[day].map(m => {
             const s = statsMap[m.id] || {}
             return (
