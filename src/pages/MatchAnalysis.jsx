@@ -1771,24 +1771,26 @@ function TabAsian({ stats, match }) {
     try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team }) } catch { return null }
   }, [stats, match])
 
-  const [ahLine, setAhLine] = useState(-0.5)
-  const [ahMod,  setAhMod]  = useState(0)
-  const [tgLine, setTgLine] = useState(2.5)
-  const [tgMod,  setTgMod]  = useState(0)
+  const [ahLine,    setAhLine]    = useState(-0.5)
+  const [ahMod,     setAhMod]     = useState(0)
+  const [ahModSide, setAhModSide] = useState('away')   // 'home' | 'away'
+  const [tgLine,    setTgLine]    = useState(2.5)
+  const [tgMod,     setTgMod]     = useState(0)
+  const [tgModSide, setTgModSide] = useState('over')   // 'over' | 'under'
   const [budget, setBudget] = useState('')
 
   const bgt    = parseFloat(budget)
   const hasBgt = bgt > 0
 
   const ah       = useMemo(() => model ? calcAHProbs(model.v2.matrix, ahLine) : null, [model, ahLine])
-  const homeDec  = ahCompanion(ahMod)
-  const awayDec  = ahModToDecimal(ahMod)
+  const homeDec  = ahModSide === 'home' ? ahModToDecimal(ahMod) : ahCompanion(ahMod)
+  const awayDec  = ahModSide === 'away' ? ahModToDecimal(ahMod) : ahCompanion(ahMod)
   const ahHomeStake = (hasBgt && ah) ? calcStake(ah.pHome, homeDec) : null
   const ahAwayStake = (hasBgt && ah) ? calcStake(ah.pAway, awayDec) : null
 
   const tg       = useMemo(() => model ? calcTGProbs(model.v2.matrix, tgLine) : null, [model, tgLine])
-  const overDec  = ahModToDecimal(tgMod)
-  const underDec = ahCompanion(tgMod)
+  const overDec  = tgModSide === 'over'  ? ahModToDecimal(tgMod) : ahCompanion(tgMod)
+  const underDec = tgModSide === 'under' ? ahModToDecimal(tgMod) : ahCompanion(tgMod)
   const tgOverStake  = (hasBgt && tg) ? calcStake(tg.pOver,  overDec)  : null
   const tgUnderStake = (hasBgt && tg) ? calcStake(tg.pUnder, underDec) : null
 
@@ -1901,26 +1903,50 @@ function TabAsian({ stats, match }) {
               </select>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Away modifier +</label>
+              <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Modifier +</label>
               <input type="number" inputMode="numeric" min="-50" max="50" step="1" value={ahMod}
                 onChange={e => setAhMod(parseInt(e.target.value, 10) || 0)}
                 style={{ width: 80, fontSize: 13, minHeight: 34, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Gets +</label>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {['home', 'away'].map(side => (
+                  <button key={side} onClick={() => setAhModSide(side)} style={{
+                    minHeight: 34, padding: '0 12px', borderRadius: 'var(--radius-sm)',
+                    border: ahModSide === side ? '0.5px solid var(--color-accent-border)' : '0.5px solid var(--color-border)',
+                    background: ahModSide === side ? 'var(--color-accent-dim)' : 'transparent',
+                    color: ahModSide === side ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                    fontSize: 12, fontWeight: ahModSide === side ? 600 : 400, cursor: 'pointer', fontFamily: 'var(--font-ui)',
+                  }}>
+                    {side === 'home' ? 'Home gets +' : 'Away gets +'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Market label */}
-          <p style={{ fontSize: 14, fontFamily: 'var(--font-display)', color: 'var(--color-text-secondary)', marginBottom: 12 }}>
+          <p style={{ fontSize: 14, fontFamily: 'var(--font-display)', color: 'var(--color-text-secondary)', marginBottom: 4 }}>
             <strong style={{ color: 'var(--color-text-primary)' }}>{homeTeam}</strong>
-            {' '}<span style={{ color: 'var(--color-accent)', fontWeight: 700 }}>{ahLineObj.label}</span>{' '}
+            {' '}<span style={{ color: 'var(--color-accent)', fontWeight: 700 }}>{ahLineObj.label}</span>
+            {ahModSide === 'home' && ahMod !== 0 && <span style={{ color: 'var(--color-accent)', fontWeight: 700 }}>+{ahMod}</span>}
+            {' '}
             <strong style={{ color: 'var(--color-text-primary)' }}>{awayTeam}</strong>
             {' '}<span style={{ color: 'var(--color-info)' }}>{awayAhObj.label}</span>
-            {ahMod !== 0 && <span style={{ marginLeft: 6, color: 'var(--color-info)', fontWeight: 700 }}>+{ahMod}</span>}
+            {ahModSide === 'away' && ahMod !== 0 && <span style={{ color: 'var(--color-info)', fontWeight: 700 }}>+{ahMod}</span>}
+          </p>
+          <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 12, fontStyle: 'italic' }}>
+            Your bookmaker shows:{' '}
+            {ahModSide === 'home'
+              ? `${homeTeam} ${ahLineObj.label}${ahMod !== 0 ? '+'+ahMod : ''} ${awayTeam} ${awayAhObj.label}`
+              : `${homeTeam} ${ahLineObj.label} ${awayTeam} ${awayAhObj.label}${ahMod !== 0 ? '+'+ahMod : ''}`}
           </p>
 
           {/* Bet cards */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-            {betCard(`Bet HOME · ${homeTeam} ${ahLineObj.label}`, ah.pHome, ah.pPush, homeDec, ahHomeStake)}
-            {betCard(`Bet AWAY · ${awayTeam} ${awayAhObj.label}${ahMod !== 0 ? ' +' + ahMod : ''}`, ah.pAway, ah.pPush, awayDec, ahAwayStake)}
+            {betCard(`Bet HOME · ${homeTeam} ${ahLineObj.label}${ahModSide === 'home' && ahMod !== 0 ? '+'+ahMod : ''}`, ah.pHome, ah.pPush, homeDec, ahHomeStake)}
+            {betCard(`Bet AWAY · ${awayTeam} ${awayAhObj.label}${ahModSide === 'away' && ahMod !== 0 ? '+'+ahMod : ''}`, ah.pAway, ah.pPush, awayDec, ahAwayStake)}
           </div>
 
           {/* Simulator */}
@@ -1966,19 +1992,42 @@ function TabAsian({ stats, match }) {
               </select>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Besar (Over) modifier +</label>
+              <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Modifier +</label>
               <input type="number" inputMode="numeric" min="-50" max="50" step="1" value={tgMod}
                 onChange={e => setTgMod(parseInt(e.target.value, 10) || 0)}
                 style={{ width: 80, fontSize: 13, minHeight: 34, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }} />
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Gets +</label>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {['over', 'under'].map(side => (
+                  <button key={side} onClick={() => setTgModSide(side)} style={{
+                    minHeight: 34, padding: '0 12px', borderRadius: 'var(--radius-sm)',
+                    border: tgModSide === side ? '0.5px solid var(--color-accent-border)' : '0.5px solid var(--color-border)',
+                    background: tgModSide === side ? 'var(--color-accent-dim)' : 'transparent',
+                    color: tgModSide === side ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                    fontSize: 12, fontWeight: tgModSide === side ? 600 : 400, cursor: 'pointer', fontFamily: 'var(--font-ui)',
+                  }}>
+                    {side === 'over' ? 'Besar gets +' : 'Kecil gets +'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Market label */}
-          <p style={{ fontSize: 14, fontFamily: 'var(--font-display)', color: 'var(--color-text-secondary)', marginBottom: 12 }}>
+          <p style={{ fontSize: 14, fontFamily: 'var(--font-display)', color: 'var(--color-text-secondary)', marginBottom: 4 }}>
             <strong>B.{tgLineObj.label}</strong>
-            {tgMod !== 0 && <span style={{ marginLeft: 3, color: 'var(--color-info)', fontWeight: 700 }}>+{tgMod}</span>}
+            {tgModSide === 'over' && tgMod !== 0 && <span style={{ color: 'var(--color-accent)', fontWeight: 700 }}>+{tgMod}</span>}
             <span style={{ margin: '0 8px', color: 'var(--color-text-muted)' }}>/</span>
             <strong>K.{tgLineObj.label}</strong>
+            {tgModSide === 'under' && tgMod !== 0 && <span style={{ color: 'var(--color-info)', fontWeight: 700 }}>+{tgMod}</span>}
+          </p>
+          <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 12, fontStyle: 'italic' }}>
+            Your bookmaker shows:{' '}
+            {tgModSide === 'over'
+              ? `B.${tgLineObj.label}${tgMod !== 0 ? '+'+tgMod : ''} / K.${tgLineObj.label}`
+              : `B.${tgLineObj.label} / K.${tgLineObj.label}${tgMod !== 0 ? '+'+tgMod : ''}`}
           </p>
 
           {/* Bet cards */}
