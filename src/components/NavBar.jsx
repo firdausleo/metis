@@ -4,9 +4,9 @@ import { useTranslation, setLanguage } from '../lib/i18n'
 
 const NAV_ITEMS = [
   { key: 'nav.dashboard', icon: '📊', path: '/' },
-  { key: 'nav.matches', icon: '⚽', path: '/matches' },
-  { key: 'nav.picks', icon: '💡', path: '/recommendations' },
-  { key: 'nav.myBets', icon: '🎯', path: '/my-bets' },
+  { key: 'nav.matches',   icon: '⚽', path: '/matches' },
+  { key: 'nav.myBets',   icon: '🎯', path: '/my-bets' },
+  { key: 'nav.picks',    icon: '💡', path: '/recommendations' },
   { key: 'nav.settings', icon: '⚙️', path: '/settings' },
 ]
 
@@ -76,7 +76,7 @@ export default function NavBar() {
         </span>
 
         <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-          {NAV_ITEMS.slice(0, 3).map(item => (
+          {NAV_ITEMS.slice(0, 4).map(item => (
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
