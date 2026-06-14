@@ -8,15 +8,15 @@ const FAQ_DATA = {
       items: [
         {
           q: 'How does access work?',
-          a: 'Two ways. Invite code: receive a code from Leo, enter it when registering — you get immediate access with your tier pre-assigned. Self-register: create an account without a code and wait for Leo\'s approval. Your tier is assigned by Leo when approved.',
+          a: 'Two ways. Invite code: receive a code from the admin, enter it when registering — you get immediate access with your tier pre-assigned. Self-register: create an account without a code and wait for the admin\'s approval. Your tier is assigned by the admin when approved.',
         },
         {
           q: 'I registered but can\'t access the app — what happened?',
-          a: 'Your account is pending approval. Leo reviews new registrations and will approve and assign your tier. You will get an email notification. If waiting more than 24 hours, contact Leo directly.',
+          a: 'Your account is pending approval. The admin reviews registrations and will approve and assign your tier. You will get an email notification. If waiting more than 24 hours, contact the admin directly.',
         },
         {
           q: 'What are the user tiers?',
-          a: 'Four tiers — Admin (Leo only, full control), Ultra (unlimited AI access), Power (50 credits/month = 10 AI analyses), Standard (20 credits/month = 4 AI analyses). Your tier is shown in the Settings page.',
+          a: 'Four tiers — Admin (reserved for the admin, full control), Ultra (unlimited AI access), Power (50 credits/month = 10 AI analyses), Standard (20 credits/month = 4 AI analyses). Your tier is shown in the Settings page.',
           table: {
             headers: ['Feature', 'Power (50 credits)', 'Standard (20 credits)'],
             rows: [
@@ -40,11 +40,11 @@ const FAQ_DATA = {
         },
         {
           q: 'What happens when my credits run out?',
-          a: 'All features remain available except AI analysis. The Poisson matrix, stats tabs, odds calculator, and bet tracking are always free. Credits reset on the 1st of each month. You can ask Leo for a top-up if needed.',
+          a: 'All features remain available except AI analysis. The Poisson matrix, stats tabs, odds calculator, and bet tracking are always free. Credits reset on the 1st of each month. You can ask the admin for a top-up if needed.',
         },
         {
           q: 'Can I get my tier upgraded?',
-          a: 'Yes — contact Leo directly. Upgrades are at his discretion.',
+          a: 'Yes — contact the admin directly. Upgrades are at the admin\'s discretion.',
         },
       ],
     },
@@ -53,15 +53,15 @@ const FAQ_DATA = {
       items: [
         {
           q: '如何获得访问权限？',
-          a: '两种方式。邀请码：从 Leo 处获得邀请码，注册时填入，即刻获得预设级别的访问权限。自行注册：无需邀请码创建账户，等待 Leo 审批，审批时分配级别。',
+          a: '两种方式。邀请码：从管理员处获得邀请码，注册时填入，即刻获得预设级别的访问权限。自行注册：无需邀请码创建账户，等待管理员审批，审批时分配级别。',
         },
         {
           q: '我注册了但无法访问应用，怎么回事？',
-          a: '您的账户正在等待审批。Leo 会审核新注册并分配级别，审批后您将收到邮件通知。如等待超过24小时，请直接联系 Leo。',
+          a: '您的账户正在等待审批。管理员会审核新注册并分配级别，审批后您将收到邮件通知。如等待超过24小时，请直接联系管理员。',
         },
         {
           q: '用户级别有哪些？',
-          a: '四个级别：Admin（仅限 Leo，完全控制权）、Ultra（无限 AI 访问）、Power（每月50额度 = 10次 AI 分析）、Standard（每月20额度 = 4次 AI 分析）。您的级别显示在设置页面。',
+          a: '四个级别：Admin（管理员专属，完全控制权）、Ultra（无限 AI 访问）、Power（每月50额度 = 10次 AI 分析）、Standard（每月20额度 = 4次 AI 分析）。您的级别显示在设置页面。',
           table: {
             headers: ['功能', 'Power（50额度）', 'Standard（20额度）'],
             rows: [
@@ -85,11 +85,11 @@ const FAQ_DATA = {
         },
         {
           q: '额度用完后怎么办？',
-          a: '除 AI 分析外，所有功能仍可使用。泊松矩阵、数据标签、赔率计算器和投注记录始终免费。额度每月1日重置。如有需要，可向 Leo 申请补充额度。',
+          a: '除 AI 分析外，所有功能仍可使用。泊松矩阵、数据标签、赔率计算器和投注记录始终免费。额度每月1日重置。如有需要，可向管理员申请补充额度。',
         },
         {
           q: '我能升级级别吗？',
-          a: '可以——直接联系 Leo。升级由 Leo 自行决定。',
+          a: '可以——直接联系管理员。升级由管理员自行决定。',
         },
       ],
     },

@@ -12,11 +12,11 @@ export default function Pending() {
 
   const isRejected = status === 'rejected'
 
-  // Auto-refresh every 60s; redirect when approved
+  // Auto-refresh every 30s; redirect when approved
   useEffect(() => {
     const interval = setInterval(async () => {
       await refreshProfile()
-    }, 60_000)
+    }, 30_000)
     return () => clearInterval(interval)
   }, [refreshProfile])
 

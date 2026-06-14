@@ -30,8 +30,8 @@ function ProtectedRoute({ children, adminOnly = false }) {
 
   if (!user) return <Navigate to="/auth" replace />
 
-  // Redirect unapproved users to the pending/rejected screen
-  if (profile?.status === 'pending' || profile?.status === 'rejected') {
+  // Block anyone who isn't explicitly approved — null profile also goes to /pending
+  if (!profile || profile.status !== 'approved') {
     return <Navigate to="/pending" replace />
   }
 
