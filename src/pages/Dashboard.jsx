@@ -441,7 +441,11 @@ export default function Dashboard() {
 
         {/* Model performance */}
         <div>
-          <span style={SH}>Model Performance</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <span style={{ ...SH, marginBottom: 0, borderBottom: 'none', paddingBottom: 0 }}>Model Performance</span>
+            <button onClick={() => navigate('/model-performance')} style={{ ...GOLD_LINK, fontSize: 11 }}>Details →</button>
+          </div>
+          <div style={{ borderBottom: '1px solid var(--color-accent)', marginBottom: 12 }} />
           <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
             {hitRate == null
               ? 'Performance tracked after first match settlement'
@@ -569,7 +573,11 @@ export default function Dashboard() {
 
       {/* ── BOTTOM ROW: Model Performance ── */}
       <div>
-        <span style={SH}>Model Performance</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ ...SH, marginBottom: 0, borderBottom: 'none', paddingBottom: 0 }}>Model Performance</span>
+          <button onClick={() => navigate('/model-performance')} style={{ ...GOLD_LINK, fontSize: 11 }}>Details →</button>
+        </div>
+        <div style={{ borderBottom: '1px solid var(--color-accent)', marginBottom: 12 }} />
         {accuracy.length === 0 ? (
           <p style={{ fontSize: 14, color: 'var(--color-text-muted)' }}>
             Performance tracked after first match settlement
