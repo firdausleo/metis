@@ -1654,15 +1654,23 @@ function TabValue({ stats, match, odds, setOdds }) {
 // ── Asian handicap / total-goals helpers ──────────────────────────────────────
 
 const AH_LINES = [
-  { val: -2,    label: '-2'     }, { val: -1.75, label: '-1.3/4' },
-  { val: -1.5,  label: '-1.1/2' }, { val: -1.25, label: '-1.1/4' },
-  { val: -1,    label: '-1'     }, { val: -0.75, label: '-3/4'   },
-  { val: -0.5,  label: '-1/2'  }, { val: -0.25, label: '-1/4'   },
-  { val: 0,     label: '0'     }, { val: 0.25,  label: '+1/4'   },
-  { val: 0.5,   label: '+1/2'  }, { val: 0.75,  label: '+3/4'   },
-  { val: 1,     label: '+1'    }, { val: 1.25,  label: '+1.1/4' },
-  { val: 1.5,   label: '+1.1/2' }, { val: 1.75, label: '+1.3/4' },
-  { val: 2,     label: '+2'    },
+  { val:  4,    label: '+4'     }, { val:  3.75, label: '+3.3/4' },
+  { val:  3.5,  label: '+3.1/2' }, { val:  3.25, label: '+3.1/4' },
+  { val:  3,    label: '+3'     }, { val:  2.75, label: '+2.3/4' },
+  { val:  2.5,  label: '+2.1/2' }, { val:  2.25, label: '+2.1/4' },
+  { val:  2,    label: '+2'     }, { val:  1.75, label: '+1.3/4' },
+  { val:  1.5,  label: '+1.1/2' }, { val:  1.25, label: '+1.1/4' },
+  { val:  1,    label: '+1'     }, { val:  0.75, label: '+3/4'   },
+  { val:  0.5,  label: '+1/2'  }, { val:  0.25, label: '+1/4'   },
+  { val:  0,    label: '0'     }, { val: -0.25,  label: '-1/4'   },
+  { val: -0.5,  label: '-1/2'  }, { val: -0.75,  label: '-3/4'   },
+  { val: -1,    label: '-1'    }, { val: -1.25,  label: '-1.1/4' },
+  { val: -1.5,  label: '-1.1/2' }, { val: -1.75, label: '-1.3/4' },
+  { val: -2,    label: '-2'    }, { val: -2.25,  label: '-2.1/4' },
+  { val: -2.5,  label: '-2.1/2' }, { val: -2.75, label: '-2.3/4' },
+  { val: -3,    label: '-3'    }, { val: -3.25,  label: '-3.1/4' },
+  { val: -3.5,  label: '-3.1/2' }, { val: -3.75, label: '-3.3/4' },
+  { val: -4,    label: '-4'    },
 ]
 
 const TG_LINES = [
@@ -1673,7 +1681,8 @@ const TG_LINES = [
   { val: 3,    label: '3'     }, { val: 3.25, label: '3.1/4' },
   { val: 3.5,  label: '3.1/2' }, { val: 3.75, label: '3.3/4' },
   { val: 4,    label: '4'     }, { val: 4.25, label: '4.1/4' },
-  { val: 4.5,  label: '4.1/2' },
+  { val: 4.5,  label: '4.1/2' }, { val: 4.75, label: '4.3/4' },
+  { val: 5,    label: '5'     }, { val: 5.5,  label: '5.1/2' },
 ]
 
 function isQtrLine(line) { return Math.round(Math.abs(line) * 4) % 2 === 1 }
