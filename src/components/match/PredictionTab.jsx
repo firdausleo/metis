@@ -170,6 +170,13 @@ export default function PredictionTab({
   // Over/under probs at kStar - 0.5 (from v1, which has anchor flag)
   const anchorEntry = v1?.totalGoals?.find(g => g.anchor)
 
+  // dominant outcome from V3 probs (single highest)
+  const dominant = v3?.probs
+    ? v3.probs.home >= v3.probs.away && v3.probs.home >= v3.probs.draw ? 'home'
+    : v3.probs.away > v3.probs.home && v3.probs.away >= v3.probs.draw ? 'away'
+    : 'draw'
+    : null
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
@@ -205,6 +212,28 @@ export default function PredictionTab({
             <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: 8 }}>
               V3 MODEL (DC BLEND) · WIN / DRAW / LOSS
             </p>
+            {dominant && match && (
+              <div style={{ padding: '8px 12px', background: 'var(--color-bg-elevated)', border: '0.5px solid var(--color-border)', borderRadius: 6, marginBottom: 10 }}>
+                <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+                  {lang === 'zh' ? '模型预测：' : 'Model predicts: '}
+                </span>
+                <strong style={{ fontSize: 14, color: edgeColour(v3.probs[dominant]) }}>
+                  {dominant === 'home'
+                    ? `${getFlag(match.home_team)} ${match.home_team}`
+                    : dominant === 'away'
+                    ? `${getFlag(match.away_team)} ${match.away_team}`
+                    : (lang === 'zh' ? '⚖️ 平局' : '⚖️ Draw')}
+                </strong>
+                {dominant !== 'draw' && (
+                  <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+                    {lang === 'zh' ? ' 获胜' : ' win'}
+                  </span>
+                )}
+                <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+                  {' '}({(v3.probs[dominant] * 100).toFixed(1)}%)
+                </span>
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               {[
                 { key: 'home', label: match.home_team, flag: getFlag(match.home_team) },
