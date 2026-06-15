@@ -10,6 +10,8 @@ import { supabase } from '../lib/supabase'
 import { runModels, capProb, SCORE_MAX, monteCarlo, getVenueAdvantage, LEAGUE_AVG_GOALS, DEF_FACTOR_MIN, DEF_FACTOR_MAX, blendInput, isXgNoise, XG_BLEND_XG, XG_BLEND_GOAL } from '../lib/poisson'
 import { formatProb, analyse1X2, calcStake } from '../lib/evEngine'
 import { placeBet } from '../lib/bets'
+import PredictionTab from '../components/match/PredictionTab'
+import BetsTab from '../components/match/BetsTab'
 
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
@@ -25,7 +27,9 @@ const CONFIDENCE_CONFIG = {
   max:    { icon: '🔥', color: 'var(--color-accent)',  desc: '4–5 WC games' },
 }
 
-const TABS = ['stats', 'matrix', 'value', 'asian', 'portfolio', 'ai']
+const TABS = ['prediction', 'bets']
+// Legacy tab components kept below for reference — not rendered in the 2-tab UI.
+// const LEGACY_TABS = ['stats', 'matrix', 'value', 'asian', 'portfolio', 'ai']
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
@@ -3304,7 +3308,7 @@ export default function MatchAnalysis() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState('stats')
+  const [activeTab, setActiveTab] = useState('prediction')
   const [match, setMatch] = useState(null)
   const [matchLoading, setMatchLoading] = useState(true)
   const [matchError, setMatchError] = useState(null)
@@ -3466,8 +3470,36 @@ export default function MatchAnalysis() {
         {/* ── Tab Content ── */}
         <div style={{ paddingTop: 20 }}>
 
-        {/* TAB 1: Stats */}
-        {activeTab === 'stats' && (
+        {/* TAB 1: Prediction & Stats */}
+        {activeTab === 'prediction' && (
+          <PredictionTab
+            match={match}
+            stats={stats}
+            statsLoading={statsLoading}
+            statsError={statsError}
+            isAdmin={isAdmin}
+            refreshing={refreshing}
+            onRefresh={handleRefreshStats}
+            onSaveManual={saveManualStats}
+            lastUpdated={lastUpdated}
+            sidebarModel={sidebarModel}
+            aiComposite={aiComposite}
+          />
+        )}
+
+        {/* TAB 2: Bets */}
+        {activeTab === 'bets' && (
+          <BetsTab
+            match={match}
+            sidebarModel={sidebarModel}
+            v1x2Odds={v1x2Odds}
+            setV1x2Odds={setV1x2Odds}
+            isAdmin={isAdmin}
+          />
+        )}
+
+        {/* Legacy stats tab — kept for reference, not rendered in 2-tab UI */}
+        {false && activeTab === 'stats' && (
           <div>
             {statsError && (
               <div style={{ background: 'var(--color-danger-dim)', border: '1px solid var(--color-danger)', borderRadius: 'var(--radius-md)', padding: '12px 14px', marginBottom: 12 }}>
@@ -3631,20 +3663,12 @@ export default function MatchAnalysis() {
           </div>
         )}
 
-        {/* TAB 2: Matrix */}
-        {activeTab === 'matrix' && <TabMatrix stats={stats} match={match} dixonColes={dixonColes} onToggleDixon={setDixonColes} />}
-
-        {/* TAB 3: Value */}
-        {activeTab === 'value' && <TabValue stats={stats} match={match} odds={v1x2Odds} setOdds={setV1x2Odds} />}
-
-        {/* TAB 4: Asian */}
-        {activeTab === 'asian' && <TabAsian stats={stats} match={match} />}
-
-        {/* TAB 5: Portfolio */}
-        {activeTab === 'portfolio' && <TabPortfolio stats={stats} match={match} odds1x2={v1x2Odds} />}
-
-        {/* TAB 6: AI Roles */}
-        {activeTab === 'ai' && <TabAI match={match} isAdmin={canRunAI} onAnalysisComplete={refreshProfile} />}
+        {/* Legacy tabs — kept for reference, not rendered in 2-tab UI */}
+        {false && activeTab === 'matrix' && <TabMatrix stats={stats} match={match} dixonColes={dixonColes} onToggleDixon={setDixonColes} />}
+        {false && activeTab === 'value' && <TabValue stats={stats} match={match} odds={v1x2Odds} setOdds={setV1x2Odds} />}
+        {false && activeTab === 'asian' && <TabAsian stats={stats} match={match} />}
+        {false && activeTab === 'portfolio' && <TabPortfolio stats={stats} match={match} odds1x2={v1x2Odds} />}
+        {false && activeTab === 'ai' && <TabAI match={match} isAdmin={canRunAI} onAnalysisComplete={refreshProfile} />}
 
         {isAdmin && <SettlementPanel match={match} />}
         </div>
