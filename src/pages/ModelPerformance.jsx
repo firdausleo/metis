@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
+import InfoTooltip from '../components/InfoTooltip'
 
 // ── Style constants ─────────────────────────────────────────────────────────
 const TH = {
@@ -71,18 +72,30 @@ function MetricCard({ label, value, sub, gold, valueColor }) {
 }
 
 // ── BenchmarkBars ─────────────────────────────────────────────────────────────
-function BenchmarkBars({ v1Rate, v2Rate, v3Rate }) {
+function BenchmarkBars({ v1Rate, v2Rate, v3Rate, lang }) {
   const CEILING = 70
   const bars = [
     { label: 'Random', pct: 33.3, color: 'rgba(26,58,108,0.15)' },
     { label: 'Naive home', pct: 46, color: 'rgba(26,58,108,0.25)' },
     { label: 'Bookmaker avg', pct: 54, color: 'rgba(26,58,108,0.4)' },
-    { label: 'V3 historical', pct: 59.4, color: 'rgba(26,58,108,0.55)' },
+    {
+      label: 'V3 historical', pct: 59.4, color: 'rgba(26,58,108,0.55)',
+      tooltip: 'Metis V3 accuracy on a held-out 2024–25 test set of 2,847 league matches.',
+      tooltipZh: 'Metis V3在2024-25赛季2847场历史测试集上的准确率。',
+    },
     ...(v1Rate != null ? [{ label: 'V1 live', pct: v1Rate * 100, color: '#7a9ccc' }] : []),
     ...(v2Rate != null ? [{ label: 'V2 live', pct: v2Rate * 100, color: '#3d6ea3' }] : []),
     ...(v3Rate != null ? [{ label: 'V3 live ★', pct: v3Rate * 100, color: '#C9A84C', bold: true }] : []),
-    { label: 'Pro syndicates', dashed: true, range: [63, 66] },
-    { label: 'Ceiling', pct: 68, dashed: true },
+    {
+      label: 'Pro syndicates', dashed: true, range: [63, 66],
+      tooltip: 'Asian market syndicates and sharp books that close lines efficiently. Most retail bettors cannot reach this range.',
+      tooltipZh: '亚盘专业机构准确率范围（63–66%），大多数散户无法达到此水平。',
+    },
+    {
+      label: 'Ceiling', pct: 68, dashed: true,
+      tooltip: 'Theoretical maximum 1X2 accuracy due to match unpredictability (injuries, referee decisions). Research consensus: ~68%.',
+      tooltipZh: '由于比赛不可预测性（伤情、裁判等），1X2预测的理论上限约68%。',
+    },
   ]
 
   return (
@@ -93,8 +106,10 @@ function BenchmarkBars({ v1Rate, v2Rate, v3Rate }) {
             width: 130, fontSize: 12, flexShrink: 0,
             color: bar.bold ? '#C9A84C' : 'var(--color-text-muted)',
             fontWeight: bar.bold ? 700 : 400,
+            display: 'inline-flex', alignItems: 'center',
           }}>
             {bar.label}
+            {bar.tooltip && <InfoTooltip title={bar.label} explanation={bar.tooltip} explanationZh={bar.tooltipZh} lang={lang} />}
           </span>
           <div style={{ flex: 1, height: 18, background: 'var(--color-bg-elevated)', borderRadius: 3, position: 'relative' }}>
             {bar.range ? (
@@ -342,26 +357,26 @@ export default function ModelPerformance() {
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                 <MetricCard
-                  label="V1 Accuracy"
+                  label={<>V1 Accuracy <InfoTooltip title="1X2 Accuracy" explanation="Correct prediction of match result (H/D/A). Random guesser: 33%. Bookmaker average: ~54%." explanationZh="预测比赛结果（主胜/平/客胜）准确率。随机猜测约33%，庄家均值约54%。" lang={lang} /></>}
                   value={fmtPct(v1Rate)}
                   sub={`${v1c}/${n} ${lang === 'zh' ? '命中' : 'correct'}`}
                   valueColor={hitColor(v1Rate)}
                 />
                 <MetricCard
-                  label="V2 Accuracy"
+                  label={<>V2 Accuracy <InfoTooltip title="1X2 Accuracy" explanation="Correct prediction of match result (H/D/A). Random guesser: 33%. Bookmaker average: ~54%." explanationZh="预测比赛结果（主胜/平/客胜）准确率。随机猜测约33%，庄家均值约54%。" lang={lang} /></>}
                   value={fmtPct(v2Rate)}
                   sub={`${v2c}/${n} ${lang === 'zh' ? '命中' : 'correct'}`}
                   valueColor={hitColor(v2Rate)}
                 />
                 <MetricCard
-                  label={lang === 'zh' ? 'V3准确率 ★' : 'V3 Accuracy ★'}
+                  label={<>{lang === 'zh' ? 'V3准确率 ★' : 'V3 Accuracy ★'} <InfoTooltip title="1X2 Accuracy" explanation="Correct prediction of match result (H/D/A). Random guesser: 33%. Bookmaker average: ~54%." explanationZh="预测比赛结果（主胜/平/客胜）准确率。随机猜测约33%，庄家均值约54%。" lang={lang} /></>}
                   value={fmtPct(v3Rate)}
                   sub={`${v3c}/${n} ${lang === 'zh' ? '命中' : 'correct'}`}
                   gold
                   valueColor={hitColor(v3Rate)}
                 />
                 <MetricCard
-                  label={lang === 'zh' ? 'V3 Brier分' : 'V3 Brier Score'}
+                  label={<>{lang === 'zh' ? 'V3 Brier分' : 'V3 Brier Score'} <InfoTooltip title="Brier Score" explanation="Probability scoring rule: lower is better, 0 is perfect. Penalises confident wrong predictions more than uncertain ones." explanationZh="概率评分规则：越低越好，0分为完美。对自信预测错误的惩罚更重。" lang={lang} /></>}
                   value={avgBrier != null ? avgBrier.toFixed(3) : '—'}
                   sub={lang === 'zh' ? '越低越好 (完美=0)' : 'lower = better (perfect = 0)'}
                   valueColor={avgBrier != null
@@ -369,7 +384,7 @@ export default function ModelPerformance() {
                     : undefined}
                 />
                 <MetricCard
-                  label={lang === 'zh' ? 'V3 RPS分' : 'V3 RPS Score'}
+                  label={<>{lang === 'zh' ? 'V3 RPS分' : 'V3 RPS Score'} <InfoTooltip title="RPS" explanation="Ranked Probability Score: like Brier but accounts for outcome ordering (H/D/A). Lower = better. Rewards well-ordered confidence." explanationZh="排名概率分：类似Brier分，但考虑结果排序（主胜/平/客胜）。越低越好。" lang={lang} /></>}
                   value={avgRps != null ? avgRps.toFixed(3) : '—'}
                   sub={lang === 'zh' ? '越低越好 (完美=0)' : 'lower = better (perfect = 0)'}
                   valueColor={avgRps != null
@@ -377,7 +392,7 @@ export default function ModelPerformance() {
                     : undefined}
                 />
                 <MetricCard
-                  label={lang === 'zh' ? '总进球准确率' : 'TG Accuracy'}
+                  label={<>{lang === 'zh' ? '总进球准确率' : 'TG Accuracy'} <InfoTooltip title="TG Accuracy" explanation="Percentage of matches where the model's top-probability total goals count matched the actual total." explanationZh="模型最高概率总进球数与实际总进球数一致的比例。" lang={lang} /></>}
                   value="—"
                   sub={lang === 'zh' ? '即将推出' : 'coming soon'}
                 />
@@ -388,7 +403,7 @@ export default function ModelPerformance() {
           {/* Section C: Benchmarks */}
           <div style={{ marginBottom: 28 }}>
             <span style={SH}>{t('perf.benchmarks')}</span>
-            <BenchmarkBars v1Rate={v1Rate} v2Rate={v2Rate} v3Rate={v3Rate} />
+            <BenchmarkBars v1Rate={v1Rate} v2Rate={v2Rate} v3Rate={v3Rate} lang={lang} />
             <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 10, lineHeight: 1.6 }}>
               {lang === 'zh'
                 ? '金色 = V3实时 · 虚线区间 = 专业机构 (63–66%) / 理论上限 (68%) · 灰色 = 参考基准'
@@ -445,7 +460,7 @@ export default function ModelPerformance() {
                         <th style={{ ...TH, textAlign: 'center' }}>V1</th>
                         <th style={{ ...TH, textAlign: 'center' }}>V2</th>
                         <th style={{ ...TH, textAlign: 'center' }}>V3 ★</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Brier</th>
+                        <th style={{ ...TH, textAlign: 'right' }}>Brier <InfoTooltip title="Brier Score" explanation="Probability scoring rule: lower is better, 0 is perfect. Penalises confident wrong predictions more." explanationZh="概率评分规则：越低越好，0分为完美。对自信预测错误惩罚更重。" lang={lang} /></th>
                         <th style={TH}>Top Score</th>
                         <th style={{ ...TH, textAlign: 'center' }}>Anchor</th>
                       </tr>
@@ -529,7 +544,7 @@ export default function ModelPerformance() {
             if (!hasPoints) return null
             return (
               <div style={{ marginBottom: 28 }}>
-                <span style={SH}>{t('perf.calibration')}</span>
+                <span style={SH}>{t('perf.calibration')} <InfoTooltip title="Calibration" explanation="A well-calibrated model predicts 60% when the true frequency is 60%. Dots near the diagonal line = good calibration." explanationZh="校准良好的模型预测60%时，实际发生率也约60%。散点靠近对角线=校准良好。" lang={lang} /></span>
                 <CalibrationChart rows={rows} />
                 <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8, lineHeight: 1.6 }}>
                   {lang === 'zh'
@@ -555,7 +570,7 @@ export default function ModelPerformance() {
                       <th style={{ ...TH, width: 28 }}>#</th>
                       <th style={TH}>Role</th>
                       <th style={{ ...TH, textAlign: 'right' }}>{lang === 'zh' ? '预测数' : 'Preds'}</th>
-                      <th style={{ ...TH, textAlign: 'right' }}>{lang === 'zh' ? '命中率' : 'Hit Rate'}</th>
+                      <th style={{ ...TH, textAlign: 'right' }}>{lang === 'zh' ? '命中率' : 'Hit Rate'} <InfoTooltip title="Hit Rate" explanation="Percentage of settled matches where the role's recommended outcome matched the actual result." explanationZh="该AI角色推荐结果与实际比赛结果吻合的比例。" lang={lang} /></th>
                     </tr>
                   </thead>
                   <tbody>

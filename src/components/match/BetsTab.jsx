@@ -4,6 +4,7 @@ import { getFlag } from '../../lib/teamFlags'
 import { analyse1X2, calcStake, formatProb } from '../../lib/evEngine'
 import { placeBet } from '../../lib/bets'
 import { buildPaspPlan, paspText, quarterKelly, correlatedKelly } from '../../utils/pasp'
+import InfoTooltip from '../InfoTooltip'
 
 // ── Asian Handicap helpers (pure, no deps) ──────────────────────────────
 
@@ -408,7 +409,7 @@ function MarketAsian({ model, match, bankroll }) {
 
 // ── Chinese Handicap 1X2 section (让球胜平负) ──────────────────────────────
 
-function MarketChineseHandicap({ model, match }) {
+function MarketChineseHandicap({ model, match, lang }) {
   const CH_LINES = [-3, -2, -1, 0, 1, 2, 3]
   const [line, setLine] = useState(-1)
   const [oddsH, setOddsH] = useState('')
@@ -461,7 +462,7 @@ function MarketChineseHandicap({ model, match }) {
                 <th style={{ ...thS, textAlign: 'left' }}>结果</th>
                 <th style={thS}>V2概率</th>
                 <th style={thS}>您的赔率</th>
-                <th style={thS}>边际</th>
+                <th style={thS}>边际 <InfoTooltip title="Edge %" explanation="Your advantage over the bookmaker's implied probability after removing the vig. >5% = BET, 0–5% = Marginal, <0 = SKIP." explanationZh="扣除水位后您相对庄家的数学优势。>5%=下注，0-5%=边缘，<0=跳过。" lang={lang} /></th>
               </tr>
             </thead>
             <tbody>
@@ -525,7 +526,10 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
           style={{ width: 120, fontSize: 16, minHeight: 44, padding: '0 10px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }}
         />
         {parseFloat(bankroll) > 0 && (
-          <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>¼ Kelly · 5% cap (MT24)</span>
+          <span style={{ fontSize: 11, color: 'var(--color-text-muted)', display: 'inline-flex', alignItems: 'center' }}>
+            ¼ Kelly · 5% cap (MT24)
+            <InfoTooltip title="Quarter Kelly" explanation="Kelly Criterion stake ÷ 4. Full Kelly maximises log-growth but has high variance; quarter Kelly reduces risk 4×. Hard cap: 5% of bankroll (MT24)." explanationZh="凯利公式投注额÷4。完整凯利最大化对数增长但波动大；四分之一凯利风险降低4倍。硬上限：5%本金(MT24)。" lang={lang} />
+          </span>
         )}
       </div>
 
@@ -557,7 +561,7 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
       {/* ── Chinese Handicap 彩票 ── */}
       {sidebarModel && (
         <div style={cardStyle}>
-          <MarketChineseHandicap model={sidebarModel} match={match} />
+          <MarketChineseHandicap model={sidebarModel} match={match} lang={lang} />
         </div>
       )}
 

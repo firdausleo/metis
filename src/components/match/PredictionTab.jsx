@@ -3,6 +3,7 @@ import { useTranslation } from '../../lib/i18n'
 import { useUser } from '../../context/UserContext'
 import { getFlag } from '../../lib/teamFlags'
 import { SCORE_MAX } from '../../lib/poisson'
+import InfoTooltip from '../InfoTooltip'
 
 // ── Compact matrix cell ───────────────────────────────────────────────────
 
@@ -389,6 +390,7 @@ export default function PredictionTab({
           <div>
             <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: 8 }}>
               V3 MODEL (DC BLEND) · WIN / DRAW / LOSS
+              <InfoTooltip title="V3 Model" explanation="Dixon-Coles blend: 65% DC attack/defence matrix + 35% recent form. Temperature-calibrated (T=1.11) to correct overconfidence." explanationZh="Dixon-Coles融合模型：65% DC攻防矩阵+35%近期表现。温度校准(T=1.11)纠正过度自信。" lang={lang} />
             </p>
             {dominant && match && (
               <div style={{ padding: '8px 12px', background: 'var(--color-bg-elevated)', border: '0.5px solid var(--color-border)', borderRadius: 6, marginBottom: 10 }}>
@@ -487,6 +489,7 @@ export default function PredictionTab({
                       {pct}%
                     </span>
                     {isAnchor && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-accent)', letterSpacing: '0.05em' }}>ANCHOR</span>}
+                    {isAnchor && <InfoTooltip title="ANCHOR" explanation="Highest-probability total goals. Betting line = ANCHOR − 0.5 (e.g. ANCHOR 2 → bet Over 1.5)." explanationZh="概率最高的总进球数。建议投注线=ANCHOR−0.5（例如ANCHOR=2，建议Over 1.5）。" lang={lang} />}
                   </div>
                 )
               })}
