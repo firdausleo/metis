@@ -233,9 +233,11 @@ export default function ModelPerformance() {
   const [wide, setWide] = useState(() => window.innerWidth >= 1024)
   const [loading, setLoading] = useState(true)
 
-  // model_predictions (3 prediction types)
+  // model_predictions (3 prediction types — legacy schema)
   const [modelPreds, setModelPreds]     = useState([])
   const [activeTab, setActiveTab]       = useState('1x2')
+  // model_predictions v2 — settled rows with V1/V2/V3 columns
+  const [liveAccuracy, setLiveAccuracy] = useState([])
 
   // role_accuracy (role-level 1X2 tracking)
   const [accuracyRows, setAccuracyRows] = useState([])
@@ -250,10 +252,17 @@ export default function ModelPerformance() {
 
   useEffect(() => {
     async function load() {
-      const [predsRes, accRes, rolesRes, calRes] = await Promise.all([
+      const [predsRes, liveRes, accRes, rolesRes, calRes] = await Promise.all([
         supabase
           .from('model_predictions')
           .select('*, match:matches(home_team,away_team,home_score,away_score,match_date)')
+          .not('prediction_type', 'is', null)
+          .order('settled_at', { ascending: false }),
+        supabase
+          .from('model_predictions')
+          .select('*, match:matches(home_team,away_team,home_score,away_score,match_date)')
+          .not('settled_at', 'is', null)
+          .not('v3_home_win', 'is', null)
           .order('settled_at', { ascending: false }),
         supabase
           .from('role_accuracy')
@@ -270,6 +279,7 @@ export default function ModelPerformance() {
           .order('role_id'),
       ])
       setModelPreds(predsRes.data || [])
+      setLiveAccuracy(liveRes.data || [])
       setAccuracyRows(accRes.data || [])
       setAiRoles(rolesRes.data || [])
       setCalibration(calRes.data || [])
@@ -346,6 +356,116 @@ export default function ModelPerformance() {
         <div>{[1,2,3,4,5].map(i => <SkeletonRow key={i} />)}</div>
       ) : (
         <>
+          {/* ── SECTION 0: Live WC2026 Accuracy (v2 schema: single row per match) ── */}
+          {(() => {
+            const settled = liveAccuracy
+            const n = settled.length
+            if (n === 0) return null
+            const v1c = settled.filter(r => r.correct_v1).length
+            const v2c = settled.filter(r => r.correct_v2).length
+            const v3c = settled.filter(r => r.correct_v3).length
+            const avgBrier = n ? settled.reduce((s, r) => s + (Number(r.brier_score) || 0), 0) / n : null
+            const avgRps   = n ? settled.reduce((s, r) => s + (Number(r.rps_score)   || 0), 0) / n : null
+
+            return (
+              <div style={{ marginBottom: 36 }}>
+                <span style={SH}>Live WC2026 Accuracy</span>
+
+                {/* Summary pills */}
+                <div style={{ display: 'flex', gap: wide ? 12 : 8, flexWrap: 'wrap', marginBottom: 20 }}>
+                  <SummaryPill label="Matches settled" value={String(n)} />
+                  <SummaryPill
+                    label="V1 1X2"
+                    value={`${v1c}/${n} (${Math.round(v1c/n*100)}%)`}
+                    valueColor={hitRateColor(v1c / n)}
+                  />
+                  <SummaryPill
+                    label="V2 1X2"
+                    value={`${v2c}/${n} (${Math.round(v2c/n*100)}%)`}
+                    valueColor={hitRateColor(v2c / n)}
+                  />
+                  <SummaryPill
+                    label="V3 1X2 ★"
+                    value={`${v3c}/${n} (${Math.round(v3c/n*100)}%)`}
+                    valueColor={hitRateColor(v3c / n)}
+                  />
+                  {avgBrier != null && (
+                    <SummaryPill
+                      label="V3 Brier"
+                      value={avgBrier.toFixed(3)}
+                      valueColor={avgBrier < 0.5 ? 'var(--color-success)' : avgBrier < 0.65 ? 'var(--color-edge-amber)' : 'var(--color-danger)'}
+                    />
+                  )}
+                  {avgRps != null && (
+                    <SummaryPill
+                      label="V3 RPS"
+                      value={avgRps.toFixed(3)}
+                      valueColor={avgRps < 0.25 ? 'var(--color-success)' : avgRps < 0.35 ? 'var(--color-edge-amber)' : 'var(--color-danger)'}
+                    />
+                  )}
+                </div>
+
+                {/* Match-by-match table */}
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={TH}>Date</th>
+                        <th style={TH}>Match</th>
+                        <th style={{ ...TH, textAlign: 'center' }}>Result</th>
+                        <th style={{ ...TH, textAlign: 'center' }}>V1</th>
+                        <th style={{ ...TH, textAlign: 'center' }}>V2</th>
+                        <th style={{ ...TH, textAlign: 'center' }}>V3 ★</th>
+                        <th style={{ ...TH, textAlign: 'right' }}>Brier</th>
+                        <th style={{ ...TH, textAlign: 'right' }}>RPS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {settled.map(row => {
+                        const m = row.match
+                        const scoreStr = m?.home_score != null ? `${m.home_score}–${m.away_score}` : ''
+                        const outcomeLabel = row.actual_outcome === 'H' ? 'H' : row.actual_outcome === 'A' ? 'A' : 'D'
+                        return (
+                          <tr key={row.id}>
+                            <td style={{ ...TD, whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontSize: 11, fontFamily: 'monospace' }}>
+                              {fmtDate(row.settled_at)}
+                            </td>
+                            <td style={{ ...TD, maxWidth: wide ? 200 : 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {m ? `${m.home_team} vs ${m.away_team}` : '—'}
+                            </td>
+                            <td style={{ ...TD, textAlign: 'center', fontFamily: 'monospace', fontWeight: 600 }}>
+                              <span style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>{outcomeLabel}</span>
+                              {scoreStr && <span style={{ color: 'var(--color-text-muted)', fontSize: 10, marginLeft: 4 }}>({scoreStr})</span>}
+                            </td>
+                            {[row.correct_v1, row.correct_v2, row.correct_v3].map((c, i) => (
+                              <td key={i} style={{ ...TD, textAlign: 'center', fontSize: 14, fontWeight: 700 }}>
+                                <span style={{ color: c ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                                  {c ? '✓' : '✗'}
+                                </span>
+                              </td>
+                            ))}
+                            <td style={{ ...TD, textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>
+                              {row.brier_score != null ? Number(row.brier_score).toFixed(3) : '—'}
+                            </td>
+                            <td style={{ ...TD, textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>
+                              {row.rps_score != null ? Number(row.rps_score).toFixed(3) : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Benchmarks */}
+                <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 10, lineHeight: 1.6 }}>
+                  Benchmarks · Random baseline: 33.3% · Bookmaker average: ~54% ·
+                  Brier: lower is better (random = 0.667, perfect = 0) · RPS: lower is better
+                </p>
+              </div>
+            )
+          })()}
+
           {/* ── SECTION 1: Model Accuracy (3 prediction types) ── */}
           <div style={{ marginBottom: 36 }}>
             <span style={SH}>Model Accuracy</span>

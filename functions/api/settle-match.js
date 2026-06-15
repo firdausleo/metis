@@ -176,8 +176,64 @@ function getVenueMult(venue = '', city = '', homeTeam = '') {
 
 // ── Model prediction tracking ───────────────────────────────────────────────
 
+function topOutcome(hw, d, aw) {
+  if (hw == null || d == null || aw == null) return null
+  if (hw >= d && hw >= aw) return 'H'
+  if (aw >= d) return 'A'
+  return 'D'
+}
+
+function topScore(mat) {
+  let bi = 0, bj = 0, bp = 0
+  for (let i = 0; i <= SCORE_MAX; i++)
+    for (let j = 0; j <= SCORE_MAX; j++)
+      if (mat[i][j] > bp) { bp = mat[i][j]; bi = i; bj = j }
+  return `${bi}-${bj}`
+}
+
 async function trackModelPredictions(env, matchId, h, a) {
-  // Fetch match for team codes + venue
+  const actualOutcome = h > a ? 'H' : h < a ? 'A' : 'D'
+  const now = new Date().toISOString()
+
+  // ── Try to read existing prediction row (logged at stats-fetch time) ──
+  const existRes = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/model_predictions?match_id=eq.${matchId}&select=*&limit=1`,
+    { headers: sb(env) }
+  )
+  const existRows = existRes.ok ? await existRes.json() : []
+  const existing = existRows[0] || null
+
+  if (existing?.v3_home_win != null) {
+    // Score the pre-logged predictions
+    const v3hw = Number(existing.v3_home_win)
+    const v3d  = Number(existing.v3_draw)
+    const v3aw = Number(existing.v3_away_win)
+    const Ih = actualOutcome === 'H' ? 1 : 0
+    const Id = actualOutcome === 'D' ? 1 : 0
+    const Ia = actualOutcome === 'A' ? 1 : 0
+    const brier = +((v3hw - Ih)**2 + (v3d - Id)**2 + (v3aw - Ia)**2).toFixed(4)
+    const rps   = +(0.5 * ((v3hw - Ih)**2 + (v3hw + v3d - Ih - Id)**2)).toFixed(4)
+
+    const patchRes = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/model_predictions?match_id=eq.${matchId}`,
+      {
+        method: 'PATCH',
+        headers: { ...sb(env), 'Prefer': 'return=minimal' },
+        body: JSON.stringify({
+          actual_outcome: actualOutcome,
+          correct_v1: topOutcome(existing.v1_home_win, existing.v1_draw, existing.v1_away_win) === actualOutcome,
+          correct_v2: topOutcome(existing.v2_home_win, existing.v2_draw, existing.v2_away_win) === actualOutcome,
+          correct_v3: topOutcome(v3hw, v3d, v3aw) === actualOutcome,
+          brier_score: brier,
+          rps_score: rps,
+          settled_at: now,
+        }),
+      }
+    )
+    return patchRes.ok ? 1 : 0
+  }
+
+  // ── Fallback: compute predictions inline (sync-stats wasn't run pre-kickoff) ──
   const matchRes = await fetch(
     `${env.SUPABASE_URL}/rest/v1/matches?id=eq.${matchId}&select=home_team,home_team_code,away_team_code,venue,city`,
     { headers: sb(env) }
@@ -186,7 +242,6 @@ async function trackModelPredictions(env, matchId, h, a) {
   const [match] = await matchRes.json()
   if (!match?.home_team_code || !match?.away_team_code) return 0
 
-  // Fetch team_stats for both sides
   const statsRes = await fetch(
     `${env.SUPABASE_URL}/rest/v1/team_stats?match_id=eq.${matchId}&select=*`,
     { headers: sb(env) }
@@ -195,10 +250,7 @@ async function trackModelPredictions(env, matchId, h, a) {
   const statsRows = await statsRes.json()
   const hs  = statsRows.find(s => s.team_code === match.home_team_code)
   const as_ = statsRows.find(s => s.team_code === match.away_team_code)
-
-  // Need both sides' stats to run Poisson
-  if (!hs?.goals_scored_avg || !hs?.goals_conceded_avg ||
-      !as_?.goals_scored_avg || !as_?.goals_conceded_avg) return 0
+  if (!hs?.goals_scored_avg || !as_?.goals_scored_avg) return 0
 
   let v1, v2
   try {
@@ -207,69 +259,47 @@ async function trackModelPredictions(env, matchId, h, a) {
     v2 = calcLambdasV2(hs, as_, vMult)
   } catch { return 0 }
 
-  const now = new Date().toISOString()
-  const actualResult = h > a ? 'home_win' : h < a ? 'away_win' : 'draw'
-  const actualTotal  = h + a
-  const actualScore  = `${h}-${a}`
-  const rows = []
+  // Compute each model's matrix ONCE — λ values are consistent across all prediction types
+  const matV1 = buildMatrix(v1.lambdaHome, v1.lambdaAway)
+  const matV2 = buildMatrix(v2.lambdaHome, v2.lambdaAway)
+  const pV1 = calcProbs(matV1)
+  const pV2 = calcProbs(matV2)
 
-  // ── 1X2 prediction (V2 — primary model) ──
-  const matV2    = buildMatrix(v2.lambdaHome, v2.lambdaAway)
-  const probsV2  = calcProbs(matV2)
-  const best1X2  = probsV2.home >= probsV2.draw && probsV2.home >= probsV2.away ? 'home_win'
-                 : probsV2.away >= probsV2.draw                                  ? 'away_win'
-                 : 'draw'
-  const prob1X2  = best1X2 === 'home_win' ? probsV2.home
-                 : best1X2 === 'away_win' ? probsV2.away
-                 : probsV2.draw
-  rows.push({
-    match_id: matchId, prediction_type: '1x2',
-    predicted: best1X2, predicted_prob: +prob1X2.toFixed(3),
-    actual: actualResult, correct: best1X2 === actualResult,
-    lambda_home: +v2.lambdaHome.toFixed(3), lambda_away: +v2.lambdaAway.toFixed(3),
+  const actualOutcomeV = h > a ? 'H' : h < a ? 'A' : 'D'
+  const Ih = actualOutcomeV === 'H' ? 1 : 0
+  const Id = actualOutcomeV === 'D' ? 1 : 0
+  const Ia = actualOutcomeV === 'A' ? 1 : 0
+
+  // Use V2 as V3 proxy when DC data isn't available in fallback
+  const brier = +((pV2.home - Ih)**2 + (pV2.draw - Id)**2 + (pV2.away - Ia)**2).toFixed(4)
+  const rps   = +(0.5 * ((pV2.home - Ih)**2 + (pV2.home + pV2.draw - Ih - Id)**2)).toFixed(4)
+
+  const row = {
+    match_id: matchId,
+    predicted_at: now,
     settled_at: now,
-  })
-
-  // ── Total goals prediction (V2 anchor line) ──
-  const tgV2   = calcTotalGoals(v2.lambdaHome, v2.lambdaAway)
-  const anchor = tgV2.find(l => l.anchor)
-  if (anchor) {
-    const predTG  = anchor.over >= anchor.under ? `over_${anchor.line}` : `under_${anchor.line}`
-    const probTG  = Math.max(anchor.over, anchor.under)
-    const actTG   = actualTotal > anchor.line ? `over_${anchor.line}` : `under_${anchor.line}`
-    rows.push({
-      match_id: matchId, prediction_type: 'total_goals',
-      predicted: predTG, predicted_prob: +probTG.toFixed(3),
-      actual: actTG, correct: predTG === actTG,
-      lambda_home: +v2.lambdaHome.toFixed(3), lambda_away: +v2.lambdaAway.toFixed(3),
-      settled_at: now,
-    })
+    actual_outcome: actualOutcomeV,
+    v1_home_win:    +pV1.home.toFixed(3), v1_draw: +pV1.draw.toFixed(3), v1_away_win: +pV1.away.toFixed(3),
+    v1_lambda_home: +v1.lambdaHome.toFixed(3), v1_lambda_away: +v1.lambdaAway.toFixed(3),
+    v1_top_score:   topScore(matV1),
+    v2_home_win:    +pV2.home.toFixed(3), v2_draw: +pV2.draw.toFixed(3), v2_away_win: +pV2.away.toFixed(3),
+    v2_lambda_home: +v2.lambdaHome.toFixed(3), v2_lambda_away: +v2.lambdaAway.toFixed(3),
+    v2_top_score:   topScore(matV2),
+    correct_v1: topOutcome(pV1.home, pV1.draw, pV1.away) === actualOutcomeV,
+    correct_v2: topOutcome(pV2.home, pV2.draw, pV2.away) === actualOutcomeV,
+    brier_score: brier, rps_score: rps,
   }
 
-  // ── Correct score prediction (V1 matrix — most likely scoreline) ──
-  const matV1 = buildMatrix(v1.lambdaHome, v1.lambdaAway)
-  let bestI = 0, bestJ = 0, bestProb = 0
-  for (let i = 0; i <= SCORE_MAX; i++)
-    for (let j = 0; j <= SCORE_MAX; j++)
-      if (matV1[i][j] > bestProb) { bestProb = matV1[i][j]; bestI = i; bestJ = j }
-  rows.push({
-    match_id: matchId, prediction_type: 'correct_score',
-    predicted: `${bestI}-${bestJ}`, predicted_prob: +bestProb.toFixed(3),
-    actual: actualScore, correct: `${bestI}-${bestJ}` === actualScore,
-    lambda_home: +v1.lambdaHome.toFixed(3), lambda_away: +v1.lambdaAway.toFixed(3),
-    settled_at: now,
-  })
-
-  // Idempotent upsert: clear old rows for this match, then insert fresh
-  await fetch(`${env.SUPABASE_URL}/rest/v1/model_predictions?match_id=eq.${matchId}`, {
-    method: 'DELETE', headers: sb(env),
-  })
-  const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/model_predictions`, {
-    method: 'POST',
-    headers: { ...sb(env), 'Prefer': 'return=minimal' },
-    body: JSON.stringify(rows),
-  })
-  return ins.ok ? rows.length : 0
+  // Upsert: idempotent even if a partial row exists
+  const ins = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/model_predictions?on_conflict=match_id`,
+    {
+      method: 'POST',
+      headers: { ...sb(env), 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(row),
+    }
+  )
+  return ins.ok ? 1 : 0
 }
 
 // ── Handler ─────────────────────────────────────────────────────────────────

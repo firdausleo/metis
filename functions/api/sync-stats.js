@@ -36,6 +36,8 @@
  *     AND match_id = '3f78c57c-39dd-4331-b47c-0fed05f700b5';
  */
 
+import { dcLambdas, isWC2026Host } from '../../src/utils/dcRatings.js'
+
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
 const WINDOW = 5
@@ -344,7 +346,7 @@ async function writeXgCache(env, fixtureId, teamId, { xgf, xga }) {
 // ── Supabase helpers ─────────────────────────────────────────────────────
 
 async function getUpcomingMatches(env, matchIds) {
-  let url = `${env.SUPABASE_URL}/rest/v1/matches?select=id,home_team,away_team,home_team_code,away_team_code,status`
+  let url = `${env.SUPABASE_URL}/rest/v1/matches?select=id,home_team,away_team,home_team_code,away_team_code,status,venue,city`
 
   if (matchIds?.length) {
     url += `&id=in.(${matchIds.join(',')})`
@@ -373,6 +375,171 @@ async function getExistingStats(env, matchIds) {
   })
   if (!res.ok) return []
   return res.json()
+}
+
+// ── Inline Poisson engine for prediction logging ──────────────────────────
+// Mirrors settle-match.js; kept separate to avoid shared-state bugs.
+
+const PRED_LEAGUE_AVG = 1.5
+const PRED_DEF_MIN    = 0.5
+const PRED_DEF_MAX    = 1.8
+const PRED_SCORE_MAX  = 8
+
+function predPmf(k, λ) {
+  if (λ <= 0) return k === 0 ? 1 : 0
+  let logF = 0
+  for (let i = 2; i <= k; i++) logF += Math.log(i)
+  return Math.exp(k * Math.log(λ) - λ - logF)
+}
+
+function predBlend(xg, goals) {
+  if (xg == null) return goals
+  if (xg < 0.3 && goals > 0.8) return goals
+  return xg * 0.6 + goals * 0.4
+}
+
+function predClamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
+
+function predLambdasV1(hs, as_, vMult) {
+  const attH = (hs.xgf_per_game != null && as_.xgf_per_game != null)
+    ? predBlend(hs.xgf_per_game, hs.goals_scored_avg) : hs.goals_scored_avg
+  const attA = (hs.xgf_per_game != null && as_.xgf_per_game != null)
+    ? predBlend(as_.xgf_per_game, as_.goals_scored_avg) : as_.goals_scored_avg
+  const defHI = (hs.xga_per_game != null && as_.xga_per_game != null)
+    ? predBlend(hs.xga_per_game, hs.goals_conceded_avg) : hs.goals_conceded_avg
+  const defAI = (hs.xga_per_game != null && as_.xga_per_game != null)
+    ? predBlend(as_.xga_per_game, as_.goals_conceded_avg) : as_.goals_conceded_avg
+  const dHF = predClamp(PRED_LEAGUE_AVG / defHI, PRED_DEF_MIN, PRED_DEF_MAX)
+  const dAF = predClamp(PRED_LEAGUE_AVG / defAI, PRED_DEF_MIN, PRED_DEF_MAX)
+  return {
+    lambdaHome: Math.max(attH * dAF * vMult, 0.01),
+    lambdaAway: Math.max(attA * dHF, 0.01),
+  }
+}
+
+function predLambdasV2(hs, as_, vMult) {
+  const v1 = predLambdasV1(hs, as_, vMult)
+  let awayFactor = 1.0
+  if (as_.away_goals_avg && as_.goals_scored_avg > 0) {
+    const suspicious = as_.home_goals_avg != null && as_.away_goals_avg > as_.home_goals_avg * 1.5
+    if (!suspicious) awayFactor = as_.away_goals_avg / as_.goals_scored_avg
+  }
+  awayFactor = predClamp(awayFactor, 0.4, 1.4)
+  return { lambdaHome: v1.lambdaHome, lambdaAway: Math.max(v1.lambdaAway * awayFactor, 0.01) }
+}
+
+function predBuildMatrix(lh, la) {
+  const N = PRED_SCORE_MAX + 1
+  const m = Array.from({ length: N }, () => new Array(N).fill(0))
+  for (let i = 0; i < N; i++)
+    for (let j = 0; j < N; j++)
+      m[i][j] = predPmf(i, lh) * predPmf(j, la)
+  return m
+}
+
+function predCalcProbs(matrix) {
+  let home = 0, draw = 0, away = 0
+  for (let i = 0; i < matrix.length; i++)
+    for (let j = 0; j < matrix[i].length; j++) {
+      if (i > j) home += matrix[i][j]
+      else if (i === j) draw += matrix[i][j]
+      else away += matrix[i][j]
+    }
+  return { home, draw, away }
+}
+
+function predTopScore(mat) {
+  let bi = 0, bj = 0, bp = 0
+  for (let i = 0; i <= PRED_SCORE_MAX; i++)
+    for (let j = 0; j <= PRED_SCORE_MAX; j++)
+      if (mat[i][j] > bp) { bp = mat[i][j]; bi = i; bj = j }
+  return `${bi}-${bj}`
+}
+
+function predAnchorLine(lt) {
+  if (lt < 2.0) return 1.5
+  if (lt < 2.8) return 2.5
+  if (lt < 3.8) return 3.5
+  if (lt < 4.8) return 4.5
+  return 5.5
+}
+
+function predVenueMult(homeTeam) {
+  const t = (homeTeam || '').toLowerCase().trim()
+  if (t === 'mexico') return 1.35
+  if (t === 'canada') return 1.05
+  if (t === 'usa')    return 1.10
+  return 1.0
+}
+
+async function logPredictions(env, matches, statsRows) {
+  if (!matches.length || !statsRows.length) return 0
+  const now = new Date().toISOString()
+  const matchIds = matches.map(m => m.id)
+
+  // Don't overwrite already-settled predictions
+  const settledRes = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/model_predictions?match_id=in.(${matchIds.join(',')})&settled_at=not.is.null&select=match_id`,
+    { headers: sbAuth(env) }
+  ).catch(() => null)
+  const settledIds = new Set(
+    settledRes?.ok ? (await settledRes.json()).map(r => r.match_id) : []
+  )
+
+  const predRows = []
+  for (const m of matches) {
+    if (settledIds.has(m.id)) continue
+    const hs  = statsRows.find(r => r.team_code === m.home_team_code && r.match_id === m.id)
+    const as_ = statsRows.find(r => r.team_code === m.away_team_code && r.match_id === m.id)
+    if (!hs?.goals_scored_avg || !hs?.goals_conceded_avg ||
+        !as_?.goals_scored_avg || !as_?.goals_conceded_avg) continue
+
+    try {
+      const vMult = predVenueMult(m.home_team)
+      const v1 = predLambdasV1(hs, as_, vMult)
+      const v2 = predLambdasV2(hs, as_, vMult)
+
+      // V3: 65% DC historical + 35% V1 recent form
+      const homeIsHost = isWC2026Host(m.home_team)
+      const { lh: dcH, la: dcA } = dcLambdas(m.home_team, m.away_team, homeIsHost)
+      const lhV3 = 0.65 * dcH + 0.35 * v1.lambdaHome
+      const laV3 = 0.65 * dcA + 0.35 * v1.lambdaAway
+
+      const matV1 = predBuildMatrix(v1.lambdaHome, v1.lambdaAway)
+      const matV2 = predBuildMatrix(v2.lambdaHome, v2.lambdaAway)
+      const matV3 = predBuildMatrix(lhV3, laV3)
+      const pV1 = predCalcProbs(matV1)
+      const pV2 = predCalcProbs(matV2)
+      const pV3 = predCalcProbs(matV3)
+
+      predRows.push({
+        match_id: m.id,
+        predicted_at: now,
+        v1_home_win:    +pV1.home.toFixed(3), v1_draw: +pV1.draw.toFixed(3), v1_away_win: +pV1.away.toFixed(3),
+        v1_lambda_home: +v1.lambdaHome.toFixed(3), v1_lambda_away: +v1.lambdaAway.toFixed(3),
+        v1_top_score:   predTopScore(matV1),
+        v2_home_win:    +pV2.home.toFixed(3), v2_draw: +pV2.draw.toFixed(3), v2_away_win: +pV2.away.toFixed(3),
+        v2_lambda_home: +v2.lambdaHome.toFixed(3), v2_lambda_away: +v2.lambdaAway.toFixed(3),
+        v2_top_score:   predTopScore(matV2),
+        v3_home_win:    +pV3.home.toFixed(3), v3_draw: +pV3.draw.toFixed(3), v3_away_win: +pV3.away.toFixed(3),
+        v3_lambda_home: +lhV3.toFixed(3), v3_lambda_away: +laV3.toFixed(3),
+        v3_top_score:   predTopScore(matV3),
+        anchor_line:    predAnchorLine(lhV3 + laV3),
+      })
+    } catch { /* skip this match — never block stats sync */ }
+  }
+
+  if (!predRows.length) return 0
+
+  const res = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/model_predictions?on_conflict=match_id`,
+    {
+      method: 'POST',
+      headers: { ...sbAuth(env), 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(predRows),
+    }
+  )
+  return res.ok ? predRows.length : 0
 }
 
 async function upsertStats(env, rows) {
@@ -474,10 +641,17 @@ export async function onRequestPost(context) {
       await upsertStats(env, rows)
     }
 
+    // 7. Log pre-kickoff predictions (never blocks response)
+    let predictions_logged = 0
+    try {
+      predictions_logged = await logPredictions(env, matches, rows)
+    } catch { /* prediction logging must never block stats sync */ }
+
     clearTimeout(timeout)
     return jsonResponse({
       ok: true,
       synced: rows.length,
+      predictions_logged,
       matches_processed: matches.length,
       teams_found: Object.keys(footyData).length,
       unresolved,               // names that didn't map to an API team
