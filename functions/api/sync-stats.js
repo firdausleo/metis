@@ -234,7 +234,25 @@ async function fetchApiFootball(env, teamNames, signal) {
   const unresolved = []
   let first = true
   for (const name of teamNames) {
-    const id = resolveTeamId(idMap, name)
+    let id = resolveTeamId(idMap, name)
+    if (!id) {
+      // Fallback: search API-Football directly by team name
+      const searchName = NAME_MAP[name] || name
+      try {
+        await sleep(1000)
+        const searchData = await apiFetch(
+          env,
+          `/teams?name=${encodeURIComponent(searchName)}`,
+          signal
+        )
+        const match = (searchData.response || [])[0]
+        if (match?.team?.id) {
+          id = match.team.id
+          // Cache it for this session
+          idMap[norm(searchName)] = id
+        }
+      } catch { /* ignore */ }
+    }
     if (!id) { unresolved.push(name); continue }
 
     // 2s delay between teams to respect API-Football rate limits
