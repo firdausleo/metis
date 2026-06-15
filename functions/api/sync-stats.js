@@ -53,6 +53,7 @@ const NAME_MAP = {
   'Ivory Coast': "Cote d'Ivoire",
   'DR Congo': 'Congo DR',
   'Czechia': 'Czech Republic',
+  'Cape Verde': 'Cabo Verde',
 }
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
