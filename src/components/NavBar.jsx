@@ -5,11 +5,12 @@ import { useTranslation, setLanguage } from '../lib/i18n'
 
 // FAQ replaces Settings in the main nav items; Settings stays in desktop right section
 const NAV_ITEMS = [
-  { key: 'nav.dashboard', icon: '📊', path: '/' },
-  { key: 'nav.matches',   icon: '⚽', path: '/matches' },
-  { key: 'nav.myBets',   icon: '🎯', path: '/my-bets' },
-  { key: 'nav.picks',    icon: '💡', path: '/recommendations' },
-  { key: 'nav.faq',      icon: '❓', path: '/faq' },
+  { key: 'nav.dashboard',  icon: '📊', path: '/' },
+  { key: 'nav.matches',    icon: '⚽', path: '/matches' },
+  { key: 'nav.simulator',  icon: '🎲', path: '/simulator' },
+  { key: 'nav.myBets',    icon: '🎯', path: '/my-bets' },
+  { key: 'nav.picks',     icon: '💡', path: '/recommendations' },
+  { key: 'nav.faq',       icon: '❓', path: '/faq' },
 ]
 
 function isActive(path, pathname) {
@@ -101,14 +102,14 @@ export default function NavBar() {
         </span>
 
         <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-          {NAV_ITEMS.slice(0, 4).map(item => (
+          {NAV_ITEMS.map(item => (
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
               style={{
-                border: 'none', cursor: 'pointer', padding: '6px 14px',
+                border: 'none', cursor: 'pointer', padding: '6px 12px',
                 borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-ui)',
-                fontSize: 14, fontWeight: 500, minHeight: 'var(--touch-target)',
+                fontSize: 13, fontWeight: 500, minHeight: 'var(--touch-target)',
                 color: isActive(item.path, location.pathname) ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
                 background: isActive(item.path, location.pathname) ? 'var(--color-accent-dim)' : 'transparent',
                 transition: 'color 0.15s, background 0.15s',
@@ -117,20 +118,6 @@ export default function NavBar() {
               {item.icon} {t(item.key)}
             </button>
           ))}
-          {/* FAQ — 5th item, desktop */}
-          <button
-            onClick={() => navigate('/faq')}
-            style={{
-              border: 'none', cursor: 'pointer', padding: '6px 14px',
-              borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-ui)',
-              fontSize: 14, fontWeight: 500, minHeight: 'var(--touch-target)',
-              color: isActive('/faq', location.pathname) ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
-              background: isActive('/faq', location.pathname) ? 'var(--color-accent-dim)' : 'transparent',
-              transition: 'color 0.15s, background 0.15s',
-            }}
-          >
-            ❓ {t('nav.faq')}
-          </button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
