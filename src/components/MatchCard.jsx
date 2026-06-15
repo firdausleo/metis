@@ -60,6 +60,7 @@ export default function MatchCard({
   isAnalyzed = false,
   homeStats = null,
   awayStats = null,
+  dcDivergent = null,
 }) {
   const { t } = useTranslation()
   const [hovered, setHovered] = useState(false)
@@ -239,6 +240,20 @@ export default function MatchCard({
             color: 'var(--color-accent)',
           }}>
             {t('match.analyzed')}
+          </span>
+        )}
+
+        {dcDivergent && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: '0.05em',
+            padding: '3px 7px',
+            borderRadius: 'var(--radius-sm)',
+            background: '#EEEDFE',
+            color: '#3C3489',
+            border: '0.5px solid #534AB7',
+            whiteSpace: 'nowrap',
+          }}>
+            ⚠ Models diverge
           </span>
         )}
 

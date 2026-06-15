@@ -1,15 +1,16 @@
 /**
  * poisson.js — Metis Core Algorithm
  *
- * Implements V1 (overall) and V2 (away-factor) Poisson models per METIS-BIBLE Part 4.
- * Pure functions — no side effects, no imports. Fully testable in isolation.
+ * Implements V1 (overall), V2 (away-factor), and V3 (Dixon-Coles ensemble) models.
  *
  * Guardrails:
  *   MT06 — throws if games_window < 5 (never estimates)
- *   MT07 — both V1 and V2 always returned together
+ *   MT07 — V1, V2, and V3 always returned together
  *   MT08 — displayed probabilities capped 5%–95% (applied by caller via capProb())
  *   MT21 — Dixon-Coles default OFF; caller must explicitly pass dixonColes: true
  */
+
+import { blendedLambdas, dcScoreMatrix, matrixStats, isWC2026Host } from '../utils/dcRatings.js'
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -328,7 +329,7 @@ export function calcTotalGoals(lambdaHome, lambdaAway) {
  *
  * Throws on MT06 violations (caller must catch).
  */
-export function runModels(homeStats, awayStats, { dixonColes = false, venue = '', city = '', homeTeam = '' } = {}) {
+export function runModels(homeStats, awayStats, { dixonColes = false, venue = '', city = '', homeTeam = '', awayTeam = '' } = {}) {
   const venueMult = getVenueAdvantage(venue, city, homeTeam)
   // V1
   const { lambdaHome: lhV1, lambdaAway: laV1 } = calcLambdasV1(homeStats, awayStats, venueMult)
@@ -362,6 +363,31 @@ export function runModels(homeStats, awayStats, { dixonColes = false, venue = ''
       : null,
   }
 
+  // V3 — Dixon-Coles ensemble (65% DC + 35% M7), temperature calibrated
+  let v3 = null
+  if (homeTeam && awayTeam) {
+    try {
+      const homeIsHost = isWC2026Host(homeTeam)
+      const { lh: lhV3, la: laV3 } = blendedLambdas(homeTeam, awayTeam, lhV1, laV1, homeIsHost, 0.65)
+      const matrixV3 = dcScoreMatrix(lhV3, laV3)
+      const sv3 = matrixStats(matrixV3)
+      v3 = {
+        lambdaHome: Math.round(lhV3 * 1000) / 1000,
+        lambdaAway: Math.round(laV3 * 1000) / 1000,
+        dcWeight: 0.65,
+        m7Weight: 0.35,
+        homeIsHost,
+        matrix: matrixV3,
+        probs: { home: sv3.homeWin, draw: sv3.draw, away: sv3.awayWin },
+        over25: sv3.over25,
+        under25: sv3.under25,
+        btts: sv3.btts,
+        topScores: sv3.topScores,
+        totalGoals: sv3.totalGoals,
+      }
+    } catch { /* V3 is supplementary — never block V1/V2 */ }
+  }
+
   return {
     v1: {
       lambdaHome: lhV1,
@@ -381,8 +407,32 @@ export function runModels(homeStats, awayStats, { dixonColes = false, venue = ''
       totalGoals: goalsV2,
       probsVerified: verifiedV2,
     },
+    v3,
     divergence,
     dixonColes,
+  }
+}
+
+/**
+ * Run V3 Dixon-Coles model standalone.
+ * 65% DC ratings (fitted 15,508 matches) + 35% Model 7 (recent form).
+ */
+export function runV3Model(homeTeam, awayTeam, homeStats, awayStats, venue = '') {
+  const homeIsHost = isWC2026Host(homeTeam)
+  const venueMult = getVenueAdvantage(venue, '', homeTeam)
+  const { lambdaHome: m7Home, lambdaAway: m7Away } = calcLambdasV1(homeStats, awayStats, venueMult)
+  const { lh, la } = blendedLambdas(homeTeam, awayTeam, m7Home, m7Away, homeIsHost, 0.65)
+  const matrix = dcScoreMatrix(lh, la)
+  const stats = matrixStats(matrix)
+  return {
+    model: 'V3',
+    lambdaHome: Math.round(lh * 1000) / 1000,
+    lambdaAway: Math.round(la * 1000) / 1000,
+    dcWeight: 0.65,
+    m7Weight: 0.35,
+    homeIsHost,
+    matrix,
+    ...stats,
   }
 }
 

@@ -952,7 +952,7 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
     if (!stats?.home || !stats?.away) return null
     try {
       setModelError(null)
-      return runModels(stats.home, stats.away, { dixonColes, venue: match?.venue, city: match?.city, homeTeam: match?.home_team })
+      return runModels(stats.home, stats.away, { dixonColes, venue: match?.venue, city: match?.city, homeTeam: match?.home_team, awayTeam: match?.away_team })
     } catch (err) {
       setModelError(err.message)
       return null
@@ -994,7 +994,7 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
     )
   }
 
-  const { v1, v2, divergence } = model
+  const { v1, v2, v3, divergence } = model
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -1017,6 +1017,7 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
             {v1.lambdaHome.toFixed(3)}
           </p>
           <p style={{ fontSize: 14, color: 'var(--color-info)' }}>V2: {v2.lambdaHome.toFixed(3)}</p>
+          {v3 && <p style={{ fontSize: 14, color: '#534AB7' }}>V3: {v3.lambdaHome.toFixed(3)}</p>}
         </div>
         <span style={{ fontFamily: 'var(--font-display)', fontSize: 21, color: 'var(--color-text-muted)' }}>vs</span>
         <div style={{ textAlign: 'center' }}>
@@ -1025,6 +1026,7 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
             {v1.lambdaAway.toFixed(3)}
           </p>
           <p style={{ fontSize: 14, color: 'var(--color-info)' }}>V2: {v2.lambdaAway.toFixed(3)} <span style={{ color: 'var(--color-text-muted)' }}>({v2.awayFactorNote})</span></p>
+          {v3 && <p style={{ fontSize: 14, color: '#534AB7' }}>V3: {v3.lambdaAway.toFixed(3)}</p>}
         </div>
       </div>
 
@@ -1065,6 +1067,85 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
         )}
       </div>
 
+      {/* V3 Model Comparison Table */}
+      {v3 && (() => {
+        const v2over25 = v2.totalGoals?.find(l => l.line === 2.5)?.over ?? null
+        const v2btts = (() => {
+          let b = 0
+          const M = v2.matrix
+          for (let i = 1; i < M.length; i++) for (let j = 1; j < M[i].length; j++) b += M[i][j]
+          return Math.round(b * 1000) / 1000
+        })()
+        const rows = [
+          { label: `${match.home_team} Win`, v2val: v2.probs.home, v3val: v3.probs.home },
+          { label: 'Draw',                   v2val: v2.probs.draw, v3val: v3.probs.draw },
+          { label: `${match.away_team} Win`, v2val: v2.probs.away, v3val: v3.probs.away },
+          { label: 'Over 2.5',              v2val: v2over25,       v3val: v3.over25 },
+          { label: 'BTTS',                   v2val: v2btts,         v3val: v3.btts },
+        ]
+        const v2v3Diff = Math.abs(v2.probs.home - v3.probs.home)
+        return (
+          <div style={{
+            background: 'var(--color-bg-card)',
+            border: '0.5px solid #534AB7',
+            borderRadius: 'var(--radius-md)',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 14px',
+              background: '#EEEDFE',
+              borderBottom: '0.5px solid #534AB7',
+            }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: '#3C3489', letterSpacing: '0.06em' }}>
+                {t('analysis.modelComparison').toUpperCase()}
+              </p>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {v2v3Diff > 0.08 && (
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: '#FAEEDA', color: '#633806', border: '0.5px solid #cc8800' }}>
+                    ⚠ {t('analysis.modelsDisagree')}
+                  </span>
+                )}
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: '#EEEDFE', color: '#3C3489', border: '0.5px solid #534AB7' }}>
+                  {t('analysis.v3badge')}
+                </span>
+              </div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 280 }}>
+                <thead>
+                  <tr>
+                    <th style={{ padding: '7px 12px', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', background: 'var(--color-bg-elevated)', borderBottom: '0.5px solid var(--color-border)', textAlign: 'left', letterSpacing: '0.05em' }}>Outcome</th>
+                    <th style={{ padding: '7px 12px', fontSize: 11, fontWeight: 700, color: 'var(--color-info)', background: 'var(--color-bg-elevated)', borderBottom: '0.5px solid var(--color-border)', textAlign: 'center' }}>V2</th>
+                    <th style={{ padding: '7px 12px', fontSize: 11, fontWeight: 700, color: '#534AB7', background: '#EEEDFE', borderBottom: '0.5px solid var(--color-border)', textAlign: 'center' }}>V3 DC ★</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => {
+                    const diff = r.v2val != null && r.v3val != null ? Math.abs(r.v2val - r.v3val) : 0
+                    return (
+                      <tr key={r.label} style={{ background: diff > 0.08 ? 'rgba(204,136,0,0.05)' : 'transparent' }}>
+                        <td style={{ padding: '8px 12px', fontSize: 14, color: 'var(--color-text-primary)', borderBottom: '0.5px solid var(--color-border)' }}>{r.label}</td>
+                        <td style={{ padding: '8px 12px', fontSize: 14, fontWeight: 600, color: 'var(--color-info)', textAlign: 'center', borderBottom: '0.5px solid var(--color-border)' }}>
+                          {r.v2val != null ? `${(r.v2val * 100).toFixed(1)}%` : '—'}
+                        </td>
+                        <td style={{ padding: '8px 12px', fontSize: 14, fontWeight: 700, color: '#534AB7', textAlign: 'center', borderBottom: '0.5px solid var(--color-border)', background: '#EEEDFE22' }}>
+                          {r.v3val != null ? `${(r.v3val * 100).toFixed(1)}%` : '—'}
+                          {diff > 0.08 && <span style={{ marginLeft: 4, fontSize: 10, color: '#cc8800' }}>⚠</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: '8px 12px' }}>
+              {t('analysis.v3tooltip')}
+            </p>
+          </div>
+        )
+      })()}
+
       {/* Monte Carlo cross-check */}
       <MonteCarloPanel v1={v1} match={match} />
 
@@ -1085,6 +1166,40 @@ function TabMatrix({ stats, match, dixonColes, onToggleDixon }) {
         label={t('analysis.v2matrix').toUpperCase()}
         colour="var(--color-info)"
       />
+
+      {/* V3 top scorelines */}
+      {v3?.topScores?.length > 0 && (
+        <div style={{
+          background: 'var(--color-bg-card)',
+          border: '0.5px solid #534AB7',
+          borderRadius: 'var(--radius-md)',
+          padding: '14px 16px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: '#3C3489', letterSpacing: '0.06em' }}>
+              {t('analysis.v3topScores').toUpperCase()}
+            </p>
+            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: '#EEEDFE', color: '#3C3489', border: '0.5px solid #534AB7' }}>
+              V3 DC ★
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {v3.topScores.slice(0, 8).map(s => (
+              <div key={s.score} style={{
+                padding: '6px 12px',
+                background: '#EEEDFE',
+                border: '0.5px solid #534AB7',
+                borderRadius: 'var(--radius-sm)',
+                textAlign: 'center',
+                minWidth: 64,
+              }}>
+                <p style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 700, color: '#3C3489' }}>{s.score}</p>
+                <p style={{ fontSize: 12, color: '#534AB7' }}>{(s.prob * 100).toFixed(1)}%</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Total Goals anchor table */}
       <div>
@@ -1418,12 +1533,13 @@ function TabValue({ stats, match, odds, setOdds }) {
   const { t } = useTranslation()
   const model = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
-    try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team }) } catch { return null }
+    try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team, awayTeam: match?.away_team }) } catch { return null }
   }, [stats, match])
 
   const [stake, setStake] = useState('')
   const [placed, setPlaced] = useState({})
   const [pending, setPending] = useState(null)   // outcome key awaiting checklist confirm
+  const [useV3, setUseV3] = useState(true)   // default to V3 as recommended
 
   // Composite confidence (Role 10) — null until analysis run; drives Task 30 warning
   const [composite, setComposite] = useState(null)
@@ -1465,8 +1581,9 @@ function TabValue({ stats, match, odds, setOdds }) {
     if (!model) return null
     const o = { home: parseFloat(odds.home), draw: parseFloat(odds.draw), away: parseFloat(odds.away) }
     if (![o.home, o.draw, o.away].every(v => v > 1)) return null
-    try { return analyse1X2(model.v2.probs, o) } catch { return null }
-  }, [model, odds])
+    const probs = (useV3 && model.v3) ? model.v3.probs : model.v2.probs
+    try { return analyse1X2(probs, o) } catch { return null }
+  }, [model, odds, useV3])
 
   // Capture the odds at first valid EV as the drift baseline ("last fetch")
   useEffect(() => {
@@ -1496,27 +1613,83 @@ function TabValue({ stats, match, odds, setOdds }) {
             borderRadius: 'var(--radius-md)',
             padding: '14px 16px',
           }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 12 }}>
-              MODEL PROBABILITIES (V1 · V2)
-            </p>
-            {['home', 'draw', 'away'].map(key => (
-              <div key={key} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                marginBottom: 10,
-              }}>
-                <span style={{ fontSize: 15, color: 'var(--color-text-primary)' }}>
-                  {OUTCOME_LABELS[key]}
-                </span>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: OUTCOME_COLOURS[key], fontFamily: 'var(--font-display)' }}>
-                    {formatProb(model.v1.probs[key])}
-                  </span>
-                  <span style={{ fontSize: 14, color: 'var(--color-info)' }}>
-                    {formatProb(model.v2.probs[key])}
-                  </span>
-                </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>
+                MODEL PROBABILITIES
+              </p>
+              {/* V2 / V3 toggle */}
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  onClick={() => setUseV3(false)}
+                  style={{
+                    minHeight: 30, padding: '0 10px', fontSize: 12, fontWeight: useV3 ? 400 : 700,
+                    borderRadius: 'var(--radius-sm)',
+                    background: useV3 ? 'transparent' : 'rgba(56,120,180,0.12)',
+                    border: `0.5px solid ${useV3 ? 'var(--color-border)' : 'var(--color-info)'}`,
+                    color: useV3 ? 'var(--color-text-muted)' : 'var(--color-info)',
+                    cursor: 'pointer', fontFamily: 'var(--font-ui)',
+                  }}
+                >V2</button>
+                <button
+                  onClick={() => setUseV3(true)}
+                  style={{
+                    minHeight: 30, padding: '0 10px', fontSize: 12, fontWeight: useV3 ? 700 : 400,
+                    borderRadius: 'var(--radius-sm)',
+                    background: useV3 ? '#EEEDFE' : 'transparent',
+                    border: `0.5px solid ${useV3 ? '#534AB7' : 'var(--color-border)'}`,
+                    color: useV3 ? '#3C3489' : 'var(--color-text-muted)',
+                    cursor: model?.v3 ? 'pointer' : 'not-allowed',
+                    opacity: model?.v3 ? 1 : 0.4,
+                    fontFamily: 'var(--font-ui)',
+                  }}
+                  disabled={!model?.v3}
+                >V3 ★</button>
               </div>
-            ))}
+            </div>
+            {useV3 && model?.v3 && (
+              <p style={{ fontSize: 12, color: '#534AB7', marginBottom: 10, fontStyle: 'italic' }}>
+                {t('analysis.usingV3')}
+              </p>
+            )}
+            {!useV3 && (
+              <p style={{ fontSize: 12, color: 'var(--color-info)', marginBottom: 10, fontStyle: 'italic' }}>
+                {t('analysis.usingV2')}
+              </p>
+            )}
+            {['home', 'draw', 'away'].map(key => {
+              const v3p = model?.v3?.probs?.[key]
+              const v2p = model?.v2?.probs?.[key]
+              const activeProb = (useV3 && v3p != null) ? v3p : v2p
+              return (
+                <div key={key} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  marginBottom: 10,
+                }}>
+                  <span style={{ fontSize: 15, color: 'var(--color-text-primary)' }}>
+                    {OUTCOME_LABELS[key]}
+                  </span>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <span style={{ fontSize: 14, color: 'var(--color-text-muted)' }}>
+                      V1 {formatProb(model.v1.probs[key])}
+                    </span>
+                    <span style={{ fontSize: 14, color: 'var(--color-info)' }}>
+                      V2 {formatProb(v2p)}
+                    </span>
+                    {v3p != null && (
+                      <span style={{
+                        fontSize: 16, fontWeight: 700, color: '#3C3489',
+                        fontFamily: 'var(--font-display)',
+                        background: '#EEEDFE', padding: '1px 8px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '0.5px solid #534AB7',
+                      }}>
+                        V3 {formatProb(v3p)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
 
           {/* Anchor total goals line */}
@@ -1600,11 +1773,18 @@ function TabValue({ stats, match, odds, setOdds }) {
           borderRadius: 'var(--radius-md)',
           padding: '14px 16px',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em' }}>
               {t('value.ev').toUpperCase()}
             </span>
-            <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>vig {(ev1x2.vig.vigPct).toFixed(1)}%</span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {useV3 && model?.v3 && (
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: '#EEEDFE', color: '#3C3489', border: '0.5px solid #534AB7' }}>
+                  V3 DC ★
+                </span>
+              )}
+              <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>vig {(ev1x2.vig.vigPct).toFixed(1)}%</span>
+            </div>
           </div>
           <input type="number" inputMode="decimal" min="0" placeholder={t('value.stake')} value={stake}
             onChange={e => setStake(e.target.value)}
@@ -1990,7 +2170,7 @@ function ChineseCorrectScoreSection({ model, homeTeam, awayTeam }) {
 function TabAsian({ stats, match }) {
   const model = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
-    try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team }) } catch { return null }
+    try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team, awayTeam: match?.away_team }) } catch { return null }
   }, [stats, match])
 
   const [ahLine,    setAhLine]    = useState(-0.5)
@@ -2304,7 +2484,7 @@ function TabPortfolio({ stats, match, odds1x2 }) {
 
   const model = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
-    try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team }) } catch { return null }
+    try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team, awayTeam: match?.away_team }) } catch { return null }
   }, [stats, match])
 
   const anchor = model?.v1.totalGoals.find(l => l.anchor)
@@ -3208,7 +3388,7 @@ export default function MatchAnalysis() {
   // Sidebar model + EV for Final Signal (independent of tab state)
   const sidebarModel = useMemo(() => {
     if (!stats?.home || !stats?.away) return null
-    try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team }) } catch { return null }
+    try { return runModels(stats.home, stats.away, { venue: match?.venue, city: match?.city, homeTeam: match?.home_team, awayTeam: match?.away_team }) } catch { return null }
   }, [stats, match])
 
   const sidebarEv = useMemo(() => {
@@ -3352,6 +3532,10 @@ export default function MatchAnalysis() {
                       <p style={{ fontSize: 14, color: 'var(--color-info)', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }}>{t('analysis.v2model')}</p>
                       <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>{t('analysis.v2note')}</p>
                     </div>
+                    <div style={{ flex: 1, minWidth: 120 }}>
+                      <p style={{ fontSize: 14, color: '#3C3489', fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }}>{t('analysis.v3model')} ★</p>
+                      <p style={{ fontSize: 15, color: 'var(--color-text-muted)' }}>{t('analysis.v3note')}</p>
+                    </div>
                   </div>
                 )}
 
@@ -3379,6 +3563,62 @@ export default function MatchAnalysis() {
                     t={t}
                   />
                 </div>
+
+                {/* V3 Model Summary */}
+                {sidebarModel?.v3 && (
+                  <div style={{
+                    marginTop: 16,
+                    background: '#EEEDFE',
+                    border: '0.5px solid #534AB7',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '14px 16px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: '#3C3489', letterSpacing: '0.06em' }}>
+                        {t('analysis.v3model')} ★ {t('analysis.recommended')}
+                      </p>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: '#fff', color: '#3C3489', border: '0.5px solid #534AB7' }}>
+                        {t('analysis.v3badge')}
+                      </span>
+                    </div>
+
+                    {/* Lambda comparison row */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 12, alignItems: 'center', marginBottom: 14 }}>
+                      <div style={{ textAlign: 'center', background: '#fff', border: '0.5px solid #534AB7', borderRadius: 'var(--radius-md)', padding: '10px' }}>
+                        <p style={{ fontSize: 11, color: '#534AB7', fontWeight: 700, letterSpacing: '0.05em', marginBottom: 4 }}>λ HOME (V3)</p>
+                        <p style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 600, color: '#3C3489' }}>{sidebarModel.v3.lambdaHome.toFixed(3)}</p>
+                      </div>
+                      <span style={{ fontSize: 16, color: '#534AB7' }}>vs</span>
+                      <div style={{ textAlign: 'center', background: '#fff', border: '0.5px solid #534AB7', borderRadius: 'var(--radius-md)', padding: '10px' }}>
+                        <p style={{ fontSize: 11, color: '#534AB7', fontWeight: 700, letterSpacing: '0.05em', marginBottom: 4 }}>λ AWAY (V3)</p>
+                        <p style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 600, color: '#3C3489' }}>{sidebarModel.v3.lambdaAway.toFixed(3)}</p>
+                      </div>
+                    </div>
+
+                    {/* V3 probabilities */}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                      {[
+                        { label: `${match.home_team} Win`, val: sidebarModel.v3.probs.home },
+                        { label: 'Draw', val: sidebarModel.v3.probs.draw },
+                        { label: `${match.away_team} Win`, val: sidebarModel.v3.probs.away },
+                        { label: 'Over 2.5', val: sidebarModel.v3.over25 },
+                        { label: 'BTTS', val: sidebarModel.v3.btts },
+                      ].map(item => (
+                        <div key={item.label} style={{ flex: '1 0 80px', textAlign: 'center', background: '#fff', border: '0.5px solid #534AB7', borderRadius: 'var(--radius-sm)', padding: '8px 6px' }}>
+                          <p style={{ fontSize: 11, color: '#534AB7', marginBottom: 2 }}>{item.label}</p>
+                          <p style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: '#3C3489' }}>{(item.val * 100).toFixed(1)}%</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p style={{ fontSize: 12, color: '#534AB7', fontStyle: 'italic', lineHeight: 1.5 }}>
+                      {t('analysis.v3tooltip')}
+                    </p>
+                    <p style={{ fontSize: 11, color: '#534AB7', marginTop: 4 }}>
+                      {t('analysis.dcFittedDate')}2026-06-15 · 15,508 {t('analysis.v3badge').split('·')[1]?.trim()}
+                    </p>
+                  </div>
+                )}
 
                 {/* Data source note */}
                 {hasAnyStats && (

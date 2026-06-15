@@ -14,6 +14,8 @@
  * Auth: admin-only (verified via Supabase JWT → user id check)
  */
 
+import { DC_PARAMS, dcLambdas, blendedLambdas, isWC2026Host } from '../../src/utils/dcRatings.js'
+
 const HAIKU_MODEL     = 'claude-haiku-4-5-20251001'
 const SONNET_MODEL    = 'claude-sonnet-4-6'
 const ANTHROPIC_API   = 'https://api.anthropic.com/v1/messages'
@@ -259,7 +261,39 @@ function extractJson(text) {
 
 // ── Context builders ──────────────────────────────────────────
 
+function buildV3Section(homeTeam, awayTeam, homeStats, awayStats) {
+  try {
+    const homeIsHost = isWC2026Host(homeTeam)
+    const h = DC_PARAMS.teams[homeTeam] || null
+    const a = DC_PARAMS.teams[awayTeam] || null
+    const { lh: dcH, la: dcA } = dcLambdas(homeTeam, awayTeam, homeIsHost)
+
+    // If stats are available, compute blended lambdas (65% DC + 35% M7 approx)
+    let blendedHome = dcH, blendedAway = dcA
+    if (homeStats?.goals_scored_avg && awayStats?.goals_scored_avg) {
+      const m7H = homeStats.goals_scored_avg
+      const m7A = awayStats.goals_scored_avg
+      blendedHome = 0.65 * dcH + 0.35 * m7H
+      blendedAway = 0.65 * dcA + 0.35 * m7A
+    }
+
+    return `
+
+V3 MODEL (Dixon-Coles ensemble · primary model):
+  Fitted: 15,508 international matches (2010-2026) | ρ=-0.0612 | T=1.11
+  ${homeTeam} DC ratings: att=${h?.att ?? 'N/A'}, def=${h?.def ?? 'N/A'}${homeIsHost ? ' (host nation advantage)' : ''}
+  ${awayTeam} DC ratings: att=${a?.att ?? 'N/A'}, def=${a?.def ?? 'N/A'}
+  V3 λ home (DC+M7 blend): ${blendedHome.toFixed(3)}
+  V3 λ away (DC+M7 blend): ${blendedAway.toFixed(3)}
+  Note: V3 = 65% DC historical + 35% recent form. V3 is the recommended model.
+  When V2 and V3 differ >10pp on any outcome, note the discrepancy explicitly.`
+  } catch {
+    return ''
+  }
+}
+
 function buildMatchContext(match, homeStats, awayStats) {
+  const v3Section = buildV3Section(match.home_team, match.away_team, homeStats, awayStats)
   return `
 MATCH: ${match.home_team} vs ${match.away_team}
 Stage: ${match.stage}${match.group_name ? ` Group ${match.group_name}` : ''}
@@ -284,7 +318,7 @@ AWAY TEAM STATS (${match.away_team}):
   Away goals/game:     ${awayStats?.away_goals_avg ?? 'N/A'}
   Form (latest→old):   ${awayStats?.form_string ?? 'N/A'}
   Games in window:     ${awayStats?.games_window ?? 0}/5
-  WC games in window:  ${awayStats?.wc_games_in_window ?? 0}
+  WC games in window:  ${awayStats?.wc_games_in_window ?? 0}${v3Section}
 `.trim()
 }
 

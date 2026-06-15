@@ -310,7 +310,7 @@ export default function Dashboard() {
           const aws = idx[`${m.id}:${m.away_team_code}`]
           if (!hs || !aws) continue
           let model
-          try { model = runModels(hs, aws, { venue: m.venue, city: m.city, homeTeam: m.home_team }) } catch { continue }
+          try { model = runModels(hs, aws, { venue: m.venue, city: m.city, homeTeam: m.home_team, awayTeam: m.away_team }) } catch { continue }
           const ev = analyse1X2(model.v2.probs, { home: m.odds_home, draw: m.odds_draw, away: m.odds_away })
           if (!ev?.outcomes) continue
           for (const key of ['home', 'draw', 'away']) {
