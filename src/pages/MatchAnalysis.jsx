@@ -3243,7 +3243,7 @@ function FinalSignal({ ev1x2, aiComposite, match }) {
   const cfg = CFG[signal]
 
   const msg =
-    signal === 'NO_ODDS'  ? 'Enter odds in Value tab to see final signal'
+    signal === 'NO_ODDS'  ? 'Enter odds in Bets tab to see final signal'
     : signal === 'STRONG' ? `Both model and AI agree — bet ${LABEL[bestBet]}`
     : signal === 'CAUTION'? `Math finds edge but AI disagrees — reduce stake 50%`
     : signal === 'WEAK'   ? 'Edge found but low AI confidence — small stake only'
@@ -3316,29 +3316,41 @@ export default function MatchAnalysis() {
   const [dixonColes, setDixonColes] = useState(false)  // MT21 default OFF
   const [v1x2Odds, setV1x2Odds] = useState({ home: '', draw: '', away: '' })
   const [aiComposite, setAiComposite] = useState(null)
+  const [roleOutputs, setRoleOutputs] = useState([])
+  const [aiRoles, setAiRoles] = useState([])
+  const [aiRunning, setAiRunning] = useState(false)
+  const [aiRunError, setAiRunError] = useState(null)
+  const [aiRunMsg, setAiRunMsg] = useState('')
 
   const isAdmin = user?.id === ADMIN_UUID
   const { profile, refreshProfile } = useUser()
   // All approved users can run AI analysis (credit check enforced in worker)
   const canRunAI = profile?.status === 'approved'
 
-  // Fetch Role 10 (composite verdict) for sidebar Final Signal
+  // Load ai_roles + role_outputs; extract Role 10 for Final Signal
   useEffect(() => {
     if (!match?.id) return
     setAiComposite(null)
-    supabase
-      .from('role_outputs')
-      .select('output_json, ai_roles(role_number)')
-      .eq('match_id', match.id)
-      .then(({ data }) => {
-        const r10 = data?.find(o => o.ai_roles?.role_number === 10)
-        if (!r10) return
-        let json = r10.output_json
-        if (typeof json === 'string') {
-          try { json = JSON.parse(json.replace(/```json\n?|\n?```/g, '').trim()) } catch { json = null }
+    setRoleOutputs([])
+    async function loadAI() {
+      const [rolesRes, outputsRes] = await Promise.all([
+        supabase.from('ai_roles').select('*').eq('enabled', true).order('role_number'),
+        supabase.from('role_outputs').select('*, ai_roles(role_number)').eq('match_id', match.id),
+      ])
+      if (rolesRes.data) setAiRoles(rolesRes.data)
+      if (outputsRes.data) {
+        setRoleOutputs(outputsRes.data)
+        const r10 = outputsRes.data.find(o => o.ai_roles?.role_number === 10)
+        if (r10) {
+          let json = r10.output_json
+          if (typeof json === 'string') {
+            try { json = JSON.parse(json.replace(/```json\n?|\n?```/g, '').trim()) } catch { json = null }
+          }
+          if (json) setAiComposite(json)
         }
-        if (json) setAiComposite(json)
-      })
+      }
+    }
+    loadAI()
   }, [match?.id])
 
   useEffect(() => {
@@ -3407,6 +3419,44 @@ export default function MatchAnalysis() {
     setRefreshing(true)
     await refreshStats()
     setRefreshing(false)
+  }
+
+  async function handleRunAI() {
+    setAiRunning(true)
+    setAiRunMsg('')
+    setAiRunError(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) throw new Error('Not authenticated')
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ match_id: match.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      setAiRunMsg(`✓ ${data.roles_run} roles complete`)
+      const { data: fresh } = await supabase
+        .from('role_outputs')
+        .select('*, ai_roles(role_number)')
+        .eq('match_id', match.id)
+      if (fresh) {
+        setRoleOutputs(fresh)
+        const r10 = fresh.find(o => o.ai_roles?.role_number === 10)
+        if (r10) {
+          let json = r10.output_json
+          if (typeof json === 'string') {
+            try { json = JSON.parse(json.replace(/```json\n?|\n?```/g, '').trim()) } catch { json = null }
+          }
+          if (json) setAiComposite(json)
+        }
+      }
+      refreshProfile()
+    } catch (err) {
+      setAiRunError(err.message)
+    }
+    setAiRunning(false)
   }
 
   if (matchLoading) {
@@ -3484,6 +3534,12 @@ export default function MatchAnalysis() {
             lastUpdated={lastUpdated}
             sidebarModel={sidebarModel}
             aiComposite={aiComposite}
+            roleOutputs={roleOutputs}
+            aiRoles={aiRoles}
+            aiRunning={aiRunning}
+            aiRunError={aiRunError}
+            aiRunMsg={aiRunMsg}
+            onRunAI={handleRunAI}
           />
         )}
 

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from '../../lib/i18n'
+import { useUser } from '../../context/UserContext'
 import { getFlag } from '../../lib/teamFlags'
 import { SCORE_MAX } from '../../lib/poisson'
 
@@ -135,14 +136,130 @@ function edgeColour(prob) {
   return 'var(--color-text-muted)'
 }
 
+// ── AI role helpers ──────────────────────────────────────────────────────
+
+const ROLE_META = {
+  1:  { name: 'Statistical Validator', icon: '📊' },
+  2:  { name: 'Form Intelligence',     icon: '📈' },
+  3:  { name: 'Deep Analysis',         icon: '🧠' },
+  4:  { name: 'Tournament Context',    icon: '🏆' },
+  5:  { name: 'Market Intelligence',   icon: '💹' },
+  6:  { name: 'Risk Manager',          icon: '🛡️' },
+  7:  { name: 'Tactical Analyst',      icon: '⚽' },
+  8:  { name: 'Head-to-Head Historian',icon: '📜' },
+  9:  { name: 'Motivation Analyst',    icon: '🔥' },
+  10: { name: 'Composite Scorer',      icon: '🎯' },
+}
+
+const REC_COLOURS = {
+  home_win: 'var(--color-accent)', away_win: 'var(--color-info)', draw: 'var(--color-warning)',
+  over: 'var(--color-success)', under: 'var(--color-text-secondary)',
+  value_home: 'var(--color-accent)', value_away: 'var(--color-info)',
+}
+
+function normaliseOutput(raw) {
+  if (!raw) return null
+  if (typeof raw === 'object') return raw
+  try { return JSON.parse(String(raw).replace(/```json\n?|\n?```/g, '').trim()) }
+  catch { return { summary: String(raw).slice(0, 300), confidence: null, recommendation: null, signals: [], flags: ['parse_error'] } }
+}
+
+function RoleConfBar({ value }) {
+  if (value == null) return <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>—</span>
+  const pct = Math.round(value * 100)
+  const color = pct >= 70 ? 'var(--color-success)' : pct >= 45 ? 'var(--color-warning)' : 'var(--color-danger)'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
+      <div style={{ flex: 1, height: 4, background: 'var(--color-bg)', border: '0.5px solid var(--color-border)', borderRadius: 99, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 99 }} />
+      </div>
+      <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 30 }}>{pct}%</span>
+    </div>
+  )
+}
+
+function AiRoleCard({ output_json, isComposite }) {
+  const [expanded, setExpanded] = useState(false)
+  const out = normaliseOutput(output_json)
+  const roleNum = out?.role
+  const meta = ROLE_META[roleNum] || { name: `Role ${roleNum || '?'}`, icon: '🔹' }
+  const rec = out?.recommendation
+  const recColor = REC_COLOURS[rec] || 'var(--color-text-muted)'
+
+  return (
+    <div style={{
+      background: 'var(--color-bg-card)',
+      border: isComposite ? '1.5px solid var(--color-accent)' : '0.5px solid var(--color-border)',
+      borderRadius: 'var(--radius-md)', overflow: 'hidden',
+    }}>
+      <button
+        onClick={() => setExpanded(v => !v)}
+        style={{
+          width: '100%', padding: '12px 14px',
+          background: isComposite ? 'var(--color-accent-dim)' : 'none',
+          border: 'none', cursor: 'pointer', textAlign: 'left',
+          display: 'flex', alignItems: 'center', gap: 10, minHeight: 44,
+        }}
+      >
+        <span style={{ fontSize: 18, flexShrink: 0 }}>{meta.icon}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 14, fontWeight: isComposite ? 700 : 600, color: isComposite ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
+            {isComposite ? '★ ' : ''}{meta.name}
+          </span>
+          {out && <RoleConfBar value={out.confidence} />}
+        </div>
+        {rec && rec !== 'null' && (
+          <span style={{
+            fontSize: 12, fontWeight: 700, color: recColor,
+            padding: '2px 7px', background: `${recColor}22`,
+            border: `0.5px solid ${recColor}`, borderRadius: 99, flexShrink: 0,
+          }}>
+            {rec.replace(/_/g, ' ').toUpperCase()}
+          </span>
+        )}
+        <span style={{ color: 'var(--color-text-muted)', fontSize: 12, flexShrink: 0 }}>{expanded ? '▲' : '▼'}</span>
+      </button>
+      {expanded && out && (
+        <div style={{ padding: '10px 14px 14px', borderTop: '0.5px solid var(--color-border)' }}>
+          {out.summary && (
+            <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: 8 }}>{out.summary}</p>
+          )}
+          {out.signals?.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {out.signals.slice(0, 5).map((sig, i) => {
+                const isPos = !sig.toLowerCase().includes('⚠') &&
+                  !sig.toLowerCase().includes('risk') &&
+                  !sig.toLowerCase().includes('weak') &&
+                  !sig.toLowerCase().includes('concern')
+                return (
+                  <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                    <span style={{ color: isPos ? 'var(--color-success)' : 'var(--color-warning)', flexShrink: 0 }}>{isPos ? '✓' : '⚠'}</span>
+                    <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>{sig}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {out.flags?.includes('parse_error') && (
+            <p style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: 6 }}>⚠ Output parse error</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── PredictionTab ────────────────────────────────────────────────────────
 
 export default function PredictionTab({
   match, stats, statsLoading, statsError,
   isAdmin, refreshing, onRefresh, onSaveManual, lastUpdated,
   sidebarModel, aiComposite,
+  roleOutputs, aiRoles, aiRunning, aiRunError, aiRunMsg, onRunAI,
 }) {
   const { t, lang } = useTranslation()
+  const { profile } = useUser()
+  const credits = profile?.credits_remaining ?? 0
   const v3 = sidebarModel?.v3
   const v1 = sidebarModel?.v1
   const hasModel = !!v3
@@ -156,21 +273,23 @@ export default function PredictionTab({
   const aiConf = aiComposite?.confidence != null ? Math.round(aiComposite.confidence * 100) : null
   const recLabel = { home: match?.home_team, draw: 'Draw', away: match?.away_team }
 
+  const lastAiRun = roleOutputs?.length
+    ? new Date(Math.max(...roleOutputs.map(o => new Date(o.created_at)))).toLocaleString('zh-CN', {
+        timeZone: 'Asia/Shanghai', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+      })
+    : null
+
   // ── Total goals table ────────────────────────────────────────────────────
-  // v3.totalGoals is [{ goals, prob }] from matrixStats — sorted by goals
-  // We want sorted by prob desc, top 8.
   const goalsSorted = v3?.totalGoals
     ? [...v3.totalGoals].sort((a, b) => b.prob - a.prob).slice(0, 8)
     : []
 
-  // k_star = single highest-prob goals total (no lambda thresholds)
-  const kStarEntry = goalsSorted[0] ?? null  // goalsSorted is already desc by prob
+  const kStarEntry = goalsSorted[0] ?? null
   const kStar = kStarEntry?.goals ?? null
 
-  // Over/under probs at kStar - 0.5 (from v1, which has anchor flag)
   const anchorEntry = v1?.totalGoals?.find(g => g.anchor)
 
-  // dominant outcome from V3 probs (single highest)
   const dominant = v3?.probs
     ? v3.probs.home >= v3.probs.away && v3.probs.home >= v3.probs.draw ? 'home'
     : v3.probs.away > v3.probs.home && v3.probs.away >= v3.probs.draw ? 'away'
@@ -180,8 +299,8 @@ export default function PredictionTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-      {/* ── AI Verdict ── */}
-      {aiComposite && normRec && (
+      {/* ── AI Analysis section ── */}
+      {aiComposite && normRec ? (
         <div style={{
           background: '#EEEDFE', border: '0.5px solid #534AB7',
           borderRadius: 'var(--radius-md)', padding: '14px 16px',
@@ -202,6 +321,65 @@ export default function PredictionTab({
               Risk: {aiComposite.key_risks.slice(0, 2).join(' · ')}
             </p>
           )}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
+            {lastAiRun && (
+              <span style={{ fontSize: 11, color: '#534AB7' }}>
+                {lang === 'zh' ? '上次运行：' : 'Last run: '}{lastAiRun} 北京
+              </span>
+            )}
+            {onRunAI && (
+              <button
+                onClick={onRunAI}
+                disabled={aiRunning}
+                style={{
+                  minHeight: 32, padding: '0 12px', background: 'transparent',
+                  border: '0.5px solid #534AB7', borderRadius: 'var(--radius-sm)',
+                  color: '#534AB7', fontFamily: 'var(--font-ui)', fontSize: 12, fontWeight: 500,
+                  cursor: aiRunning ? 'not-allowed' : 'pointer', opacity: aiRunning ? 0.6 : 1,
+                }}
+              >
+                {aiRunning ? '⏳…' : (lang === 'zh' ? '↺ 重新分析' : '↺ Re-run Analysis')}
+              </button>
+            )}
+          </div>
+          {aiRunMsg && <p style={{ fontSize: 12, color: 'var(--color-success)', marginTop: 6 }}>{aiRunMsg}</p>}
+          {aiRunError && <p style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: 6 }}>{aiRunError}</p>}
+        </div>
+      ) : (
+        <div style={{
+          background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)',
+          borderRadius: 'var(--radius-md)', padding: '14px 16px',
+        }}>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: 10 }}>
+            AI ANALYSIS
+          </p>
+          {aiRunError && (
+            <p style={{ fontSize: 13, color: 'var(--color-danger)', marginBottom: 8 }}>{aiRunError}</p>
+          )}
+          <button
+            onClick={onRunAI}
+            disabled={aiRunning || !onRunAI}
+            style={{
+              minHeight: 44, padding: '0 20px', width: '100%',
+              background: aiRunning ? 'transparent' : 'var(--color-accent-dim)',
+              border: '0.5px solid var(--color-accent-border)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--color-accent)', fontFamily: 'var(--font-ui)',
+              fontSize: 16, fontWeight: 600,
+              cursor: (aiRunning || !onRunAI) ? 'not-allowed' : 'pointer',
+              opacity: (aiRunning || !onRunAI) ? 0.6 : 1,
+            }}
+          >
+            {aiRunning ? '⏳ Analysing…' : (lang === 'zh' ? '▶ 运行AI分析' : '▶ Run AI Analysis')}
+          </button>
+          {!isAdmin && (
+            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 8, textAlign: 'center' }}>
+              {lang === 'zh'
+                ? `消耗5积分 · 分析11个专项角色 · ⚡ ${credits} 积分`
+                : `Costs 5 credits · Analyzes 11 specialist roles · ⚡ ${credits} credits`}
+            </p>
+          )}
+          {aiRunMsg && <p style={{ fontSize: 13, color: 'var(--color-success)', marginTop: 8 }}>{aiRunMsg}</p>}
         </div>
       )}
 
@@ -314,7 +492,6 @@ export default function PredictionTab({
               })}
             </div>
             {kStar != null && (() => {
-              // Compute Over (kStar-0.5) and Under (kStar-0.5) from v3 distribution
               let kOver = 0, kUnder = 0
               for (const { goals, prob } of (v3.totalGoals || [])) {
                 if (goals >= kStar) kOver += prob
@@ -417,6 +594,81 @@ export default function PredictionTab({
           </>
         )}
       </Collapsible>
+
+      {/* ── AI Role Analysis (collapsible) ── */}
+      {(() => {
+        const outputByRoleId = {}
+        for (const o of (roleOutputs || [])) outputByRoleId[o.role_id] = o
+
+        const role10 = (aiRoles || []).find(r => r.role_number === 10)
+        const role10Out = role10 ? outputByRoleId[role10.id] : null
+        const otherRoles = (aiRoles || []).filter(r => r.role_number !== 10)
+        const hasOutputs = (roleOutputs?.length ?? 0) > 0
+
+        const collapsePreview = aiConf != null
+          ? (lang === 'zh'
+              ? `综合：${aiConf}/100 · 上次运行：${lastAiRun || '—'}`
+              : `Composite: ${aiConf}/100 · Last run: ${lastAiRun || '—'}`)
+          : (lang === 'zh' ? '尚未运行AI分析' : 'No AI analysis run yet')
+
+        return (
+          <Collapsible label={`🤖 ${lang === 'zh' ? 'AI角色分析' : 'AI Role Analysis'} · ${collapsePreview}`}>
+            {!hasOutputs ? (
+              <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
+                <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginBottom: 12 }}>
+                  {lang === 'zh'
+                    ? '此场比赛尚未运行AI分析。运行AI分析以查看11个专项角色输出。'
+                    : 'No AI analysis run yet for this match. Run AI Analysis to see 11 specialist role outputs.'}
+                </p>
+                <button
+                  onClick={onRunAI}
+                  disabled={aiRunning || !onRunAI}
+                  style={{
+                    minHeight: 44, padding: '0 24px',
+                    background: 'var(--color-accent-dim)',
+                    border: '0.5px solid var(--color-accent-border)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--color-accent)', fontFamily: 'var(--font-ui)',
+                    fontSize: 15, fontWeight: 600,
+                    cursor: (aiRunning || !onRunAI) ? 'not-allowed' : 'pointer',
+                    opacity: (aiRunning || !onRunAI) ? 0.6 : 1,
+                  }}
+                >
+                  {aiRunning ? '⏳ Analysing…' : (lang === 'zh' ? '▶ 运行AI分析' : '▶ Run AI Analysis')}
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {role10Out && (
+                  <AiRoleCard output_json={role10Out.output_json} isComposite />
+                )}
+                {otherRoles.map(r => {
+                  const out = outputByRoleId[r.id]
+                  if (!out) return null
+                  return <AiRoleCard key={r.id} output_json={out.output_json} isComposite={false} />
+                })}
+                {onRunAI && (
+                  <button
+                    onClick={onRunAI}
+                    disabled={aiRunning}
+                    style={{
+                      minHeight: 44, padding: '0 16px', marginTop: 4,
+                      background: 'transparent',
+                      border: '0.5px solid var(--color-border)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: 'var(--color-text-secondary)', fontFamily: 'var(--font-ui)',
+                      fontSize: 14, fontWeight: 500,
+                      cursor: aiRunning ? 'not-allowed' : 'pointer', opacity: aiRunning ? 0.6 : 1,
+                    }}
+                  >
+                    {aiRunning ? '⏳ Analysing…' : (lang === 'zh' ? '↺ 重新分析' : '↺ Re-run Analysis')}
+                  </button>
+                )}
+              </div>
+            )}
+          </Collapsible>
+        )
+      })()}
 
     </div>
   )
