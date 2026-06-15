@@ -146,7 +146,7 @@ function PaspPlanSection({ plan, match, bankroll, odds1x2, lang }) {
   const adjFracs = correlatedKelly(fracs)
 
   const steps = [
-    { step: '1', label: 'Anchor Total', value: `${plan.anchorSide === 'over' ? 'Over' : 'Under'} ${plan.anchorLine}`, prob: plan.anchorProb, colour: 'var(--color-accent)' },
+    { step: '1', label: 'Anchor Total', value: `${plan.anchorGoal} goals — Over ${plan.anchorLine}`, prob: plan.anchorProb, colour: 'var(--color-accent)' },
     { step: '2', label: 'Dominant Outcome', value: plan.dominantLabel, prob: plan.dominantProb, colour: 'var(--color-info)' },
     { step: '3', label: 'Primary Scoreline', value: plan.primary?.score || '—', prob: plan.primary?.prob || null, colour: '#534AB7' },
     { step: '4', label: 'Hedge Scoreline', value: plan.hedge?.score || '—', prob: plan.hedge?.prob || null, colour: 'var(--color-text-secondary)' },
@@ -504,7 +504,10 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   const plan = useMemo(() => buildPaspPlan(sidebarModel, match), [sidebarModel, match])
 
   // Anchor line from v1 totalGoals (has anchor boolean)
-  const anchorLine = sidebarModel?.v1?.totalGoals?.find(g => g.anchor)?.line || 2.5
+  // k_star from v3 distribution (highest prob goals total), betting line = k_star - 0.5
+  const v3Goals = sidebarModel?.v3?.totalGoals
+  const kStar = v3Goals?.length ? [...v3Goals].sort((a, b) => b.prob - a.prob)[0]?.goals ?? 2 : 2
+  const anchorLine = kStar - 0.5
 
   const cardStyle = { background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
 

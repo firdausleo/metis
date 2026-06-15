@@ -1,13 +1,22 @@
 // PASP: Anchor → Dominant → Primary → Hedge → Insurance → Kelly → Correlation
 // Pure JS — no API calls, no React, no side effects.
 
-export function getAnchorLine(lambdaHome, lambdaAway) {
-  const t = lambdaHome + lambdaAway
-  if (t < 2.0) return 1.5
-  if (t < 2.8) return 2.5
-  if (t < 3.8) return 3.5
-  if (t < 4.8) return 4.5
-  return 5.5
+// k_star: the most likely total goals count, selected purely by probability.
+// When bookmaker odds are provided, score(k) = prob(k) × (1 + max(edge(k), 0)).
+// With no odds: score(k) = prob(k).  NEVER use lambda thresholds here.
+export function getAnchorGoal(totalGoals, bookOdds = {}) {
+  if (!totalGoals?.length) return 2
+  let best = totalGoals[0]
+  for (const entry of totalGoals) {
+    const odds = bookOdds[entry.goals]
+    const edge = odds && odds > 1 ? entry.prob * odds - 1 : 0
+    const score = entry.prob * (1 + Math.max(edge, 0))
+    const bestOdds = bookOdds[best.goals]
+    const bestEdge = bestOdds && bestOdds > 1 ? best.prob * bestOdds - 1 : 0
+    const bestScore = best.prob * (1 + Math.max(bestEdge, 0))
+    if (score > bestScore) best = entry
+  }
+  return best.goals
 }
 
 export function getDominantOutcome(probs) {
@@ -47,10 +56,19 @@ export function getAnchorSideProbs(totalGoals, anchorLine) {
 export function buildPaspPlan(model, match) {
   if (!model?.v3) return null
   const { probs, topScores, lambdaHome, lambdaAway, over25, btts, totalGoals } = model.v3
-  const anchorLine = getAnchorLine(lambdaHome, lambdaAway)
-  const { over, under } = getAnchorSideProbs(totalGoals, anchorLine)
-  const anchorSide = over >= under ? 'over' : 'under'
-  const anchorProb = anchorSide === 'over' ? over : under
+
+  // k_star = highest-probability total goals (no lambda thresholds)
+  const kStar = getAnchorGoal(totalGoals)
+  // Betting line: Over (kStar - 0.5) = "goals ≥ kStar"
+  const anchorLine = kStar - 0.5
+  // anchorProb = P(goals >= kStar) = sum of entries at kStar and above
+  let overProb = 0, underProb = 0
+  for (const { goals, prob } of (totalGoals || [])) {
+    if (goals >= kStar) overProb += prob
+    else underProb += prob
+  }
+  const anchorSide = 'over'   // Over (kStar-0.5) always includes the peak
+  const anchorProb = overProb
 
   const dominant = getDominantOutcome(probs)
   const homeName = match?.home_team || 'Home'
@@ -58,11 +76,12 @@ export function buildPaspPlan(model, match) {
   const dominantLabel = dominant === 'home' ? homeName : dominant === 'away' ? awayName : 'Draw'
 
   return {
-    anchorLine,
+    anchorGoal: kStar,   // integer, e.g. 4 — the most likely goals total
+    anchorLine,          // kStar - 0.5, e.g. 3.5 — the Over betting line
     anchorSide,
     anchorProb,
-    overProb: over,
-    underProb: under,
+    overProb,
+    underProb,
     dominant,
     dominantLabel,
     dominantProb: probs[dominant],
@@ -82,12 +101,12 @@ export function buildPaspPlan(model, match) {
 // One-line strategy text for the recommendation banner.
 export function paspText(plan, lang = 'en') {
   if (!plan) return ''
-  const { dominantLabel, dominantProb, anchorLine, anchorSide, primary, drawInsurance, drawProb } = plan
+  const { dominantLabel, dominantProb, anchorGoal, anchorLine, anchorProb, primary, drawInsurance, drawProb } = plan
 
   if (lang === 'zh') {
     const lines = [
       `主要结果：${dominantLabel}（${(dominantProb * 100).toFixed(1)}%）`,
-      `锚定总进球：${anchorSide === 'over' ? '大' : '小'}${anchorLine}`,
+      `锚定总进球：${anchorGoal}球 — 大${anchorLine}（${(anchorProb * 100).toFixed(1)}%）`,
       primary ? `首选比分：${primary.score}（${(primary.prob * 100).toFixed(1)}%）` : null,
       drawInsurance ? `平局保险：平局${(drawProb * 100).toFixed(1)}%，建议小注对冲` : null,
     ]
@@ -96,7 +115,7 @@ export function paspText(plan, lang = 'en') {
 
   const lines = [
     `Primary: ${dominantLabel} win (${(dominantProb * 100).toFixed(1)}%)`,
-    `Anchor: ${anchorSide === 'over' ? 'Over' : 'Under'} ${anchorLine}`,
+    `Anchor: ${anchorGoal} goals — Over ${anchorLine} (${(anchorProb * 100).toFixed(1)}%)`,
     primary ? `Top score: ${primary.score} (${(primary.prob * 100).toFixed(1)}%)` : null,
     drawInsurance ? `Draw insurance: ${(drawProb * 100).toFixed(1)}% — small hedge` : null,
   ]

@@ -163,9 +163,12 @@ export default function PredictionTab({
     ? [...v3.totalGoals].sort((a, b) => b.prob - a.prob).slice(0, 8)
     : []
 
-  // Anchor total from v1 (has anchor boolean)
+  // k_star = single highest-prob goals total (no lambda thresholds)
+  const kStarEntry = goalsSorted[0] ?? null  // goalsSorted is already desc by prob
+  const kStar = kStarEntry?.goals ?? null
+
+  // Over/under probs at kStar - 0.5 (from v1, which has anchor flag)
   const anchorEntry = v1?.totalGoals?.find(g => g.anchor)
-  const anchorLine = anchorEntry?.line
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -259,7 +262,7 @@ export default function PredictionTab({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {goalsSorted.map(({ goals, prob }) => {
                 const pct = (prob * 100).toFixed(1)
-                const isAnchor = anchorLine != null && (goals === Math.floor(anchorLine) || goals === Math.ceil(anchorLine))
+                const isAnchor = kStar != null && goals === kStar
                 return (
                   <div key={goals} style={{
                     display: 'flex', alignItems: 'center', gap: 10,
@@ -281,16 +284,25 @@ export default function PredictionTab({
                 )
               })}
             </div>
-            {anchorEntry && (
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--color-border)', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
-                  Over {anchorLine}: <strong style={{ color: 'var(--color-text-primary)' }}>{(anchorEntry.over * 100).toFixed(1)}%</strong>
-                </span>
-                <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
-                  Under {anchorLine}: <strong style={{ color: 'var(--color-text-primary)' }}>{(anchorEntry.under * 100).toFixed(1)}%</strong>
-                </span>
-              </div>
-            )}
+            {kStar != null && (() => {
+              // Compute Over (kStar-0.5) and Under (kStar-0.5) from v3 distribution
+              let kOver = 0, kUnder = 0
+              for (const { goals, prob } of (v3.totalGoals || [])) {
+                if (goals >= kStar) kOver += prob
+                else kUnder += prob
+              }
+              const betLine = kStar - 0.5
+              return (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--color-border)', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
+                    Over {betLine}: <strong style={{ color: 'var(--color-accent)' }}>{(kOver * 100).toFixed(1)}%</strong>
+                  </span>
+                  <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
+                    Under {kStar + 0.5}: <strong style={{ color: 'var(--color-text-primary)' }}>{(kUnder * 100).toFixed(1)}%</strong>
+                  </span>
+                </div>
+              )
+            })()}
           </div>
 
           {/* ── Top Scorelines grid ── */}
