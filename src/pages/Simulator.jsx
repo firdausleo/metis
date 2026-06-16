@@ -20,34 +20,45 @@ function sampleScore(M) {
 function simulateMatch(home, away, actualResults, knockout = false) {
   const key1 = `${home}|${away}`
   const key2 = `${away}|${home}`
+
+  const resolveKnockoutDraw = (hg, ag, M) => {
+    let winner = hg > ag ? home : ag > hg ? away : null
+    let pens = false
+    if (knockout && winner === null) {
+      let hw = 0, aw = 0
+      for (let x = 0; x <= 8; x++)
+        for (let y = 0; y <= 8; y++) {
+          if (x > y) hw += M[x][y]; else if (x < y) aw += M[x][y]
+        }
+      winner = Math.random() < hw / (hw + aw + 1e-9) ? home : away
+      pens = true
+    }
+    return { winner, pens }
+  }
+
   if (actualResults[key1]) {
     const { hg, ag } = actualResults[key1]
-    const winner = hg > ag ? home : ag > hg ? away : null
-    return { home, away, hg, ag, winner, pens: false, actual: true }
+    const homeIsHost = isWC2026Host(home)
+    const { lh, la } = dcLambdas(home, away, homeIsHost)
+    const M = dcScoreMatrix(lh, la)
+    const { winner, pens } = resolveKnockoutDraw(hg, ag, M)
+    return { home, away, hg, ag, winner, pens, actual: true }
   }
   if (actualResults[key2]) {
     const { hg: rH, ag: rA } = actualResults[key2]
     const hg = rA, ag = rH
-    const winner = hg > ag ? home : ag > hg ? away : null
-    return { home, away, hg, ag, winner, pens: false, actual: true }
+    const homeIsHost = isWC2026Host(home)
+    const { lh, la } = dcLambdas(home, away, homeIsHost)
+    const M = dcScoreMatrix(lh, la)
+    const { winner, pens } = resolveKnockoutDraw(hg, ag, M)
+    return { home, away, hg, ag, winner, pens, actual: true }
   }
 
   const homeIsHost = isWC2026Host(home)
   const { lh, la } = dcLambdas(home, away, homeIsHost)
   const M = dcScoreMatrix(lh, la)
   const { hg, ag } = sampleScore(M)
-  let winner = hg > ag ? home : ag > hg ? away : null
-  let pens = false
-
-  if (knockout && winner === null) {
-    let hw = 0, aw = 0
-    for (let x = 0; x <= 8; x++)
-      for (let y = 0; y <= 8; y++) {
-        if (x > y) hw += M[x][y]; else if (x < y) aw += M[x][y]
-      }
-    winner = Math.random() < hw / (hw + aw) ? home : away
-    pens = true
-  }
+  const { winner, pens } = resolveKnockoutDraw(hg, ag, M)
 
   return { home, away, hg, ag, winner, pens, actual: false }
 }
@@ -147,10 +158,17 @@ function runSimulation(fixtures, actualResults) {
     const qf = simulateKnockoutRound(buildNextRound(r16), actualResults)
     const sf = simulateKnockoutRound(buildNextRound(qf), actualResults)
 
+    const finalist1 = sf[0]?.winner ?? null
+    const finalist2 = sf[1]?.winner ?? null
+    console.log('[Sim] groups:', groupArr.length, '| R32:', r32.length, 'R16:', r16.length, 'QF:', qf.length, 'SF:', sf.length, '| Finalists:', finalist1, finalist2)
+    if (!finalist1 || !finalist2) {
+      console.warn('[Sim] Incomplete bracket — groups loaded:', groupArr.length, 'of 12, R32 fixtures:', r32Fixtures.length, 'of 16')
+    }
+
     const sfLoser0 = sf[0]?.winner === sf[0]?.home ? sf[0]?.away : sf[0]?.home
     const sfLoser1 = sf[1]?.winner === sf[1]?.home ? sf[1]?.away : sf[1]?.home
-    const finalMatch = simulateMatch(sf[0]?.winner, sf[1]?.winner, actualResults, true)
-    const bronzeMatch = simulateMatch(sfLoser0, sfLoser1, actualResults, true)
+    const finalMatch = simulateMatch(finalist1 ?? 'TBD', finalist2 ?? 'TBD', actualResults, true)
+    const bronzeMatch = simulateMatch(sfLoser0 ?? 'TBD', sfLoser1 ?? 'TBD', actualResults, true)
     const runnerUp = finalMatch.winner === finalMatch.home ? finalMatch.away : finalMatch.home
 
     return {
@@ -281,6 +299,7 @@ function GroupCard({ groupName, table, thirdAdvancedSet }) {
 
 function PodiumCard({ medal, team, score, secondary }) {
   const isChampion = medal === '🏆'
+  const displayTeam = team || 'TBD'
   return (
     <div style={{
       flex: 1, minWidth: 0,
@@ -299,10 +318,13 @@ function PodiumCard({ medal, team, score, secondary }) {
         color: isChampion ? '#C9A84C' : 'var(--color-text-primary)',
         marginBottom: 4,
       }}>
-        {getFlag(team)} {team}
+        {getFlag(displayTeam)} {displayTeam}
       </div>
       {score && (
         <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{score}</div>
+      )}
+      {secondary && (
+        <div style={{ fontSize: 10, color: isChampion ? 'rgba(201,168,76,0.7)' : 'var(--color-text-muted)', marginTop: 4 }}>{secondary}</div>
       )}
     </div>
   )
@@ -599,25 +621,40 @@ export default function Simulator() {
       {results && (
         <>
           {/* Podium */}
-          <div style={{
-            display: 'flex', gap: 10, marginBottom: 20, alignItems: 'stretch',
-          }}>
-            <PodiumCard
-              medal="🥈"
-              team={results.runnerUp}
-              score={`Final: ${results.rounds.final.hg}–${results.rounds.final.ag}${results.rounds.final.pens ? ' (pens)' : ''}`}
-            />
-            <PodiumCard
-              medal="🏆"
-              team={results.champion}
-              score={`${lang === 'zh' ? '决赛胜 ' : 'Final vs '}${results.runnerUp}`}
-            />
-            <PodiumCard
-              medal="🥉"
-              team={results.third}
-              score={`3rd Place playoff`}
-            />
-          </div>
+          {(() => {
+            const champion = results.champion || 'TBD'
+            const runnerUp = results.runnerUp || 'TBD'
+            const third = results.third || 'TBD'
+            const finalScore = `${results.rounds.final.hg}–${results.rounds.final.ag}${results.rounds.final.pens ? ' (pens)' : ''}`
+            const champVs = champion !== 'TBD' && runnerUp !== 'TBD'
+              ? (lang === 'zh' ? `决赛胜 ${runnerUp}` : `Final vs ${runnerUp}`)
+              : finalScore
+            const mcChampion = mcResults?.find(r => r.team === champion)
+            const mcRunnerUp = mcResults?.find(r => r.team === runnerUp)
+            const mcThird = mcResults?.find(r => r.team === third)
+            return (
+              <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'stretch' }}>
+                <PodiumCard
+                  medal="🥈"
+                  team={runnerUp}
+                  score={`Final: ${finalScore}`}
+                  secondary={mcRunnerUp ? (lang === 'zh' ? `决赛率 ${mcRunnerUp.finalPct}%` : `Final ${mcRunnerUp.finalPct}% of 1k sims`) : null}
+                />
+                <PodiumCard
+                  medal="🏆"
+                  team={champion}
+                  score={champVs}
+                  secondary={mcChampion ? (lang === 'zh' ? `夺冠率 ${mcChampion.winPct}%` : `Won ${mcChampion.winPct}% of 1k sims`) : null}
+                />
+                <PodiumCard
+                  medal="🥉"
+                  team={third}
+                  score={lang === 'zh' ? '3、4名决赛' : '3rd place playoff'}
+                  secondary={mcThird ? (lang === 'zh' ? `SF率 ${mcThird.sfPct}%` : `SF ${mcThird.sfPct}% of 1k sims`) : null}
+                />
+              </div>
+            )
+          })()}
 
           {/* Share */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
