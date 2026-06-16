@@ -17,6 +17,7 @@ import AdminUsers from './pages/AdminUsers'
 import AdminKnockout from './pages/AdminKnockout'
 import FAQ from './pages/FAQ'
 import Simulator from './pages/Simulator'
+import MetisWizard from './pages/Metis'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { session, sessionLoading, profile, profileLoading, tier } = useUser()
@@ -57,7 +58,9 @@ export default function App() {
             <Route path="/auth"    element={<Auth />} />
             <Route path="/pending" element={<Pending />} />
 
-            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/" element={<Navigate to="/metis" replace />} />
+            <Route path="/metis" element={<ProtectedRoute><MetisWizard /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/matches" element={<ProtectedRoute><Matches /></ProtectedRoute>} />
             <Route path="/matches/:id" element={<ProtectedRoute><MatchAnalysis /></ProtectedRoute>} />
             <Route path="/matches/:id/odds" element={<ProtectedRoute><MatchOdds /></ProtectedRoute>} />

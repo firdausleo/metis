@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 
 const translations = {
   en: {
+    'nav.metis': 'METIS',
     'nav.dashboard': 'Dashboard',
     'nav.matches': 'Matches',
     'nav.picks': 'Tips',
@@ -195,6 +196,7 @@ const translations = {
     'faq.title': 'FAQ',
   },
   zh: {
+    'nav.metis': 'METIS',
     'nav.dashboard': '首页',
     'nav.matches': '赛程',
     'nav.picks': '精选',

@@ -3,9 +3,10 @@ import { useAuth } from '../hooks/useAuth'
 import { useUser } from '../context/UserContext'
 import { useTranslation, setLanguage } from '../lib/i18n'
 
-// FAQ replaces Settings in the main nav items; Settings stays in desktop right section
+// METIS is first and styled distinctly; FAQ replaces Settings in main nav
 const NAV_ITEMS = [
-  { key: 'nav.dashboard',  icon: '📊', path: '/' },
+  { key: 'nav.metis',      icon: '⚡', path: '/metis',           metis: true },
+  { key: 'nav.dashboard',  icon: '📊', path: '/dashboard' },
   { key: 'nav.matches',    icon: '⚽', path: '/matches' },
   { key: 'nav.simulator',  icon: '🎲', path: '/simulator' },
   { key: 'nav.myBets',    icon: '🎯', path: '/my-bets' },
@@ -102,22 +103,45 @@ export default function NavBar() {
         </span>
 
         <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-          {NAV_ITEMS.map(item => (
-            <button
-              key={item.path}
-              onClick={() => navigate(item.path)}
-              style={{
-                border: 'none', cursor: 'pointer', padding: '6px 12px',
-                borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-ui)',
-                fontSize: 13, fontWeight: 500, minHeight: 'var(--touch-target)',
-                color: isActive(item.path, location.pathname) ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
-                background: isActive(item.path, location.pathname) ? 'var(--color-accent-dim)' : 'transparent',
-                transition: 'color 0.15s, background 0.15s',
-              }}
-            >
-              {item.icon} {t(item.key)}
-            </button>
-          ))}
+          {NAV_ITEMS.map(item => {
+            const active = isActive(item.path, location.pathname)
+            if (item.metis) {
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  style={{
+                    border: 'none', cursor: 'pointer', padding: '6px 14px',
+                    borderRadius: 'var(--radius-sm)', fontFamily: "'Barlow Condensed', var(--font-ui)",
+                    fontSize: 15, fontWeight: 700, minHeight: 'var(--touch-target)',
+                    letterSpacing: '0.06em',
+                    color: '#C9A84C',
+                    background: active ? 'rgba(201,168,76,0.18)' : 'rgba(201,168,76,0.08)',
+                    transition: 'background 0.15s',
+                    marginRight: 4,
+                  }}
+                >
+                  ⚡ METIS
+                </button>
+              )
+            }
+            return (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                style={{
+                  border: 'none', cursor: 'pointer', padding: '6px 12px',
+                  borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-ui)',
+                  fontSize: 13, fontWeight: 500, minHeight: 'var(--touch-target)',
+                  color: active ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
+                  background: active ? 'var(--color-accent-dim)' : 'transparent',
+                  transition: 'color 0.15s, background 0.15s',
+                }}
+              >
+                {item.icon} {t(item.key)}
+              </button>
+            )
+          })}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -206,6 +230,29 @@ export default function NavBar() {
       }}>
         {NAV_ITEMS.map(item => {
           const active = isActive(item.path, location.pathname)
+          if (item.metis) {
+            return (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                style={{
+                  flex: 1, display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  gap: 2, padding: '10px 0',
+                  background: active ? 'rgba(201,168,76,0.12)' : 'none',
+                  border: 'none', cursor: 'pointer',
+                  color: '#C9A84C',
+                  minHeight: 'var(--touch-target)',
+                }}
+              >
+                <span style={{ fontSize: 20, lineHeight: 1 }}>⚡</span>
+                <span style={{
+                  fontSize: 10, fontFamily: "'Barlow Condensed', var(--font-ui)",
+                  fontWeight: 700, letterSpacing: '0.05em',
+                }}>METIS</span>
+              </button>
+            )
+          }
           return (
             <button
               key={item.path}
