@@ -865,38 +865,45 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   const [lastSaved, setLastSaved] = useState(null)
   const fileInputRef = useRef(null)
 
-  // Pre-fill China correct score odds for France vs Senegal (localStorage overwrites below if present)
-  useEffect(() => {
-    if (match?.home_team === 'France' && match?.away_team === 'Senegal') {
-      setCsOdds(FRANCE_SENEGAL_CS)
-    }
-  }, [match?.id])
-
-  // Load saved odds from localStorage when match changes
+  // Reset local China state + restore from localStorage when match changes.
+  // France/Senegal prefill happens first (as the default), then localStorage overwrites if present.
   useEffect(() => {
     if (!match?.id) return
+
+    // Reset all local China odds state to avoid carrying over from previous match
+    setRspfLine(-1)
+    setRspfH('')
+    setRspfD('')
+    setRspfA('')
+    setCsOdds({})
+    setChinaGoalsOdds({ '0': '', '1': '', '2': '', '3': '', '4': '', '5': '', '6': '', '7plus': '' })
+
+    // France vs Senegal hardcoded default (overridden below if localStorage has data)
+    if (match.home_team === 'France' && match.away_team === 'Senegal') {
+      setCsOdds(FRANCE_SENEGAL_CS)
+    }
+
     try {
       const saved = localStorage.getItem(`metis_odds_${match.id}`)
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (Date.now() - parsed.savedAt < 24 * 60 * 60 * 1000) {
-          if (parsed.spf) setV1x2Odds(parsed.spf)
-          if (parsed.rspf) {
-            setRspfLine(parsed.rspf.line ?? -1)
-            if (parsed.rspf.home != null) setRspfH(String(parsed.rspf.home))
-            if (parsed.rspf.draw != null) setRspfD(String(parsed.rspf.draw))
-            if (parsed.rspf.away != null) setRspfA(String(parsed.rspf.away))
-          }
-          if (parsed.scores) setCsOdds(parsed.scores)
-          if (parsed.totalGoals) setChinaGoalsOdds(parsed.totalGoals)
-        }
+      if (!saved) return
+      const parsed = JSON.parse(saved)
+      if (Date.now() - parsed.savedAt > 24 * 60 * 60 * 1000) return
+      if (parsed.spf) setV1x2Odds(parsed.spf)
+      if (parsed.rspf) {
+        setRspfLine(parsed.rspf.line ?? -1)
+        if (parsed.rspf.home != null) setRspfH(String(parsed.rspf.home))
+        if (parsed.rspf.draw != null) setRspfD(String(parsed.rspf.draw))
+        if (parsed.rspf.away != null) setRspfA(String(parsed.rspf.away))
       }
+      if (parsed.scores) setCsOdds(parsed.scores)
+      if (parsed.totalGoals) setChinaGoalsOdds(parsed.totalGoals)
     } catch (err) {
       console.warn('Could not restore odds:', err)
     }
   }, [match?.id])
 
-  // Auto-save China odds to localStorage on any change
+  // Auto-save China odds to localStorage only when odds state changes (NOT on match.id change,
+  // to avoid writing stale previous-match values under the new match's key).
   useEffect(() => {
     if (!match?.id) return
     try {
@@ -911,7 +918,7 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
     } catch (err) {
       console.warn('Could not save odds:', err)
     }
-  }, [match?.id, v1x2Odds, rspfH, rspfD, rspfA, rspfLine, csOdds, chinaGoalsOdds])
+  }, [v1x2Odds, rspfH, rspfD, rspfA, rspfLine, csOdds, chinaGoalsOdds]) // intentionally excludes match?.id
 
   // Clear stored odds when match is finished
   useEffect(() => {
