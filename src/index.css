@@ -223,6 +223,18 @@ body {
 /* ── Horizontal scroll — hide scrollbar ── */
 ::-webkit-scrollbar { display: none; }
 
+/* ── Goals analysis two-column grid ── */
+.goals-analysis-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 599px) {
+  .goals-analysis-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Date pill strip ── */
 .date-strip,
 .date-strip-scroll,
