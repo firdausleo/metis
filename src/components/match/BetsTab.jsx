@@ -336,11 +336,7 @@ function Market1X2({ model, match, odds, setOdds, bankroll }) {
 
 // ── Total Goals section ───────────────────────────────────────────────────
 
-function MarketTotalGoals({ model, anchorLine, bankroll }) {
-  const [tgLine, setTgLine] = useState(anchorLine || 2.5)
-  const [overOdds, setOverOdds] = useState('')
-  const [underOdds, setUnderOdds] = useState('')
-
+function MarketTotalGoals({ model, tgLine, setTgLine, overOdds, setOverOdds, underOdds, setUnderOdds, bankroll }) {
   const bkrl = parseFloat(bankroll)
   const hasBkrl = bkrl > 0
   const matrix = model?.v3?.matrix || model?.v2?.matrix
@@ -401,11 +397,7 @@ function MarketTotalGoals({ model, anchorLine, bankroll }) {
 
 // ── Asian Handicap section ────────────────────────────────────────────────
 
-function MarketAsian({ model, match, bankroll }) {
-  const [ahLine, setAhLine] = useState(-0.5)
-  const [homeOdds, setHomeOdds] = useState('')
-  const [awayOdds, setAwayOdds] = useState('')
-
+function MarketAsian({ model, match, ahLine, setAhLine, homeOdds, setHomeOdds, awayOdds, setAwayOdds, bankroll }) {
   const bkrl = parseFloat(bankroll)
   const hasBkrl = bkrl > 0
   const matrix = model?.v3?.matrix || model?.v2?.matrix
@@ -847,6 +839,19 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   const [rspfD, setRspfD] = useState('')
   const [rspfA, setRspfA] = useState('')
 
+  // Lifted Indonesia AH state
+  const [ahLine, setAhLine] = useState(-0.5)
+  const [homeAhOdds, setHomeAhOdds] = useState('')
+  const [awayAhOdds, setAwayAhOdds] = useState('')
+
+  // Lifted Indonesia TG state
+  const [tgLine, setTgLine] = useState(2.5)
+  const [overOdds, setOverOdds] = useState('')
+  const [underOdds, setUnderOdds] = useState('')
+
+  // Indonesia paste state
+  const [indoPasteText, setIndoPasteText] = useState('')
+
   // Screenshot upload state
   const [uploadLoading, setUploadLoading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
@@ -870,6 +875,21 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   const topRange = v3Goals?.length ? getRangeProbabilities(v3Goals)[0] : null
 
   // Score key mapping: Claude returns "1:0" colon format, csOdds uses "1-0" dash format
+  function handleParseIndo() {
+    const result = parseIndonesiaOdds(indoPasteText, match?.home_team, match?.away_team)
+    setIndoParsed(result)
+    if (result.handicap) {
+      setAhLine(result.handicap.line)
+      if (result.handicap.homeOdds) setHomeAhOdds(result.handicap.homeOdds.toFixed(2))
+      if (result.handicap.awayOdds) setAwayAhOdds(result.handicap.awayOdds.toFixed(2))
+    }
+    if (result.totalGoals) {
+      setTgLine(result.totalGoals.line)
+      if (result.totalGoals.side === 'over') { setOverOdds(result.totalGoals.odds.toFixed(2)); setUnderOdds('') }
+      else { setUnderOdds(result.totalGoals.odds.toFixed(2)); setOverOdds('') }
+    }
+  }
+
   const COLON_TO_DASH = { '1:0':'1-0','2:0':'2-0','2:1':'2-1','3:0':'3-0','3:1':'3-1','3:2':'3-2','4:0':'4-0','4:1':'4-1','4:2':'4-2','5:0':'5-0','5:1':'5-1','5:2':'5-2','homeOther':'胜其它','0:0':'0-0','1:1':'1-1','2:2':'2-2','3:3':'3-3','drawOther':'平其它','0:1':'0-1','0:2':'0-2','1:2':'1-2','0:3':'0-3','1:3':'1-3','2:3':'2-3','0:4':'0-4','1:4':'1-4','2:4':'2-4','0:5':'0-5','1:5':'1-5','2:5':'2-5','awayOther':'负其它' }
 
   async function handleImageUpload(e) {
@@ -969,25 +989,19 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
       })
     }
 
-    // Indonesia
-    if (indoParsed && matrix) {
-      if (indoParsed.handicap) {
-        const ah = calcAHProbs(matrix, indoParsed.handicap.line)
-        if (indoParsed.handicap.homeOdds) {
-          const hL = indoParsed.handicap.line
-          bets.push({ label: `${match?.home_team} ${hL > 0 ? '+' : ''}${hL} · 亚盘`, edge: ah.pHome - 1 / indoParsed.handicap.homeOdds, odds: indoParsed.handicap.homeOdds, prob: ah.pHome, market: '🇮🇩 亚盘' })
-        }
-        if (indoParsed.handicap.awayOdds) {
-          const aL = -indoParsed.handicap.line
-          bets.push({ label: `${match?.away_team} ${aL > 0 ? '+' : ''}${aL} · 亚盘`, edge: ah.pAway - 1 / indoParsed.handicap.awayOdds, odds: indoParsed.handicap.awayOdds, prob: ah.pAway, market: '🇮🇩 亚盘' })
-        }
-      }
-      if (indoParsed.totalGoals) {
-        const tg = calcTGProbs(matrix, indoParsed.totalGoals.line)
-        const tgIsOver = indoParsed.totalGoals.side === 'over'
-        const prob = tgIsOver ? tg.pOver : tg.pUnder
-        bets.push({ label: `${tgIsOver ? 'Over' : 'Under'} ${indoParsed.totalGoals.line} · ${tgIsOver ? '大球' : '小球'}`, edge: prob - 1 / indoParsed.totalGoals.odds, odds: indoParsed.totalGoals.odds, prob, market: tgIsOver ? '🇮🇩 大球' : '🇮🇩 小球' })
-      }
+    // Indonesia AH (from lifted state)
+    if (matrix) {
+      const ah = calcAHProbs(matrix, ahLine)
+      const pHomeAh = parseFloat(homeAhOdds)
+      const pAwayAh = parseFloat(awayAhOdds)
+      const hL = ahLine, aL = -ahLine
+      if (pHomeAh > 1) bets.push({ label: `${match?.home_team} ${hL > 0 ? '+' : ''}${hL} · 亚盘`, edge: ah.pHome - 1 / pHomeAh, odds: pHomeAh, prob: ah.pHome, market: '🇮🇩 亚盘' })
+      if (pAwayAh > 1) bets.push({ label: `${match?.away_team} ${aL > 0 ? '+' : ''}${aL} · 亚盘`, edge: ah.pAway - 1 / pAwayAh, odds: pAwayAh, prob: ah.pAway, market: '🇮🇩 亚盘' })
+      // Indonesia TG
+      const tg = calcTGProbs(matrix, tgLine)
+      const pOver = parseFloat(overOdds), pUnder = parseFloat(underOdds)
+      if (pOver > 1) bets.push({ label: `Over ${tgLine} · 大球`, edge: tg.pOver - 1 / pOver, odds: pOver, prob: tg.pOver, market: '🇮🇩 大球' })
+      if (pUnder > 1) bets.push({ label: `Under ${tgLine} · 小球`, edge: tg.pUnder - 1 / pUnder, odds: pUnder, prob: tg.pUnder, market: '🇮🇩 小球' })
     }
 
     // China correct score
@@ -1017,7 +1031,7 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
     }
 
     return bets.filter(b => b.edge > -0.5).sort((a, b) => b.edge - a.edge)
-  }, [sidebarModel, v1x2Odds, indoParsed, csOdds, match, lang])
+  }, [sidebarModel, v1x2Odds, csOdds, chinaGoalsOdds, ahLine, homeAhOdds, awayAhOdds, tgLine, overOdds, underOdds, match, lang])
 
   const cardStyle = { background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
 
@@ -1051,107 +1065,121 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
         <PaspPlanSection plan={plan} match={match} bankroll={bankroll} odds1x2={v1x2Odds} lang={lang} topRange={topRange} />
       </div>
 
-      {/* ── Indonesia Odds (Paste) ── */}
-      {sidebarModel && (
-        <div style={cardStyle}>
-          <MarketIndonesia model={sidebarModel} match={match} lang={lang} onParsed={setIndoParsed} />
-        </div>
-      )}
+      {/* ════════════════════════════════════════════════
+           🇨🇳  CHINA LOTTERY BLOCK
+           ════════════════════════════════════════════════ */}
+      <div style={{ border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
 
-      {/* ── 1X2 Market ── */}
-      <div style={cardStyle}>
-        <Market1X2 model={sidebarModel} match={match} odds={v1x2Odds} setOdds={setV1x2Odds} bankroll={bankroll} />
-      </div>
-
-      {/* ── Total Goals ── */}
-      {sidebarModel && (
-        <div style={cardStyle}>
-          <MarketTotalGoals model={sidebarModel} anchorLine={anchorLine} bankroll={bankroll} />
-        </div>
-      )}
-
-      {/* ── Asian Handicap (亚盘) ── */}
-      {sidebarModel && (
-        <div style={cardStyle}>
-          <MarketAsian model={sidebarModel} match={match} bankroll={bankroll} />
-        </div>
-      )}
-
-      {/* ── China Lottery (upload + handicap + correct score) ── */}
-      {sidebarModel && (
-        <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Upload button */}
-          <div>
-            <span style={{ display: 'block', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-accent)', textTransform: 'uppercase', borderBottom: '1px solid var(--color-accent)', paddingBottom: 6, marginBottom: 14 }}>
-              🇨🇳 {lang === 'zh' ? '中国彩票' : 'China Lottery'}
-            </span>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={handleImageUpload}
-            />
+        {/* Block header */}
+        <div style={{ background: 'var(--color-bg-secondary)', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '0.5px solid var(--color-border)' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+            🇨🇳 {lang === 'zh' ? '中国彩票' : 'China Lottery'}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {uploadSuccess && <span style={{ fontSize: 11, color: 'var(--color-success)' }}><i className="ti ti-check" /> {uploadSuccess}</span>}
+            {uploadError && <span style={{ fontSize: 11, color: 'var(--color-danger)' }}>{uploadError}</span>}
+            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageUpload} />
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadLoading}
-              style={{
-                width: '100%',
-                padding: '10px 14px',
-                border: '1px dashed var(--color-border)',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--color-bg-secondary)',
-                cursor: uploadLoading ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                fontSize: 13,
-                color: 'var(--color-text-secondary)',
-                minHeight: 44,
-              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', fontSize: 11, fontWeight: 600, background: '#1A3A6C', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', cursor: uploadLoading ? 'not-allowed' : 'pointer', minHeight: 30, opacity: uploadLoading ? 0.6 : 1 }}
             >
-              {uploadLoading ? (
-                <>
-                  <i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} aria-hidden="true" />
-                  {lang === 'zh' ? '正在读取赔率...' : 'Reading odds from screenshot...'}
-                </>
-              ) : (
-                <>
-                  <i className="ti ti-camera" aria-hidden="true" />
-                  {lang === 'zh' ? '上传彩票截图 — 自动填入赔率' : 'Upload China lottery screenshot — auto-fill odds'}
-                </>
-              )}
+              {uploadLoading
+                ? <><i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} /> {lang === 'zh' ? '读取中...' : 'Reading...'}</>
+                : <><i className="ti ti-camera" /> {lang === 'zh' ? '上传截图' : 'Upload photo'}</>}
             </button>
-            {uploadSuccess && (
-              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <i className="ti ti-check" aria-hidden="true" />
-                {uploadSuccess}
-              </div>
-            )}
-            {uploadError && (
-              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-danger)' }}>
-                {uploadError}
-              </div>
-            )}
           </div>
-
-          {/* 让球胜平负 */}
-          <MarketChineseHandicap
-            model={sidebarModel} match={match} lang={lang}
-            line={rspfLine} setLine={setRspfLine}
-            oddsH={rspfH} setOddsH={setRspfH}
-            oddsD={rspfD} setOddsD={setRspfD}
-            oddsA={rspfA} setOddsA={setRspfA}
-          />
-
-          {/* 比分 */}
-          <MarketChinaCorrectScore model={sidebarModel} match={match} odds={csOdds} setOdds={setCsOdds} lang={lang} />
-
-          {/* 总进球数 */}
-          <MarketChinaTotalGoals model={sidebarModel} odds={chinaGoalsOdds} setOdds={setChinaGoalsOdds} lang={lang} />
         </div>
-      )}
+
+        {/* 1. 胜平负 */}
+        <div style={{ padding: 14, borderBottom: '0.5px solid var(--color-border-light)' }}>
+          <Market1X2 model={sidebarModel} match={match} odds={v1x2Odds} setOdds={setV1x2Odds} bankroll={bankroll} />
+        </div>
+
+        {/* 2. 让球胜平负 */}
+        {sidebarModel && (
+          <div style={{ padding: 14, borderBottom: '0.5px solid var(--color-border-light)' }}>
+            <MarketChineseHandicap
+              model={sidebarModel} match={match} lang={lang}
+              line={rspfLine} setLine={setRspfLine}
+              oddsH={rspfH} setOddsH={setRspfH}
+              oddsD={rspfD} setOddsD={setRspfD}
+              oddsA={rspfA} setOddsA={setRspfA}
+            />
+          </div>
+        )}
+
+        {/* 3. 比分 */}
+        {sidebarModel && (
+          <div style={{ padding: 14, borderBottom: '0.5px solid var(--color-border-light)' }}>
+            <MarketChinaCorrectScore model={sidebarModel} match={match} odds={csOdds} setOdds={setCsOdds} lang={lang} />
+          </div>
+        )}
+
+        {/* 4. 总进球数 */}
+        {sidebarModel && (
+          <div style={{ padding: 14 }}>
+            <MarketChinaTotalGoals model={sidebarModel} odds={chinaGoalsOdds} setOdds={setChinaGoalsOdds} lang={lang} />
+          </div>
+        )}
+      </div>
+
+      {/* ════════════════════════════════════════════════
+           🇮🇩  INDONESIA BLOCK
+           ════════════════════════════════════════════════ */}
+      <div style={{ border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+
+        {/* Block header */}
+        <div style={{ background: 'var(--color-bg-secondary)', padding: '10px 14px', borderBottom: '0.5px solid var(--color-border)' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+            🇮🇩 {lang === 'zh' ? '印尼盘' : 'Indonesia'}
+          </span>
+        </div>
+
+        {/* Paste textarea */}
+        <div style={{ padding: '12px 14px', borderBottom: '0.5px solid var(--color-border-light)' }}>
+          <textarea
+            value={indoPasteText}
+            onChange={e => setIndoPasteText(e.target.value)}
+            rows={4}
+            placeholder={lang === 'zh'
+              ? `粘贴印尼盘赔率...\n\n示例：\n+20 ${match?.home_team || 'Prancis'} -${match?.away_team || 'Senegal'}\nB.2.1/2+20`
+              : `Paste Indonesia odds here...\n\nExample:\n+20 ${match?.home_team || 'Prancis'} -${match?.away_team || 'Senegal'}\nB.2.1/2+20`}
+            style={{ width: '100%', fontSize: 13, fontFamily: 'monospace', borderRadius: 'var(--radius-md)', padding: '8px 10px', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border)', resize: 'vertical', boxSizing: 'border-box', display: 'block', lineHeight: 1.5, marginBottom: 8 }}
+          />
+          <button
+            onClick={handleParseIndo}
+            disabled={!indoPasteText.trim()}
+            style={{ minHeight: 36, padding: '0 14px', background: indoPasteText.trim() ? '#1A3A6C' : 'var(--color-bg-elevated)', color: indoPasteText.trim() ? '#fff' : 'var(--color-text-muted)', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: indoPasteText.trim() ? 'pointer' : 'not-allowed', fontFamily: 'var(--font-ui)' }}
+          >
+            <i className="ti ti-clipboard-check" /> {lang === 'zh' ? '解析赔率' : 'Parse odds'}
+          </button>
+        </div>
+
+        {/* 1. 亚让球 */}
+        {sidebarModel && (
+          <div style={{ padding: 14, borderBottom: '0.5px solid var(--color-border-light)' }}>
+            <MarketAsian
+              model={sidebarModel} match={match} bankroll={bankroll}
+              ahLine={ahLine} setAhLine={setAhLine}
+              homeOdds={homeAhOdds} setHomeOdds={setHomeAhOdds}
+              awayOdds={awayAhOdds} setAwayOdds={setAwayAhOdds}
+            />
+          </div>
+        )}
+
+        {/* 2. 大小球 */}
+        {sidebarModel && (
+          <div style={{ padding: 14 }}>
+            <MarketTotalGoals
+              model={sidebarModel} bankroll={bankroll}
+              tgLine={tgLine} setTgLine={setTgLine}
+              overOdds={overOdds} setOverOdds={setOverOdds}
+              underOdds={underOdds} setUnderOdds={setUnderOdds}
+            />
+          </div>
+        )}
+      </div>
 
       {/* ── Correlation note ── */}
       <p style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '0 8px' }}>
