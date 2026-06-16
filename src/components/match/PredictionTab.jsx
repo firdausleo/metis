@@ -646,12 +646,15 @@ export default function PredictionTab({
                   {lang === 'zh' ? '按概率排序的3球区间' : '3-goal windows sorted by probability'}
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {ranges.map((r, i) => {
+                  {(() => {
+                    const maxRangeProb = ranges[0]?.prob || 1
+                    return ranges.map((r, i) => {
                     const isTop = i === 0
                     const goalsInRange = [r.min, r.min + 1, r.max]
                     const probsInRange = goalsInRange.map(g => getGoalP(g))
                     const totalP = probsInRange.reduce((s, p) => s + p, 0)
                     const rowRankColor = getRankColor(i + 1)
+                    const fillPct = (r.prob / maxRangeProb) * 100
 
                     return (
                       <div key={r.range} style={{
@@ -683,19 +686,31 @@ export default function PredictionTab({
                             visibility: isTop ? 'visible' : 'hidden',
                           }}>★</span>
 
-                          {/* stacked bar — 3 segments colored by overall rank */}
+                          {/* Track — full width gray background */}
                           <div style={{
                             flex: 1, minWidth: 0, height: '8px',
-                            display: 'flex', borderRadius: '4px',
-                            overflow: 'hidden', gap: '1px',
+                            background: 'var(--color-bg)',
+                            borderRadius: '4px',
+                            position: 'relative',
+                            overflow: 'hidden',
                           }}>
-                            {goalsInRange.map((g, idx) => (
-                              <div key={g} style={{
-                                width: `${totalP > 0 ? (probsInRange[idx] / totalP) * 100 : 33.3}%`,
-                                background: getRankColor(rankMap[g] ?? 99),
-                                flexShrink: 0,
-                              }} />
-                            ))}
+                            {/* Fill — width proportional to this range's probability */}
+                            <div style={{
+                              position: 'absolute',
+                              left: 0, top: 0, height: '100%',
+                              width: `${fillPct}%`,
+                              display: 'flex',
+                              gap: '1px',
+                            }}>
+                              {goalsInRange.map((g, idx) => (
+                                <div key={g} style={{
+                                  flex: probsInRange[idx] || 1,
+                                  height: '100%',
+                                  background: getRankColor(rankMap[g] ?? 99),
+                                  minWidth: 0,
+                                }} />
+                              ))}
+                            </div>
                           </div>
                         </div>
 
@@ -728,7 +743,8 @@ export default function PredictionTab({
                         </div>
                       </div>
                     )
-                  })}
+                  })
+                  })()}
                 </div>
                 {kStar != null && (
                   <div style={{
