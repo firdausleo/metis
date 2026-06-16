@@ -137,6 +137,12 @@ body {
   border-radius: var(--radius-md);
 }
 
+/* ── Spin animation (used by AI loading spinner) ── */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 /* ── Live match pulse ── */
 @keyframes pulse-badge {
   0%, 100% { opacity: 1; }

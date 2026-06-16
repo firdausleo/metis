@@ -291,6 +291,10 @@ export default function PredictionTab({
 
   const anchorEntry = v1?.totalGoals?.find(g => g.anchor)
 
+  // hasAiResult: true only when role 10 output is present
+  const role10ForCheck = roleOutputs?.find(r => r.ai_roles?.role_number === 10)
+  const hasAiResult = Array.isArray(roleOutputs) && roleOutputs.length > 0 && !!role10ForCheck
+
   const dominant = v3?.probs
     ? v3.probs.home >= v3.probs.away && v3.probs.home >= v3.probs.draw ? 'home'
     : v3.probs.away > v3.probs.home && v3.probs.away >= v3.probs.draw ? 'away'
@@ -301,7 +305,63 @@ export default function PredictionTab({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
       {/* ── AI Analysis section ── */}
-      {aiComposite && normRec ? (
+      {!hasAiResult && !aiRunning && (
+        <div style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
+          <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '12px' }}>
+            {lang === 'zh'
+              ? '运行AI分析以获取专项见解和综合置信评分'
+              : 'Run AI analysis to get specialist insights and a composite confidence score'}
+          </p>
+          <button
+            onClick={onRunAI}
+            disabled={!onRunAI}
+            style={{
+              background: '#1A3A6C',
+              color: 'white',
+              border: 'none',
+              borderRadius: 'var(--radius-md)',
+              padding: '10px 24px',
+              fontSize: '14px',
+              fontWeight: 500,
+              cursor: onRunAI ? 'pointer' : 'not-allowed',
+              opacity: onRunAI ? 1 : 0.6,
+              minHeight: '44px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <i className="ti ti-brain" aria-hidden="true" />
+            {lang === 'zh' ? '运行AI分析' : 'Run AI Analysis'}
+          </button>
+          {!isAdmin && (
+            <p style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '8px' }}>
+              ⚡ {credits} {lang === 'zh' ? '积分剩余 · 消耗5积分' : 'credits remaining · costs 5 credits'}
+            </p>
+          )}
+        </div>
+      )}
+
+      {aiRunning && (
+        <div style={{ textAlign: 'center', padding: '1.5rem' }}>
+          <i className="ti ti-loader-2" style={{
+            fontSize: '24px',
+            color: 'var(--color-text-muted)',
+            animation: 'spin 1s linear infinite',
+          }} aria-hidden="true" />
+          <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '8px' }}>
+            {lang === 'zh' ? '正在分析11个专项角色...' : 'Analyzing 11 specialist roles...'}
+          </p>
+        </div>
+      )}
+
+      {aiRunError && (
+        <p style={{ fontSize: '12px', color: 'var(--color-danger)', marginTop: '8px', textAlign: 'center' }}>
+          {aiRunError}
+        </p>
+      )}
+
+      {hasAiResult && aiComposite && normRec && (
         <div style={{
           background: '#EEEDFE', border: '0.5px solid #534AB7',
           borderRadius: 'var(--radius-md)', padding: '14px 16px',
@@ -344,43 +404,6 @@ export default function PredictionTab({
             )}
           </div>
           {aiRunMsg && <p style={{ fontSize: 12, color: 'var(--color-success)', marginTop: 6 }}>{aiRunMsg}</p>}
-          {aiRunError && <p style={{ fontSize: 12, color: 'var(--color-danger)', marginTop: 6 }}>{aiRunError}</p>}
-        </div>
-      ) : (
-        <div style={{
-          background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)',
-          borderRadius: 'var(--radius-md)', padding: '14px 16px',
-        }}>
-          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: 10 }}>
-            AI ANALYSIS
-          </p>
-          {aiRunError && (
-            <p style={{ fontSize: 13, color: 'var(--color-danger)', marginBottom: 8 }}>{aiRunError}</p>
-          )}
-          <button
-            onClick={onRunAI}
-            disabled={aiRunning || !onRunAI}
-            style={{
-              minHeight: 44, padding: '0 20px', width: '100%',
-              background: aiRunning ? 'transparent' : 'var(--color-accent-dim)',
-              border: '0.5px solid var(--color-accent-border)',
-              borderRadius: 'var(--radius-sm)',
-              color: 'var(--color-accent)', fontFamily: 'var(--font-ui)',
-              fontSize: 16, fontWeight: 600,
-              cursor: (aiRunning || !onRunAI) ? 'not-allowed' : 'pointer',
-              opacity: (aiRunning || !onRunAI) ? 0.6 : 1,
-            }}
-          >
-            {aiRunning ? '⏳ Analysing…' : (lang === 'zh' ? '▶ 运行AI分析' : '▶ Run AI Analysis')}
-          </button>
-          {!isAdmin && (
-            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 8, textAlign: 'center' }}>
-              {lang === 'zh'
-                ? `消耗5积分 · 分析11个专项角色 · ⚡ ${credits} 积分`
-                : `Costs 5 credits · Analyzes 11 specialist roles · ⚡ ${credits} credits`}
-            </p>
-          )}
-          {aiRunMsg && <p style={{ fontSize: 13, color: 'var(--color-success)', marginTop: 8 }}>{aiRunMsg}</p>}
         </div>
       )}
 
@@ -468,31 +491,97 @@ export default function PredictionTab({
             <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: 10 }}>
               TOTAL GOALS · V3 (by probability)
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {goalsSorted.map(({ goals, prob }) => {
-                const pct = (prob * 100).toFixed(1)
-                const isAnchor = kStar != null && goals === kStar
-                return (
-                  <div key={goals} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '6px 10px', borderRadius: 4,
-                    background: isAnchor ? 'var(--color-accent-dim)' : 'transparent',
-                    border: isAnchor ? '0.5px solid var(--color-accent-border)' : '0.5px solid transparent',
-                  }}>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-secondary)', width: 20, textAlign: 'right' }}>
-                      {goals}
-                    </span>
-                    <div style={{ flex: 1, height: 6, background: 'var(--color-bg)', borderRadius: 99, overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(pct * 4, 100)}%`, height: '100%', background: isAnchor ? 'var(--color-accent)' : 'var(--color-text-muted)', borderRadius: 99 }} />
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {(() => {
+                const maxProb = goalsSorted.length > 0 ? Math.max(...goalsSorted.map(g => g.prob)) : 1
+                return goalsSorted.map(({ goals, prob }) => {
+                  const isAnchor = kStar != null && goals === kStar
+                  const barPct = maxProb > 0 ? (prob / maxProb) * 100 : 0
+                  return (
+                    <div key={goals} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '7px 0',
+                      borderBottom: '0.5px solid var(--color-border-light)',
+                      background: isAnchor ? 'rgba(201,168,76,0.06)' : 'transparent',
+                    }}>
+                      {/* LEFT COLUMN — fixed width, labels + badges */}
+                      <div style={{
+                        width: '160px',
+                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}>
+                        <span style={{
+                          width: '18px',
+                          textAlign: 'right',
+                          fontSize: '13px',
+                          fontWeight: 500,
+                          color: 'var(--color-text-primary)',
+                          flexShrink: 0,
+                        }}>
+                          {goals}
+                        </span>
+                        <span style={{
+                          fontSize: '12px',
+                          color: isAnchor ? '#C9A84C' : 'var(--color-text-secondary)',
+                          fontWeight: isAnchor ? 500 : 400,
+                          minWidth: '44px',
+                          flexShrink: 0,
+                        }}>
+                          {(prob * 100).toFixed(1)}%
+                        </span>
+                        {isAnchor && (
+                          <span style={{
+                            fontSize: '9px',
+                            fontWeight: 500,
+                            padding: '1px 6px',
+                            borderRadius: '99px',
+                            background: 'rgba(201,168,76,0.15)',
+                            color: '#C9A84C',
+                            flexShrink: 0,
+                          }}>
+                            ANCHOR
+                          </span>
+                        )}
+                        {isAnchor && (
+                          <InfoTooltip
+                            title="Anchor Total"
+                            explanation="The most likely number of goals — foundation of PASP strategy."
+                            explanationZh="最可能的总进球数——PASP策略基础。"
+                            lang={lang}
+                          />
+                        )}
+                      </div>
+                      {/* RIGHT COLUMN — bar always fills identical remaining space */}
+                      <div style={{
+                        flex: 1,
+                        minWidth: 0,
+                        height: '6px',
+                        background: 'var(--color-bg)',
+                        borderRadius: '3px',
+                        position: 'relative',
+                      }}>
+                        <div style={{
+                          position: 'absolute',
+                          left: 0, top: 0,
+                          height: '100%',
+                          borderRadius: '3px',
+                          width: `${barPct}%`,
+                          background: isAnchor
+                            ? '#C9A84C'
+                            : goals === kStar - 1 || goals === kStar + 1
+                            ? '#6B7280'
+                            : 'var(--color-text-muted)',
+                          transition: 'width 0.4s ease',
+                        }} />
+                      </div>
                     </div>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: isAnchor ? 'var(--color-accent)' : 'var(--color-text-primary)', width: 44, textAlign: 'right' }}>
-                      {pct}%
-                    </span>
-                    {isAnchor && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-accent)', letterSpacing: '0.05em' }}>ANCHOR</span>}
-                    {isAnchor && <InfoTooltip title="ANCHOR" explanation="Highest-probability total goals. Betting line = ANCHOR − 0.5 (e.g. ANCHOR 2 → bet Over 1.5)." explanationZh="概率最高的总进球数。建议投注线=ANCHOR−0.5（例如ANCHOR=2，建议Over 1.5）。" lang={lang} />}
-                  </div>
-                )
-              })}
+                  )
+                })
+              })()}
             </div>
             {kStar != null && (() => {
               let kOver = 0, kUnder = 0
