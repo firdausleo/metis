@@ -862,12 +862,14 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
   const [uploadError, setUploadError] = useState(null)
   const [uploadSuccess, setUploadSuccess] = useState(null)
   const [lastSaved, setLastSaved] = useState(null)
+  const [lastCloudSave, setLastCloudSave] = useState(null)
   const [portfolioMode, setPortfolioMode] = useState('balanced')
   const [portfolioOverrides, setPortfolioOverrides] = useState({})
   const [recordingBets, setRecordingBets] = useState(false)
   const [recordSuccess, setRecordSuccess] = useState(null)
   const fileInputRef = useRef(null)
   const isNavigating = useRef(false)
+  const saveDebounceRef = useRef(null)
 
   // Local state for 1X2 odds — avoids desktop timing bug where save effect fires
   // before parent re-render propagates updated prop back to BetsTab.
@@ -887,9 +889,11 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
 
   // Reset local China state + restore from localStorage when match changes.
   // France/Senegal prefill happens first (as the default), then localStorage overwrites if present.
+  // After localStorage restore, a background Supabase fetch applies cloud data if it is newer.
   useEffect(() => {
     if (!match?.id) return
     isNavigating.current = true
+    setLastCloudSave(null)
 
     // Reset all local China odds state to avoid carrying over from previous match
     setRspfLine(-1)
@@ -924,27 +928,98 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
       console.warn('Could not restore odds:', err)
     }
 
+    // Background cloud load — runs after localStorage restore; applies Supabase data if newer.
+    const restoreMatchId = match.id
+    ;(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user?.id) return
+        const { data: row } = await supabase
+          .from('match_odds')
+          .select('odds_data')
+          .eq('user_id', session.user.id)
+          .eq('match_id', restoreMatchId)
+          .maybeSingle()
+        if (!row?.odds_data) return
+        const remote = row.odds_data
+        const localSavedAt = (() => {
+          try { return JSON.parse(localStorage.getItem(`metis_odds_${restoreMatchId}`) || '{}').savedAt || 0 } catch { return 0 }
+        })()
+        if ((remote.savedAt || 0) <= localSavedAt) return
+        if (remote.spf) setV1x2Odds(remote.spf)
+        if (remote.rspf) {
+          setRspfLine(remote.rspf.line ?? -1)
+          if (remote.rspf.home != null) setRspfH(String(remote.rspf.home))
+          if (remote.rspf.draw != null) setRspfD(String(remote.rspf.draw))
+          if (remote.rspf.away != null) setRspfA(String(remote.rspf.away))
+        }
+        if (remote.scores) setCsOdds(remote.scores)
+        if (remote.totalGoals) setChinaGoalsOdds(remote.totalGoals)
+        try { localStorage.setItem(`metis_odds_${restoreMatchId}`, JSON.stringify(remote)) } catch {}
+        setLastCloudSave(new Date())
+      } catch (err) {
+        console.warn('Could not load odds from cloud:', err)
+      }
+    })()
+
     // Clear flag after React processes all setState calls above
     setTimeout(() => { isNavigating.current = false }, 0)
   }, [match?.id])
+
+  async function saveOddsToSupabase(matchId, snapshot) {
+    try {
+      const { data: { session } } =
+        await supabase.auth.getSession()
+      if (!session?.user?.id) return
+
+      // Delete existing row first, then insert
+      await supabase
+        .from('match_odds')
+        .delete()
+        .eq('user_id', session.user.id)
+        .eq('match_id', matchId)
+
+      const { error } = await supabase
+        .from('match_odds')
+        .insert({
+          user_id: session.user.id,
+          match_id: matchId,
+          odds_data: snapshot,
+          updated_at: new Date().toISOString(),
+        })
+
+      if (error) {
+        console.error('match_odds insert error:', error)
+      } else {
+        setLastCloudSave(new Date())
+        console.log('✓ Odds synced to cloud')
+      }
+    } catch (err) {
+      console.warn('Could not sync odds:', err)
+    }
+  }
 
   // Auto-save China odds to localStorage only when odds state changes (NOT on match.id change,
   // to avoid writing stale previous-match values under the new match's key).
   useEffect(() => {
     if (!match?.id) return
     if (isNavigating.current) return
+    const snapshot = {
+      spf: v1x2Odds,
+      rspf: { line: rspfLine, home: rspfH, draw: rspfD, away: rspfA },
+      scores: csOdds,
+      totalGoals: chinaGoalsOdds,
+      savedAt: Date.now(),
+    }
     try {
-      localStorage.setItem(`metis_odds_${match.id}`, JSON.stringify({
-        spf: v1x2Odds,
-        rspf: { line: rspfLine, home: rspfH, draw: rspfD, away: rspfA },
-        scores: csOdds,
-        totalGoals: chinaGoalsOdds,
-        savedAt: Date.now(),
-      }))
+      localStorage.setItem(`metis_odds_${match.id}`, JSON.stringify(snapshot))
       setLastSaved(new Date())
     } catch (err) {
       console.warn('Could not save odds:', err)
     }
+    const matchId = match.id
+    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current)
+    saveDebounceRef.current = setTimeout(() => saveOddsToSupabase(matchId, snapshot), 2000)
   }, [v1x2Odds, rspfH, rspfD, rspfA, rspfLine, csOdds, chinaGoalsOdds]) // intentionally excludes match?.id
 
   // Clear stored odds when match is finished
@@ -1332,11 +1407,13 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)' }}>
               🇨🇳 {lang === 'zh' ? '中国彩票' : 'China Lottery'}
             </span>
-            {lastSaved && (
+            {(lastSaved || lastCloudSave) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
-                <i className="ti ti-check" aria-hidden="true" style={{ color: 'var(--color-success)', fontSize: 11 }} />
+                <i className="ti ti-check" aria-hidden="true" style={{ color: lastCloudSave ? '#4A9FDB' : 'var(--color-success)', fontSize: 11 }} />
                 <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
-                  {lang === 'zh' ? `赔率已保存 · ${toBeijingTime(lastSaved)}` : `Odds saved · ${toBeijingTime(lastSaved)}`}
+                  {lastCloudSave
+                    ? (lang === 'zh' ? `☁ 云同步 · ${toBeijingTime(lastCloudSave)}` : `☁ Cloud synced · ${toBeijingTime(lastCloudSave)}`)
+                    : (lang === 'zh' ? `赔率已保存 · ${toBeijingTime(lastSaved)}` : `Odds saved · ${toBeijingTime(lastSaved)}`)}
                 </span>
               </div>
             )}
