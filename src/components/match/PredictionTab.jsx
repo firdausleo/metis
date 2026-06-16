@@ -619,7 +619,7 @@ export default function PredictionTab({
           {/* ── Goal Range Analysis ── */}
           {v3.totalGoals?.length > 0 && (() => {
             const ranges = getRangeProbabilities(v3.totalGoals)
-            const maxRangeProb = ranges[0]?.prob || 1
+            const maxRangeProb = Math.max(...ranges.map(r => r.prob))
 
             return (
               <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
