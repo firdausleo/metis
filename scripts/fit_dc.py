@@ -129,25 +129,33 @@ def fit(matches):
   for t in teams:
     x0.append(BASE_RATINGS.get(t, {"def": 0.5})["def"])
 
+  bounds = (
+    [(0.1, 3.0)] * n +  # att bounds
+    [(0.1, 3.0)] * n    # def bounds
+  )
+
   result = minimize(
     neg_log_likelihood,
     x0,
     args=(matches, teams),
-    method="Nelder-Mead",
-    options={"maxiter": 5000, "xatol": 1e-5, "fatol": 1e-5}
+    method="L-BFGS-B",
+    bounds=bounds,
+    options={"maxiter": 2000, "ftol": 1e-9}
   )
 
   att = {t: result.x[i] for i, t in enumerate(teams)}
   defe = {t: result.x[n+i] for i, t in enumerate(teams)}
   return att, defe, teams
 
-def generate_js(att_new, def_new):
+def generate_js(att_new, def_new, game_counts):
   all_teams = dict(BASE_RATINGS)
   for t in att_new:
-    all_teams[t] = {
-      "att": round(att_new[t], 4),
-      "def": round(def_new[t], 4),
-    }
+    if game_counts.get(t, 0) >= 2:
+      all_teams[t] = {
+        "att": round(att_new[t], 4),
+        "def": round(def_new[t], 4),
+      }
+    # else: keep base rating unchanged
 
   # Read current dcRatings.js
   with open("src/utils/dcRatings.js", "r") as f:
@@ -187,6 +195,12 @@ def generate_js(att_new, def_new):
 
 if __name__ == "__main__":
   print(f"Fitting DC on {len(WC_RESULTS)} WC2026 results...")
+
+  game_counts = {}
+  for home, away, *_ in WC_RESULTS:
+    game_counts[home] = game_counts.get(home, 0) + 1
+    game_counts[away] = game_counts.get(away, 0) + 1
+
   att, defe, teams = fit(WC_RESULTS)
 
   print("\nRating changes vs base:")
@@ -199,7 +213,7 @@ if __name__ == "__main__":
     print(f"{t:<20} {base['att']:>8.4f} {att[t]:>8.4f} {da:>+7.4f} {base['def']:>8.4f} {defe[t]:>8.4f} {dd:>+7.4f}")
 
   # Write updated dcRatings.js
-  new_content = generate_js(att, defe)
+  new_content = generate_js(att, defe, game_counts)
   with open("src/utils/dcRatings.js", "w") as f:
     f.write(new_content)
 
