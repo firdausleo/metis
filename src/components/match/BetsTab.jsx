@@ -142,13 +142,27 @@ function EdgeBadge({ edge }) {
   )
 }
 
-function OddsInput({ value, onChange, placeholder = '—' }) {
+function OddsInput({ value, onChange, placeholder = '—', style }) {
+  const [local, setLocal] = useState(value || '')
+
+  useEffect(() => { setLocal(value || '') }, [value])
+
   return (
     <input
-      type="number" step="0.01" min="1" max="99"
+      type="number"
       inputMode="decimal"
-      value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      style={{ width: 70, fontSize: 16, minHeight: 44, textAlign: 'center', padding: '0 6px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)', fontFamily: 'monospace' }}
+      value={local}
+      onChange={e => setLocal(e.target.value)}
+      onBlur={() => { if (local !== (value || '')) onChange(local) }}
+      onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
+      placeholder={placeholder}
+      style={{
+        width: 70, fontSize: 16, minHeight: 44, textAlign: 'center',
+        padding: '0 6px', borderRadius: 'var(--radius-sm)',
+        background: 'var(--color-bg)', color: 'var(--color-text-primary)',
+        border: '0.5px solid var(--color-border-active)', fontFamily: 'monospace',
+        ...style,
+      }}
     />
   )
 }
@@ -296,10 +310,11 @@ function Market1X2({ model, match, odds, setOdds, bankroll }) {
                   </p>
                 )}
               </div>
-              <input
-                type="number" step="0.01" min="1" inputMode="decimal"
-                value={odds[key]} onChange={e => setOdds(prev => ({ ...prev, [key]: e.target.value }))}
-                placeholder="Odds" style={inp}
+              <OddsInput
+                value={odds[key] || ''}
+                onChange={val => setOdds(prev => ({ ...prev, [key]: val }))}
+                placeholder="Odds"
+                style={inp}
               />
               {edge != null && <EdgeBadge edge={edge} />}
               {stakeAmt != null && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>¥{stakeAmt.toLocaleString()}</span>}
@@ -531,8 +546,7 @@ function MarketChineseHandicap({ model, match, lang, line, setLine, oddsH, setOd
                     <td style={{ ...tdS, textAlign: 'left' }}>{row.label}</td>
                     <td style={{ ...tdS, fontFamily: 'monospace' }}>{(row.p * 100).toFixed(1)}%</td>
                     <td style={tdS}>
-                      <input type="number" step="0.01" min="1" max="99" value={row.odds} onChange={e => row.set(e.target.value)} placeholder="—"
-                        style={{ width: 70, fontSize: 16, minHeight: 44, textAlign: 'center', padding: '0 4px', borderRadius: 4, background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border)', fontFamily: 'monospace' }} />
+                      <OddsInput value={row.odds} onChange={row.set} />
                     </td>
                     <td style={tdS}>
                       {edge != null && <EdgeBadge edge={edge} />}
@@ -643,6 +657,64 @@ function MarketIndonesia({ model, match, lang, onParsed }) {
   )
 }
 
+// ── China total goals grid (总进球数) ────────────────────────────────────
+
+const CHINA_GOAL_CELLS = [
+  { key: '0', label: '0', goals: 0 },
+  { key: '1', label: '1', goals: 1 },
+  { key: '2', label: '2', goals: 2 },
+  { key: '3', label: '3', goals: 3 },
+  { key: '4', label: '4', goals: 4 },
+  { key: '5', label: '5', goals: 5 },
+  { key: '6', label: '6', goals: 6 },
+  { key: '7plus', label: '7+', goals: 7 },
+]
+
+function MarketChinaTotalGoals({ model, odds, setOdds, lang }) {
+  const totalGoalsDist = model?.v3?.totalGoals || []
+
+  function cellProb(cell) {
+    if (!totalGoalsDist.length) return null
+    if (cell.key === '7plus') {
+      return totalGoalsDist.filter(t => t.goals >= 7).reduce((s, t) => s + t.prob, 0)
+    }
+    return totalGoalsDist.find(t => t.goals === cell.goals)?.prob ?? 0
+  }
+
+  return (
+    <div>
+      <SH>总进球数 · {lang === 'zh' ? '总进球数（中国彩票）' : 'Total Goals (China Lottery)'}</SH>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+        {CHINA_GOAL_CELLS.map(cell => {
+          const p = cellProb(cell)
+          const o = parseFloat(odds[cell.key])
+          const edge = p != null && o > 1 ? p * o - 1 : null
+          const borderCol = edge == null ? 'var(--color-border)'
+            : edge > 0.05 ? '#2D7A4F' : edge > 0 ? '#D4860A' : '#C0392B'
+          const bgCol = edge == null ? 'var(--color-bg-elevated)'
+            : edge > 0.05 ? 'rgba(45,122,79,0.08)' : edge > 0 ? 'rgba(212,134,10,0.08)' : 'transparent'
+          return (
+            <div key={cell.key} style={{ border: `0.5px solid ${borderCol}`, borderRadius: 'var(--radius-sm)', background: bgCol, padding: '6px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-display)' }}>{cell.label}</span>
+              {p != null && <span style={{ fontSize: 9, color: 'var(--color-text-muted)' }}>{(p * 100).toFixed(1)}%</span>}
+              <OddsInput
+                value={odds[cell.key] || ''}
+                onChange={val => setOdds(prev => ({ ...prev, [cell.key]: val }))}
+                style={{ width: '100%', maxWidth: 60, fontSize: 12, minHeight: 28, padding: '0 2px', borderRadius: 3, border: '0.5px solid var(--color-border)' }}
+              />
+              {edge != null && (
+                <span style={{ fontSize: 9, fontWeight: 700, color: borderCol }}>
+                  {edge >= 0 ? '+' : ''}{(edge * 100).toFixed(1)}%
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── China correct score grid (比分) ──────────────────────────────────────
 
 function MarketChinaCorrectScore({ model, match, odds, setOdds, lang }) {
@@ -670,11 +742,10 @@ function MarketChinaCorrectScore({ model, match, odds, setOdds, lang }) {
       <div style={{ border: `0.5px solid ${borderCol}`, borderRadius: 'var(--radius-sm)', background: bgCol, padding: '5px 3px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
         <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-display)' }}>{display}</span>
         {p != null && <span style={{ fontSize: 9, color: 'var(--color-text-muted)' }}>{(p * 100).toFixed(1)}%</span>}
-        <input
-          type="number" step="0.01" min="1" inputMode="decimal"
-          value={odds[score] || ''} onChange={e => setOdds(prev => ({ ...prev, [score]: e.target.value }))}
-          placeholder="—"
-          style={{ width: '100%', maxWidth: 56, fontSize: 12, minHeight: 30, textAlign: 'center', padding: '0 2px', borderRadius: 3, background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border)', fontFamily: 'monospace' }}
+        <OddsInput
+          value={odds[score] || ''}
+          onChange={val => setOdds(prev => ({ ...prev, [score]: val }))}
+          style={{ width: '100%', maxWidth: 56, fontSize: 12, minHeight: 30, padding: '0 2px', borderRadius: 3, border: '0.5px solid var(--color-border)' }}
         />
         {edge != null && (
           <span style={{ fontSize: 9, fontWeight: 700, color: borderCol }}>
@@ -768,6 +839,7 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   const [bankroll, setBankroll] = useState('')
   const [indoParsed, setIndoParsed] = useState(null)
   const [csOdds, setCsOdds] = useState({})
+  const [chinaGoalsOdds, setChinaGoalsOdds] = useState({ '0': '', '1': '', '2': '', '3': '', '4': '', '5': '', '6': '', '7plus': '' })
 
   // Lifted RSPF state (shared with upload handler)
   const [rspfLine, setRspfLine] = useState(-1)
@@ -861,6 +933,14 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
           }
         })
         setCsOdds(newScores)
+      }
+
+      if (parsed.totalGoals) {
+        const newGoalsOdds = {}
+        Object.entries(parsed.totalGoals).forEach(([k, v]) => {
+          if (v != null) { newGoalsOdds[k] = String(v); filled++ }
+        })
+        if (Object.keys(newGoalsOdds).length) setChinaGoalsOdds(prev => ({ ...prev, ...newGoalsOdds }))
       }
 
       setUploadSuccess(lang === 'zh' ? `已从截图填入 ${filled} 个赔率` : `Filled ${filled} odds from screenshot`)
@@ -1067,6 +1147,9 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
 
           {/* 比分 */}
           <MarketChinaCorrectScore model={sidebarModel} match={match} odds={csOdds} setOdds={setCsOdds} lang={lang} />
+
+          {/* 总进球数 */}
+          <MarketChinaTotalGoals model={sidebarModel} odds={chinaGoalsOdds} setOdds={setChinaGoalsOdds} lang={lang} />
         </div>
       )}
 
