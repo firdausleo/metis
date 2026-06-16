@@ -222,6 +222,103 @@ function FlatMatchList({ matches, onAnalyze, statsMap, hideHeaders = false, lang
   )
 }
 
+// Compact standings card for the Groups grid view
+function GroupCard({ group, matches }) {
+  const navigate = useNavigate()
+  const rows = calcStandings(matches)
+
+  const nameToCode = {}
+  for (const m of matches) {
+    if (m.home_team && m.home_team_code) nameToCode[m.home_team] = m.home_team_code
+    if (m.away_team && m.away_team_code) nameToCode[m.away_team] = m.away_team_code
+  }
+
+  const leftBorder = (i) => {
+    if (i < 2) return '2px solid #2D7A4F'
+    if (i === 2) return '2px solid #BA7517'
+    return '2px solid transparent'
+  }
+
+  const thS = {
+    padding: '4px 6px', fontSize: 10, fontWeight: 600,
+    letterSpacing: '0.05em', color: 'var(--color-text-muted)',
+    background: 'var(--color-bg-elevated)', textAlign: 'center',
+    whiteSpace: 'nowrap', textTransform: 'uppercase',
+  }
+  const tdS = {
+    padding: '6px 6px', fontSize: 12,
+    borderTop: '0.5px solid var(--color-border)',
+    color: 'var(--color-text-secondary)',
+    textAlign: 'center', whiteSpace: 'nowrap',
+  }
+
+  return (
+    <div style={{
+      border: '0.5px solid var(--color-border)',
+      borderRadius: 'var(--radius-lg)',
+      background: 'var(--color-bg-card)',
+      overflow: 'hidden',
+    }}>
+      <div style={{ background: '#1A3A6C', padding: '8px 12px' }}>
+        <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.06em', color: '#fff', textTransform: 'uppercase' }}>
+          Group {group}
+        </span>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={{ ...thS, width: 24, textAlign: 'left', paddingLeft: 10 }}>#</th>
+            <th style={{ ...thS, textAlign: 'left' }}>Team</th>
+            <th style={thS}>P</th>
+            <th style={thS}>W</th>
+            <th style={thS}>D</th>
+            <th style={thS}>L</th>
+            <th style={thS}>GD</th>
+            <th style={{ ...thS, color: 'var(--color-text-primary)' }}>Pts</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.team}>
+              <td style={{ ...tdS, paddingLeft: 10, fontWeight: 600, color: 'var(--color-text-muted)', textAlign: 'left', borderLeft: leftBorder(i) }}>
+                {i + 1}
+              </td>
+              <td style={{ ...tdS, textAlign: 'left', maxWidth: 110 }}>
+                {nameToCode[r.team] ? (
+                  <button
+                    onClick={() => navigate(`/team/${nameToCode[r.team]}`, { state: { from: 'group' } })}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                      fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--color-text-primary)',
+                      fontWeight: i < 2 ? 600 : 400, textAlign: 'left',
+                      width: '100%', maxWidth: 110,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block',
+                    }}
+                  >
+                    {getFlag(r.team)} {r.team}
+                  </button>
+                ) : (
+                  <span style={{ fontWeight: i < 2 ? 600 : 400, fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>
+                    {getFlag(r.team)} {r.team}
+                  </span>
+                )}
+              </td>
+              <td style={tdS}>{r.mp}</td>
+              <td style={{ ...tdS, color: r.w > 0 ? 'var(--color-success)' : 'var(--color-text-muted)' }}>{r.w}</td>
+              <td style={tdS}>{r.d}</td>
+              <td style={{ ...tdS, color: r.l > 0 ? 'var(--color-danger)' : 'var(--color-text-muted)' }}>{r.l}</td>
+              <td style={{ ...tdS, color: r.gd > 0 ? 'var(--color-success)' : r.gd < 0 ? 'var(--color-danger)' : 'var(--color-text-muted)' }}>
+                {r.gd > 0 ? `+${r.gd}` : r.gd}
+              </td>
+              <td style={{ ...tdS, fontWeight: 500, color: 'var(--color-text-primary)' }}>{r.pts}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function GroupSection({ group, matches, onAnalyze, statsMap, showStandings = true, showMatches = true }) {
   const teamNames = [...new Set(
     matches.flatMap(m => [m.home_team, m.away_team])
@@ -494,15 +591,12 @@ export default function Matches() {
   // Today's date key in Beijing time
   const todayKey = useMemo(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date()), [])
 
-  // Matches for the active stage filter (used for date pill derivation)
+  // Matches for the active stage filter — only needed for date pills (all/upcoming only)
   const stageMatches = useMemo(() => {
     if (filter === 'upcoming') return upcomingMatches
-    if (filter === 'knockout') return matchesByGroup['knockout'] || []
-    if (filter === 'group') {
-      return GROUPS.flatMap(g => matchesByGroup[g] || [])
-    }
-    return matches
-  }, [filter, matches, upcomingMatches, matchesByGroup])
+    if (filter === 'all') return matches
+    return [] // no date pills for group/knockout tabs
+  }, [filter, matches, upcomingMatches])
 
   // Date pills derived from stage matches
   const datePills = useMemo(() => {
@@ -687,8 +781,8 @@ export default function Matches() {
             ))}
           </div>
 
-          {/* ── Date pill strip ── */}
-          {datePills.length > 0 && (
+          {/* ── Date pill strip (All / Upcoming tabs only) ── */}
+          {(filter === 'all' || filter === 'upcoming') && datePills.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
               {/* Left arrow (desktop only) */}
               <button
@@ -829,55 +923,27 @@ export default function Matches() {
           />
         )}
 
-        {/* ── GROUPS: standings per group (or flat list when date selected) ── */}
+        {/* ── GROUPS: 12 compact standings cards in responsive grid ── */}
         {filter === 'group' && (
-          selectedDate ? (
-            <FlatMatchList
-              matches={displayMatches}
-              onAnalyze={onAnalyze}
-              statsMap={statsMap}
-              hideHeaders
-              lang={lang}
-            />
-          ) : (
-            <div>
-              {GROUPS.map(g => (
-                <GroupSection
-                  key={g}
-                  group={g}
-                  matches={matchesByGroup[g] || []}
-                  onAnalyze={onAnalyze}
-                  statsMap={statsMap}
-                  showStandings={true}
-                  showMatches={false}
-                />
-              ))}
-            </div>
-          )
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+            {GROUPS.map(g => (
+              <GroupCard key={g} group={g} matches={matchesByGroup[g] || []} />
+            ))}
+          </div>
         )}
 
-        {/* ── KNOCKOUT: stage sections (or flat list when date selected) ── */}
+        {/* ── KNOCKOUT: stage sections ── */}
         {filter === 'knockout' && (
-          selectedDate ? (
-            <FlatMatchList
-              matches={displayMatches}
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 12 }}>
+              {t('matches.knockout').toUpperCase()}
+            </p>
+            <KnockoutSection
+              matches={matchesByGroup['knockout'] || []}
               onAnalyze={onAnalyze}
               statsMap={statsMap}
-              hideHeaders
-              lang={lang}
             />
-          ) : (
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 12 }}>
-                {t('matches.knockout').toUpperCase()}
-              </p>
-              <KnockoutSection
-                matches={matchesByGroup['knockout'] || []}
-                onAnalyze={onAnalyze}
-                statsMap={statsMap}
-              />
-            </div>
-          )
+          </div>
         )}
       </div>
     </div>
