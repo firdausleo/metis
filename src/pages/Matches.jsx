@@ -797,12 +797,13 @@ export default function Matches() {
                 }}
               >‹</button>
 
-              {/* Scrollable strip — minWidth:0 lets the flex child shrink within its container */}
+              {/* Scrollable strip — flex:'1 1 0'+width:0 forces it to start at zero
+                  width and grow only into the remaining space after the two arrows */}
               <div
                 ref={stripRef}
-                className="date-strip"
+                className="date-strip-inner"
                 style={{
-                  flex: 1, minWidth: 0, display: 'flex', gap: 6,
+                  flex: '1 1 0', width: 0, display: 'flex', gap: 6,
                   overflowX: 'auto', scrollSnapType: 'x mandatory',
                   WebkitOverflowScrolling: 'touch', padding: '4px 2px',
                   scrollbarWidth: 'none', msOverflowStyle: 'none',

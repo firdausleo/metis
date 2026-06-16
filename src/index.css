@@ -225,12 +225,14 @@ body {
 
 /* ── Date pill strip ── */
 .date-strip,
-.date-strip-scroll {
+.date-strip-scroll,
+.date-strip-inner {
   scrollbar-width: none;
   ms-overflow-style: none;
 }
 .date-strip::-webkit-scrollbar,
-.date-strip-scroll::-webkit-scrollbar { display: none; }
+.date-strip-scroll::-webkit-scrollbar,
+.date-strip-inner::-webkit-scrollbar { display: none; }
 .date-strip-arrow { display: none; }
 @media (min-width: 600px) {
   .date-strip-arrow { display: flex; }
