@@ -783,7 +783,7 @@ export default function Matches() {
 
           {/* ── Date pill strip (All / Upcoming tabs only) ── */}
           {(filter === 'all' || filter === 'upcoming') && datePills.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', marginTop: 10, marginBottom: 4 }}>
               {/* Left arrow (desktop only) */}
               <button
                 className="date-strip-arrow"
@@ -793,18 +793,19 @@ export default function Matches() {
                   flexShrink: 0, width: 28, height: 28, borderRadius: '50%',
                   background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)',
                   cursor: 'pointer', fontSize: 14, color: 'var(--color-text-muted)',
-                  alignItems: 'center', justifyContent: 'center',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >‹</button>
 
-              {/* Scrollable strip */}
+              {/* Scrollable strip — minWidth:0 lets the flex child shrink within its container */}
               <div
                 ref={stripRef}
-                className="date-strip-scroll"
+                className="date-strip"
                 style={{
-                  flex: 1, display: 'flex', gap: 6,
+                  flex: 1, minWidth: 0, display: 'flex', gap: 6,
                   overflowX: 'auto', scrollSnapType: 'x mandatory',
                   WebkitOverflowScrolling: 'touch', padding: '4px 2px',
+                  scrollbarWidth: 'none', msOverflowStyle: 'none',
                 }}
               >
                 {/* "All dates" pill */}
@@ -813,7 +814,7 @@ export default function Matches() {
                   onClick={() => setSelectedDate(null)}
                   style={{
                     scrollSnapAlign: 'start', flexShrink: 0,
-                    width: 52, minHeight: 56, padding: '6px 0',
+                    width: 56, minHeight: 56, padding: '6px 0',
                     borderRadius: 'var(--radius-md)', cursor: 'pointer',
                     border: selectedDate === null ? '0.5px solid #1A3A6C' : '0.5px solid var(--color-border)',
                     background: selectedDate === null ? '#1A3A6C' : 'var(--color-bg-card)',
@@ -834,7 +835,6 @@ export default function Matches() {
                   const monthName = jsDate.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
                   const isToday = date === todayKey
                   const isSelected = date === selectedDate
-                  const isActive = isSelected || isToday
 
                   return (
                     <button
@@ -843,11 +843,11 @@ export default function Matches() {
                       onClick={() => setSelectedDate(date)}
                       style={{
                         scrollSnapAlign: 'start', flexShrink: 0, position: 'relative',
-                        width: 52, minHeight: 56, padding: '6px 0 10px',
+                        width: 56, minHeight: 56, padding: '6px 0 10px',
                         borderRadius: 'var(--radius-md)', cursor: 'pointer', textAlign: 'center',
-                        border: `0.5px solid ${isActive ? '#1A3A6C' : 'var(--color-border)'}`,
-                        background: isActive ? '#1A3A6C' : 'var(--color-bg-card)',
-                        color: isActive ? '#fff' : hasUpcoming ? 'var(--color-text-secondary)' : 'var(--color-text-muted)',
+                        border: `0.5px solid ${isSelected ? '#1A3A6C' : isToday ? 'var(--color-accent-border)' : 'var(--color-border)'}`,
+                        background: isSelected ? '#1A3A6C' : 'var(--color-bg-card)',
+                        color: isSelected ? '#fff' : hasUpcoming ? 'var(--color-text-secondary)' : 'var(--color-text-muted)',
                         fontFamily: 'var(--font-ui)',
                         opacity: hasUpcoming ? 1 : 0.65,
                       }}
@@ -856,14 +856,14 @@ export default function Matches() {
                       <span style={{
                         position: 'absolute', top: 2, right: 2,
                         fontSize: 9, lineHeight: 1,
-                        background: hasUpcoming ? (isActive ? 'rgba(201,168,76,0.25)' : '#EAF3DE') : (isActive ? 'rgba(255,255,255,0.2)' : 'var(--color-bg-elevated)'),
-                        color: hasUpcoming ? (isActive ? '#C9A84C' : '#27500A') : (isActive ? 'rgba(255,255,255,0.7)' : 'var(--color-text-muted)'),
+                        background: hasUpcoming ? (isSelected ? 'rgba(201,168,76,0.25)' : '#EAF3DE') : (isSelected ? 'rgba(255,255,255,0.2)' : 'var(--color-bg-elevated)'),
+                        color: hasUpcoming ? (isSelected ? '#C9A84C' : '#27500A') : (isSelected ? 'rgba(255,255,255,0.7)' : 'var(--color-text-muted)'),
                         borderRadius: 99, padding: '1px 4px',
                       }}>
                         {count}
                       </span>
                       {/* Day name */}
-                      <p style={{ fontSize: 10, margin: 0, opacity: isActive ? 0.85 : 1 }}>{dayName}</p>
+                      <p style={{ fontSize: 10, margin: 0 }}>{dayName}</p>
                       {/* Day number */}
                       <p style={{
                         fontSize: 18, fontWeight: 500, margin: '1px 0',
@@ -871,13 +871,12 @@ export default function Matches() {
                         lineHeight: 1,
                       }}>{d}</p>
                       {/* Month */}
-                      <p style={{ fontSize: 10, margin: 0, opacity: isActive ? 0.85 : 1 }}>{monthName}</p>
-                      {/* Gold dot for today */}
+                      <p style={{ fontSize: 10, margin: 0 }}>{monthName}</p>
+                      {/* Gold dot for today (always, regardless of selected state) */}
                       {isToday && (
                         <div style={{
                           width: 4, height: 4, borderRadius: '50%',
-                          background: '#C9A84C',
-                          margin: '3px auto 0',
+                          background: '#C9A84C', margin: '3px auto 0',
                         }} />
                       )}
                     </button>
@@ -894,7 +893,7 @@ export default function Matches() {
                   flexShrink: 0, width: 28, height: 28, borderRadius: '50%',
                   background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)',
                   cursor: 'pointer', fontSize: 14, color: 'var(--color-text-muted)',
-                  alignItems: 'center', justifyContent: 'center',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >›</button>
             </div>
