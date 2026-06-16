@@ -928,42 +928,64 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
       console.warn('Could not restore odds:', err)
     }
 
-    // Background cloud load — runs after localStorage restore; applies Supabase data if newer.
+    // Background cloud load — always applies Supabase data if it has meaningful content.
+    // isNavigating stays true until the async work finishes to prevent save effect from
+    // overwriting state mid-load.
     const restoreMatchId = match.id
     ;(async () => {
+      let appliedCloudData = false
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.user?.id) return
-        const { data: row } = await supabase
+        if (!session?.user?.id || !match?.id) return
+
+        const { data } = await supabase
           .from('match_odds')
-          .select('odds_data')
+          .select('odds_data, updated_at')
           .eq('user_id', session.user.id)
           .eq('match_id', restoreMatchId)
-          .maybeSingle()
-        if (!row?.odds_data) return
-        const remote = row.odds_data
-        const localSavedAt = (() => {
-          try { return JSON.parse(localStorage.getItem(`metis_odds_${restoreMatchId}`) || '{}').savedAt || 0 } catch { return 0 }
-        })()
-        if ((remote.savedAt || 0) <= localSavedAt) return
-        if (remote.spf) setV1x2Odds(remote.spf)
-        if (remote.rspf) {
-          setRspfLine(remote.rspf.line ?? -1)
-          if (remote.rspf.home != null) setRspfH(String(remote.rspf.home))
-          if (remote.rspf.draw != null) setRspfD(String(remote.rspf.draw))
-          if (remote.rspf.away != null) setRspfA(String(remote.rspf.away))
+          .single()
+
+        if (!data?.odds_data) return
+
+        const d = data.odds_data
+
+        const hasData =
+          d.spf?.home || d.rspf?.home ||
+          (d.scores && Object.keys(d.scores).length > 0) ||
+          (d.totalGoals && Object.values(d.totalGoals).some(v => v !== ''))
+
+        if (!hasData) return
+
+        isNavigating.current = true
+
+        if (d.spf) setV1x2Odds(d.spf)
+        if (d.rspf) {
+          setRspfLine(d.rspf.line ?? -1)
+          if (d.rspf.home != null) setRspfH(String(d.rspf.home))
+          if (d.rspf.draw != null) setRspfD(String(d.rspf.draw))
+          if (d.rspf.away != null) setRspfA(String(d.rspf.away))
         }
-        if (remote.scores) setCsOdds(remote.scores)
-        if (remote.totalGoals) setChinaGoalsOdds(remote.totalGoals)
-        try { localStorage.setItem(`metis_odds_${restoreMatchId}`, JSON.stringify(remote)) } catch {}
+        if (d.scores) setCsOdds(d.scores)
+        if (d.totalGoals) setChinaGoalsOdds(d.totalGoals)
+
+        localStorage.setItem(
+          `metis_odds_${restoreMatchId}`,
+          JSON.stringify({ ...d, savedAt: new Date(data.updated_at).getTime() })
+        )
+
         setLastCloudSave(new Date())
+        appliedCloudData = true
+        console.log('✓ Odds loaded from cloud')
       } catch (err) {
-        console.warn('Could not load odds from cloud:', err)
+        console.warn('Supabase odds load failed:', err)
+      } finally {
+        if (appliedCloudData) {
+          setTimeout(() => { isNavigating.current = false }, 100)
+        } else {
+          isNavigating.current = false
+        }
       }
     })()
-
-    // Clear flag after React processes all setState calls above
-    setTimeout(() => { isNavigating.current = false }, 0)
   }, [match?.id])
 
   async function saveOddsToSupabase(matchId, snapshot) {
