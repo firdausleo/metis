@@ -14,7 +14,7 @@ export default function LoadingScreen() {
           background: #FAFAF8;
         }
         .loading-wordmark {
-          font-family: 'Barlow Condensed', sans-serif;
+          font-family: 'IBM Plex Mono', monospace;
           font-size: 32px;
           font-weight: 600;
           letter-spacing: 0.15em;

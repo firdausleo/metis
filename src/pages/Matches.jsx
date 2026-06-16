@@ -888,7 +888,7 @@ export default function Matches() {
                       {/* Day number */}
                       <p style={{
                         fontSize: 18, fontWeight: 500, margin: '1px 0',
-                        fontFamily: "'Barlow Condensed', var(--font-display)",
+                        fontFamily: "'IBM Plex Mono', monospace",
                         lineHeight: 1,
                       }}>{d}</p>
                       {/* Month */}

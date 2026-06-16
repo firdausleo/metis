@@ -1,4 +1,53 @@
-/* Google Fonts removed — using system fonts (China-safe) */
+/* Self-hosted fonts — China-safe, served from Cloudflare Pages CDN */
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/IBMPlexMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/IBMPlexMono-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/IBMPlexMono-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/SpaceGrotesk-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/SpaceGrotesk-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DM Mono';
+  src: url('/fonts/DMMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DM Mono';
+  src: url('/fonts/DMMono-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-display: swap;
+}
 
 :root {
   /* ── Base backgrounds — warm white ── */
@@ -62,8 +111,10 @@
   --color-conflict:        #C0392B;
 
   /* ── Typography ── */
-  --font-display: -apple-system, 'SF Pro Display', 'Inter', sans-serif;
-  --font-ui:      'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+  --font-sans:    'Space Grotesk', -apple-system, 'PingFang SC', sans-serif;
+  --font-display: 'IBM Plex Mono', 'Courier New', monospace;
+  --font-mono:    'DM Mono', 'Courier New', monospace;
+  --font-ui:      var(--font-sans);
 
   /* ── Font sizes ── */
   --text-xs:   13px;
@@ -93,9 +144,10 @@
 body {
   background: var(--color-bg);
   color: var(--color-text-primary);
-  font-family: var(--font-ui);
+  font-family: var(--font-sans);
   font-size: 16px;
   line-height: 1.6;
+  letter-spacing: -0.01em;
   min-height: 100vh;
 }
 

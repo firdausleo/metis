@@ -112,9 +112,9 @@ export default function NavBar() {
                   onClick={() => navigate(item.path)}
                   style={{
                     border: 'none', cursor: 'pointer', padding: '6px 14px',
-                    borderRadius: 'var(--radius-sm)', fontFamily: "'Barlow Condensed', var(--font-ui)",
-                    fontSize: 15, fontWeight: 700, minHeight: 'var(--touch-target)',
-                    letterSpacing: '0.06em',
+                    borderRadius: 'var(--radius-sm)', fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: 13, fontWeight: 600, minHeight: 'var(--touch-target)',
+                    letterSpacing: '0.15em',
                     color: '#C9A84C',
                     background: active ? 'rgba(201,168,76,0.18)' : 'rgba(201,168,76,0.08)',
                     transition: 'background 0.15s',
@@ -247,7 +247,7 @@ export default function NavBar() {
               >
                 <span style={{ fontSize: 20, lineHeight: 1 }}>⚡</span>
                 <span style={{
-                  fontSize: 10, fontFamily: "'Barlow Condensed', var(--font-ui)",
+                  fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
                   fontWeight: 700, letterSpacing: '0.05em',
                 }}>METIS</span>
               </button>

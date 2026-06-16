@@ -294,10 +294,10 @@ FORMAT YOUR RESPONSES
         }}>⚡</div>
         <div style={{ flex: 1 }}>
           <div style={{
-            fontSize: 15, fontWeight: 600,
+            fontSize: 18, fontWeight: 600,
             color: 'var(--color-text-primary)',
-            fontFamily: "'Barlow Condensed', sans-serif",
-            letterSpacing: '0.08em',
+            fontFamily: "'IBM Plex Mono', monospace",
+            letterSpacing: '0.2em',
           }}>METIS</div>
           <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 1 }}>
             {context
