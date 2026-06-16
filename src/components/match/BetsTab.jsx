@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useTranslation } from '../../lib/i18n'
 import { getFlag } from '../../lib/teamFlags'
 import { analyse1X2, calcStake, formatProb } from '../../lib/evEngine'
 import { placeBet } from '../../lib/bets'
 import { buildPaspPlan, paspText, quarterKelly, correlatedKelly, getRangeProbabilities } from '../../utils/pasp'
+import { parseIndonesiaOdds } from '../../utils/indonesiaOddsParser'
 import InfoTooltip from '../InfoTooltip'
 
 // ── Asian Handicap helpers (pure, no deps) ──────────────────────────────
@@ -81,6 +82,45 @@ const TG_LINES = [
   { val: 3.5,  label: '3.1/2' }, { val: 3.75, label: '3.3/4' },
   { val: 4,    label: '4'     }, { val: 4.5,  label: '4.1/2' },
 ]
+
+// ── China correct score constants ───────────────────────────────────────
+
+const HOME_WIN_SCORES = ['1-0','2-0','2-1','3-0','3-1','3-2','4-0','4-1','4-2','5-0','5-1','5-2']
+const DRAW_SCORES     = ['0-0','1-1','2-2','3-3']
+const AWAY_WIN_SCORES = ['0-1','0-2','1-2','0-3','1-3','2-3','0-4','1-4','2-4','0-5','1-5','2-5']
+
+const FRANCE_SENEGAL_CS = {
+  '1-0':'6.25','2-0':'6.00','2-1':'6.10','3-0':'9.25','3-1':'9.25','3-2':'24.00',
+  '4-0':'20.00','4-1':'22.00','4-2':'43.00','5-0':'45.00','5-1':'48.00','5-2':'90.00','胜其它':'32.00',
+  '0-0':'13.00','1-1':'7.50','2-2':'17.00','3-3':'55.00','平其它':'300.00',
+  '0-1':'19.00','0-2':'50.00','1-2':'21.00','0-3':'165.00','1-3':'85.00','2-3':'70.00',
+  '0-4':'500.00','1-4':'400.00','2-4':'300.00','0-5':'900.00','1-5':'800.00','2-5':'800.00','负其它':'350.00',
+}
+
+function getScoreProb(matrix, score) {
+  if (!matrix) return null
+  const [h, a] = score.split('-').map(Number)
+  if (isNaN(h) || isNaN(a)) return null
+  return matrix[h]?.[a] ?? 0
+}
+
+function getOtherProb(matrix, type) {
+  if (!matrix) return null
+  const N = matrix.length
+  let listed = 0, total = 0
+  const listed_scores = type === 'home' ? HOME_WIN_SCORES : type === 'draw' ? DRAW_SCORES : AWAY_WIN_SCORES
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      const p = matrix[i]?.[j] || 0
+      const isHome = i > j, isDraw = i === j, isAway = j > i
+      if ((type === 'home' && isHome) || (type === 'draw' && isDraw) || (type === 'away' && isAway)) {
+        total += p
+        if (listed_scores.includes(`${i}-${j}`)) listed += p
+      }
+    }
+  }
+  return Math.max(0, total - listed)
+}
 
 // ── Shared UI atoms ──────────────────────────────────────────────────────
 
@@ -503,11 +543,225 @@ function MarketChineseHandicap({ model, match, lang }) {
   )
 }
 
+// ── Indonesia paste-and-parse section ────────────────────────────────────
+
+function MarketIndonesia({ model, match, lang, onParsed }) {
+  const [rawText, setRawText] = useState('')
+  const [parsed, setParsed] = useState(null)
+
+  const matrix = model?.v3?.matrix || model?.v2?.matrix
+
+  function handleParse() {
+    const result = parseIndonesiaOdds(rawText, match?.home_team, match?.away_team)
+    setParsed(result)
+    onParsed?.(result)
+  }
+
+  const ahProbs = parsed?.handicap && matrix ? calcAHProbs(matrix, parsed.handicap.line) : null
+  const tgProbs = parsed?.totalGoals && matrix ? calcTGProbs(matrix, parsed.totalGoals.line) : null
+
+  const placeholder = `Paste Indonesia odds here...\n\nExample:\n+20 ${match?.home_team || 'Prancis'} -${match?.away_team || 'Senegal'}\nB.2.1/2+20`
+
+  return (
+    <div>
+      <SH>🇮🇩 {lang === 'zh' ? '印尼赔率（粘贴）' : 'Indonesia Odds (Paste)'}</SH>
+      <textarea
+        value={rawText}
+        onChange={e => setRawText(e.target.value)}
+        rows={5}
+        placeholder={placeholder}
+        style={{ width: '100%', fontSize: 13, fontFamily: 'monospace', borderRadius: 'var(--radius-md)', padding: '10px 12px', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border)', resize: 'vertical', boxSizing: 'border-box', display: 'block', lineHeight: 1.5 }}
+      />
+      <button
+        onClick={handleParse}
+        disabled={!rawText.trim()}
+        style={{ marginTop: 8, width: '100%', minHeight: 44, background: rawText.trim() ? '#1A3A6C' : 'var(--color-bg-elevated)', color: rawText.trim() ? '#fff' : 'var(--color-text-muted)', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 14, fontWeight: 600, cursor: rawText.trim() ? 'pointer' : 'not-allowed', fontFamily: 'var(--font-ui)' }}
+      >
+        {lang === 'zh' ? '解析赔率' : 'Parse odds'}
+      </button>
+
+      {parsed && (
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+          {parsed.handicap && ahProbs && (
+            <div style={{ background: 'var(--color-bg-elevated)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '10px 12px' }}>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--color-text-muted)', marginBottom: 6 }}>ASIAN HANDICAP</p>
+              <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
+                {lang === 'zh' ? '盘口' : 'Line'}: {parsed.handicap.line || '0 (flat)'}
+              </p>
+              {parsed.handicap.homeOdds != null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{match?.home_team} @{parsed.handicap.homeOdds.toFixed(2)}</span>
+                  <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Model: {(ahProbs.pHome * 100).toFixed(1)}%</span>
+                  <EdgeBadge edge={ahProbs.pHome - 1 / parsed.handicap.homeOdds} />
+                </div>
+              )}
+              {parsed.handicap.awayOdds != null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{match?.away_team} @{parsed.handicap.awayOdds.toFixed(2)}</span>
+                  <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Model: {(ahProbs.pAway * 100).toFixed(1)}%</span>
+                  <EdgeBadge edge={ahProbs.pAway - 1 / parsed.handicap.awayOdds} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {parsed.totalGoals && tgProbs && (
+            <div style={{ background: 'var(--color-bg-elevated)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '10px 12px' }}>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--color-text-muted)', marginBottom: 6 }}>TOTAL GOALS</p>
+              {(() => {
+                const { side, line, odds } = parsed.totalGoals
+                const prob = side === 'over' ? tgProbs.pOver : tgProbs.pUnder
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>
+                      {side === 'over' ? 'Over' : 'Under'} {line} @{odds.toFixed(2)}
+                    </span>
+                    <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Model: {(prob * 100).toFixed(1)}%</span>
+                    <EdgeBadge edge={prob - 1 / odds} />
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
+          {!parsed.handicap && !parsed.totalGoals && (
+            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+              {lang === 'zh' ? '未识别到赔率，请检查球队名称是否匹配。' : 'No odds recognised — check that team names appear in the pasted text.'}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── China correct score grid (比分) ──────────────────────────────────────
+
+function MarketChinaCorrectScore({ model, match, odds, setOdds, lang }) {
+  const matrix = model?.v3?.matrix || model?.v2?.matrix
+
+  function scoreProb(score) {
+    if (!matrix) return null
+    if (score === '胜其它') return getOtherProb(matrix, 'home')
+    if (score === '平其它') return getOtherProb(matrix, 'draw')
+    if (score === '负其它') return getOtherProb(matrix, 'away')
+    return getScoreProb(matrix, score)
+  }
+
+  function ScoreCell({ score }) {
+    const p = scoreProb(score)
+    const o = parseFloat(odds[score])
+    const edge = p != null && o > 1 ? p - 1 / o : null
+    const display = score.includes('-') ? score.replace('-', ':') : score
+    const borderCol = edge == null ? 'var(--color-border)'
+      : edge > 0.05 ? '#2D7A4F' : edge > 0 ? '#D4860A' : '#C0392B'
+    const bgCol = edge == null ? 'var(--color-bg-elevated)'
+      : edge > 0.05 ? 'rgba(45,122,79,0.08)' : edge > 0 ? 'rgba(212,134,10,0.08)' : 'transparent'
+
+    return (
+      <div style={{ border: `0.5px solid ${borderCol}`, borderRadius: 'var(--radius-sm)', background: bgCol, padding: '5px 3px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-display)' }}>{display}</span>
+        {p != null && <span style={{ fontSize: 9, color: 'var(--color-text-muted)' }}>{(p * 100).toFixed(1)}%</span>}
+        <input
+          type="number" step="0.01" min="1" inputMode="decimal"
+          value={odds[score] || ''} onChange={e => setOdds(prev => ({ ...prev, [score]: e.target.value }))}
+          placeholder="—"
+          style={{ width: '100%', maxWidth: 56, fontSize: 12, minHeight: 30, textAlign: 'center', padding: '0 2px', borderRadius: 3, background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border)', fontFamily: 'monospace' }}
+        />
+        {edge != null && (
+          <span style={{ fontSize: 9, fontWeight: 700, color: borderCol }}>
+            {edge >= 0 ? '+' : ''}{(edge * 100).toFixed(1)}%
+          </span>
+        )}
+      </div>
+    )
+  }
+
+  const gridRow6 = { display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 3 }
+  const gridRow5 = { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 3 }
+
+  return (
+    <div>
+      <SH>比分 · {lang === 'zh' ? '正确比分（中国彩票）' : 'Correct Score (China Lottery)'}</SH>
+
+      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#1A3A6C', marginBottom: 4 }}>胜 HOME WINS</p>
+      <div style={{ ...gridRow6, marginBottom: 3 }}>
+        {HOME_WIN_SCORES.slice(0, 6).map(s => <ScoreCell key={s} score={s} />)}
+      </div>
+      <div style={{ ...gridRow6, marginBottom: 4 }}>
+        {HOME_WIN_SCORES.slice(6).map(s => <ScoreCell key={s} score={s} />)}
+      </div>
+      <div style={{ marginBottom: 10 }}><ScoreCell score="胜其它" /></div>
+
+      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: 'var(--color-text-muted)', marginBottom: 4 }}>平 DRAWS</p>
+      <div style={{ ...gridRow5, marginBottom: 10 }}>
+        {[...DRAW_SCORES, '平其它'].map(s => <ScoreCell key={s} score={s} />)}
+      </div>
+
+      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', color: '#C0392B', marginBottom: 4 }}>负 AWAY WINS</p>
+      <div style={{ ...gridRow6, marginBottom: 3 }}>
+        {AWAY_WIN_SCORES.slice(0, 6).map(s => <ScoreCell key={s} score={s} />)}
+      </div>
+      <div style={{ ...gridRow6, marginBottom: 4 }}>
+        {AWAY_WIN_SCORES.slice(6).map(s => <ScoreCell key={s} score={s} />)}
+      </div>
+      <div><ScoreCell score="负其它" /></div>
+
+      <p style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 8, fontStyle: 'italic' }}>
+        {lang === 'zh' ? '绿色边框 = 正期望值。按照中国彩票APP的顺序输入赔率。' : 'Green border = positive edge. Enter odds matching your China lottery app layout.'}
+      </p>
+    </div>
+  )
+}
+
+// ── Best bets summary ─────────────────────────────────────────────────────
+
+function BestBetsSummary({ bets, bankroll, lang }) {
+  if (!bets || !bets.length) return null
+  const bkrl = parseFloat(bankroll)
+  const hasBkrl = bkrl > 0
+
+  return (
+    <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-accent-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }}>
+      <SH>{lang === 'zh' ? '最佳投注推荐' : 'BEST BETS FOR THIS MATCH'}</SH>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {bets.slice(0, 6).map((b, i) => {
+          const stakeAmt = hasBkrl && b.edge > 0 ? Math.round(quarterKelly(b.prob, b.odds) * bkrl) : null
+          const isGood = b.edge >= 0.05, isFair = b.edge >= 0
+          const col = isGood ? 'var(--color-success)' : isFair ? 'var(--color-warning)' : 'var(--color-danger)'
+          return (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: isGood ? 'rgba(45,122,79,0.06)' : 'transparent', borderRadius: 'var(--radius-sm)', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11 }}>{isGood ? '✅' : isFair ? '〰' : '❌'}</span>
+              <span style={{ flex: 1, minWidth: 100, fontSize: 12, fontWeight: 500 }}>{b.label}</span>
+              <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 99, background: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', flexShrink: 0 }}>{b.market}</span>
+              <span style={{ fontSize: 11, fontFamily: 'monospace', flexShrink: 0 }}>@{b.odds.toFixed(2)}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: col, flexShrink: 0 }}>{b.edge >= 0 ? '+' : ''}{(b.edge * 100).toFixed(1)}%</span>
+              {stakeAmt != null && stakeAmt > 0 && (
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-accent)', flexShrink: 0 }}>¥{stakeAmt.toLocaleString()}</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── BetsTab ───────────────────────────────────────────────────────────────
 
 export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, isAdmin }) {
   const { t, lang } = useTranslation()
   const [bankroll, setBankroll] = useState('')
+  const [indoParsed, setIndoParsed] = useState(null)
+  const [csOdds, setCsOdds] = useState({})
+
+  // Pre-fill China correct score odds for France vs Senegal
+  useEffect(() => {
+    if (match?.home_team === 'France' && match?.away_team === 'Senegal') {
+      setCsOdds(FRANCE_SENEGAL_CS)
+    }
+  }, [match?.id])
 
   const plan = useMemo(() => buildPaspPlan(sidebarModel, match), [sidebarModel, match])
 
@@ -517,6 +771,60 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   const kStar = v3Goals?.length ? [...v3Goals].sort((a, b) => b.prob - a.prob)[0]?.goals ?? 2 : 2
   const anchorLine = kStar - 0.5
   const topRange = v3Goals?.length ? getRangeProbabilities(v3Goals)[0] : null
+
+  const bestBets = useMemo(() => {
+    const bets = []
+    const matrix = sidebarModel?.v3?.matrix || sidebarModel?.v2?.matrix
+    const v3probs = sidebarModel?.v3?.probs
+
+    // 1X2
+    if (v3probs) {
+      ['home', 'draw', 'away'].forEach(key => {
+        const o = parseFloat(v1x2Odds?.[key])
+        const p = v3probs[key]
+        if (o > 1 && p) {
+          const label = key === 'home' ? (match?.home_team || 'Home') : key === 'away' ? (match?.away_team || 'Away') : 'Draw'
+          bets.push({ label: `1X2 ${label}`, edge: p - 1 / o, odds: o, prob: p, market: lang === 'zh' ? '胜平负' : '1X2' })
+        }
+      })
+    }
+
+    // Indonesia
+    if (indoParsed && matrix) {
+      if (indoParsed.handicap) {
+        const ah = calcAHProbs(matrix, indoParsed.handicap.line)
+        if (indoParsed.handicap.homeOdds) {
+          bets.push({ label: `Indo AH ${match?.home_team} (${indoParsed.handicap.line})`, edge: ah.pHome - 1 / indoParsed.handicap.homeOdds, odds: indoParsed.handicap.homeOdds, prob: ah.pHome, market: '🇮🇩 AH' })
+        }
+        if (indoParsed.handicap.awayOdds) {
+          bets.push({ label: `Indo AH ${match?.away_team} (${-indoParsed.handicap.line})`, edge: ah.pAway - 1 / indoParsed.handicap.awayOdds, odds: indoParsed.handicap.awayOdds, prob: ah.pAway, market: '🇮🇩 AH' })
+        }
+      }
+      if (indoParsed.totalGoals) {
+        const tg = calcTGProbs(matrix, indoParsed.totalGoals.line)
+        const prob = indoParsed.totalGoals.side === 'over' ? tg.pOver : tg.pUnder
+        bets.push({ label: `Indo ${indoParsed.totalGoals.side === 'over' ? 'Over' : 'Under'} ${indoParsed.totalGoals.line}`, edge: prob - 1 / indoParsed.totalGoals.odds, odds: indoParsed.totalGoals.odds, prob, market: '🇮🇩 TG' })
+      }
+    }
+
+    // China correct score
+    if (matrix && Object.keys(csOdds).length) {
+      Object.entries(csOdds).forEach(([score, oddsStr]) => {
+        const o = parseFloat(oddsStr)
+        if (!(o > 1)) return
+        let prob
+        if (score === '胜其它') prob = getOtherProb(matrix, 'home')
+        else if (score === '平其它') prob = getOtherProb(matrix, 'draw')
+        else if (score === '负其它') prob = getOtherProb(matrix, 'away')
+        else prob = getScoreProb(matrix, score)
+        if (prob != null) {
+          bets.push({ label: `China 比分 ${score.includes('-') ? score.replace('-', ':') : score}`, edge: prob - 1 / o, odds: o, prob, market: '🇨🇳 比分' })
+        }
+      })
+    }
+
+    return bets.filter(b => b.edge > -0.5).sort((a, b) => b.edge - a.edge)
+  }, [sidebarModel, v1x2Odds, indoParsed, csOdds, match, lang])
 
   const cardStyle = { background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
 
@@ -541,11 +849,21 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
         )}
       </div>
 
+      {/* ── Best Bets Summary ── */}
+      <BestBetsSummary bets={bestBets} bankroll={bankroll} lang={lang} />
+
       {/* ── PASP Strategy ── */}
       <div style={cardStyle}>
         <SH>PASP · Betting Strategy Recommendation</SH>
         <PaspPlanSection plan={plan} match={match} bankroll={bankroll} odds1x2={v1x2Odds} lang={lang} topRange={topRange} />
       </div>
+
+      {/* ── Indonesia Odds (Paste) ── */}
+      {sidebarModel && (
+        <div style={cardStyle}>
+          <MarketIndonesia model={sidebarModel} match={match} lang={lang} onParsed={setIndoParsed} />
+        </div>
+      )}
 
       {/* ── 1X2 Market ── */}
       <div style={cardStyle}>
@@ -570,6 +888,13 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
       {sidebarModel && (
         <div style={cardStyle}>
           <MarketChineseHandicap model={sidebarModel} match={match} lang={lang} />
+        </div>
+      )}
+
+      {/* ── China Correct Score (比分) ── */}
+      {sidebarModel && (
+        <div style={cardStyle}>
+          <MarketChinaCorrectScore model={sidebarModel} match={match} odds={csOdds} setOdds={setCsOdds} lang={lang} />
         </div>
       )}
 
