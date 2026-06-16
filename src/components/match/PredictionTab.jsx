@@ -652,24 +652,76 @@ export default function PredictionTab({
           {v3.topScores?.length > 0 && (
             <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
               <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: 10 }}>
-                TOP SCORELINES · V3
+                {lang === 'zh' ? '最可能比分 · V3' : 'TOP SCORELINES · V3'}
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                {v3.topScores.slice(0, 6).map(({ score, prob }, i) => (
-                  <div key={score} style={{
-                    textAlign: 'center', padding: '10px 6px',
-                    background: i === 0 ? 'var(--color-accent-dim)' : 'var(--color-bg-elevated)',
-                    border: i === 0 ? '0.5px solid var(--color-accent-border)' : '0.5px solid var(--color-border)',
-                    borderRadius: 'var(--radius-sm)',
-                  }}>
-                    <p style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: i === 0 ? 800 : 600, color: i === 0 ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
-                      {score}
-                    </p>
-                    <p style={{ fontSize: 12, color: i === 0 ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
-                      {(prob * 100).toFixed(1)}%
-                    </p>
-                  </div>
-                ))}
+                {v3.topScores.slice(0, 6).map(({ score, prob }, i) => {
+                  const isTop = i === 0
+                  const [homeG, awayG] = score.split('-').map(Number)
+                  const totalG = homeG + awayG
+                  const totalProb = getGoalP(totalG)
+                  const totalRank = rankMap[totalG] ?? 99
+                  const rankColor = getRankColor(totalRank)
+                  const outcome = homeG > awayG ? 'home' : awayG > homeG ? 'away' : 'draw'
+                  const outcomePct = outcome === 'home' ? v3.probs?.home
+                    : outcome === 'away' ? v3.probs?.away
+                    : v3.probs?.draw
+                  const outcomeBg = outcome === 'home' ? '#E6F1FB'
+                    : outcome === 'away' ? '#FCEBEB'
+                    : 'var(--color-bg-elevated)'
+                  const outcomeColor = outcome === 'home' ? '#0C447C'
+                    : outcome === 'away' ? '#791F1F'
+                    : 'var(--color-text-secondary)'
+                  const outcomeLabel = outcome === 'home'
+                    ? (lang === 'zh' ? `${match.home_team}胜` : `${match.home_team} win`)
+                    : outcome === 'away'
+                    ? (lang === 'zh' ? `${match.away_team}胜` : `${match.away_team} win`)
+                    : (lang === 'zh' ? '平局' : 'Draw')
+                  const outcomeBadge = outcome === 'home' ? 'HW' : outcome === 'away' ? 'AW' : 'D'
+
+                  return (
+                    <div key={score} style={{
+                      padding: '10px 10px',
+                      background: isTop ? 'var(--color-accent-dim)' : 'var(--color-bg-elevated)',
+                      border: isTop ? '0.5px solid var(--color-accent-border)' : '0.5px solid var(--color-border)',
+                      borderRadius: 'var(--radius-sm)',
+                      display: 'flex', flexDirection: 'column', gap: '4px',
+                    }}>
+                      {/* Row 1: Score + outcome badge */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: isTop ? 800 : 600, color: isTop ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
+                          {score}
+                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 500, padding: '2px 5px', borderRadius: '99px', background: outcomeBg, color: outcomeColor }}>
+                          {outcomeBadge}
+                        </span>
+                      </div>
+                      {/* Row 2: Scoreline probability */}
+                      <div style={{ fontSize: 12, color: isTop ? 'var(--color-accent)' : 'var(--color-text-muted)', fontWeight: isTop ? 500 : 400 }}>
+                        {(prob * 100).toFixed(1)}%
+                      </div>
+                      {/* Divider */}
+                      <div style={{ height: '0.5px', background: 'var(--color-border-light)', margin: '2px 0' }} />
+                      {/* Row 3: Total goals context */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11 }}>
+                        <span style={{ color: rankColor, fontWeight: 500, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                          <span style={{ fontSize: '9px', padding: '0 3px', borderRadius: '99px', background: `${rankColor}20`, color: rankColor }}>#{totalRank}</span>
+                          {totalG}{lang === 'zh' ? '球' : 'g'}
+                        </span>
+                        <span style={{ color: rankColor, fontSize: 11 }}>{(totalProb * 100).toFixed(1)}%</span>
+                      </div>
+                      {/* Row 4: Outcome probability */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11 }}>
+                        <span style={{ color: 'var(--color-text-secondary)', maxWidth: '65%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {outcomeLabel}
+                        </span>
+                        <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>
+                          {outcomePct != null ? (outcomePct * 100).toFixed(1) + '%' : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}
