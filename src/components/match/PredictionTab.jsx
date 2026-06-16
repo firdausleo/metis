@@ -259,8 +259,7 @@ export default function PredictionTab({
   roleOutputs, aiRoles, aiRunning, aiRunError, aiRunMsg, onRunAI,
 }) {
   const { t, lang } = useTranslation()
-  const { profile } = useUser()
-  const credits = profile?.credits_remaining ?? 0
+  const { tier, credits } = useUser()
   const v3 = sidebarModel?.v3
   const v1 = sidebarModel?.v1
   const hasModel = !!v3
@@ -334,7 +333,7 @@ export default function PredictionTab({
             <i className="ti ti-brain" aria-hidden="true" />
             {lang === 'zh' ? '运行AI分析' : 'Run AI Analysis'}
           </button>
-          {!isAdmin && (
+          {(tier === 'standard' || tier === 'power') && (
             <p style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '8px' }}>
               ⚡ {credits} {lang === 'zh' ? '积分剩余 · 消耗5积分' : 'credits remaining · costs 5 credits'}
             </p>
