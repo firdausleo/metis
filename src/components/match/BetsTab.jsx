@@ -1142,6 +1142,10 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
     suggestedStake: portfolioOverrides[bet.id] ?? bet.suggestedStake,
   }))
 
+  const excludedCatchAll = allBets.filter(b =>
+    b.isCatchAll && b.edge > 0 && !portfolio.find(p => p.id === b.id)
+  )
+
   async function handleRecordPortfolio(bets) {
     setRecordingBets(true)
     try {
@@ -1306,6 +1310,12 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
           {recordSuccess && (
             <div style={{ padding: '8px 14px', background: 'var(--color-success-bg, #EAF3DE)', color: 'var(--color-edge-green)', fontSize: 12, fontWeight: 600, textAlign: 'center' }}>
               {recordSuccess}
+            </div>
+          )}
+
+          {excludedCatchAll.length > 0 && (
+            <div style={{ padding: '6px 14px', borderTop: '0.5px solid var(--color-border)', fontSize: 10, color: 'var(--color-text-muted)' }}>
+              ⓘ {excludedCatchAll.length} {lang === 'zh' ? '个其它类型投注（胜其它/负其它）已排除 — 概率过低，不纳入组合。赔率仍显示在上方市场表中。' : 'catch-all bet(s) (胜其它/负其它) excluded — probability too low for portfolio even with positive edge. Visible in market table above.'}
             </div>
           )}
         </div>

@@ -169,6 +169,18 @@ export function getChineseHandicapProbs(matrix, line) {
 // PORTFOLIO ENGINE
 // ─────────────────────────────────────────────────────────────────────────────
 
+// China lottery listed correct-score cells (mirrors BetsTab constants)
+const CS_HOME = ['1-0','2-0','2-1','3-0','3-1','3-2','4-0','4-1','4-2','5-0','5-1','5-2']
+const CS_DRAW = ['0-0','1-1','2-2','3-3']
+const CS_AWAY = ['0-1','0-2','1-2','0-3','1-3','2-3','0-4','1-4','2-4','0-5','1-5','2-5']
+
+function listedProb(scores, matrix) {
+  return scores.reduce((sum, s) => {
+    const [h, a] = s.split('-').map(Number)
+    return sum + (matrix?.[h]?.[a] || 0)
+  }, 0)
+}
+
 function kellyStake(edge, odds, bankroll, fraction = 0.25) {
   if (edge <= 0) return 0
   const k = edge / (odds - 1)
@@ -207,13 +219,13 @@ export function collectAllBets({ v1x2Odds, rspfH, rspfD, rspfA, rspfLine, csOdds
 
   const bets = []
 
-  const addBet = (id, label, marketType, oddsStr, modelProb, scoreKey = '') => {
+  const addBet = (id, label, marketType, oddsStr, modelProb, scoreKey = '', isCatchAll = false) => {
     if (!oddsStr) return
     const o = parseFloat(oddsStr)
     if (!o || isNaN(o) || o <= 1) return
     if (!modelProb || modelProb < 0.001) return
     const edge = modelProb - (1 / o)
-    bets.push({ id, label, marketType, odds: o, modelProb, edge, scoreKey })
+    bets.push({ id, label, marketType, odds: o, modelProb, edge, scoreKey, isCatchAll })
   }
 
   // 胜平负 1X2
@@ -221,23 +233,31 @@ export function collectAllBets({ v1x2Odds, rspfH, rspfD, rspfA, rspfLine, csOdds
   addBet('spf-draw', `Draw · 胜平负`, '胜平负', v1x2Odds?.draw, probs.draw)
   addBet('spf-away', `${match.away_team} win · 胜平负`, '胜平负', v1x2Odds?.away, probs.awayWin)
 
-  // 比分 correct scores
+  // 比分 correct scores — residual probabilities for catch-all cells
+  const homeOtherProb = Math.max((probs.homeWin || 0) - listedProb(CS_HOME, matrix), 0)
+  const drawOtherProb = Math.max((probs.draw    || 0) - listedProb(CS_DRAW, matrix), 0)
+  const awayOtherProb = Math.max((probs.awayWin || 0) - listedProb(CS_AWAY, matrix), 0)
+
   Object.entries(csOdds || {}).forEach(([score, oddsStr]) => {
     if (!oddsStr) return
-    let modelProb = 0
+    if (score === '胜其它') {
+      addBet('cs-胜其它', `胜其它 ${match.home_team} wins (other) · 比分`, '比分', oddsStr, homeOtherProb, '胜其它', true)
+      return
+    }
+    if (score === '平其它') {
+      addBet('cs-平其它', `平其它 Draw (other score) · 比分`, '比分', oddsStr, drawOtherProb, '平其它', true)
+      return
+    }
+    if (score === '负其它') {
+      addBet('cs-负其它', `负其它 ${match.away_team} wins (other) · 比分`, '比分', oddsStr, awayOtherProb, '负其它', true)
+      return
+    }
     const parts = score.split('-')
     const h = parseInt(parts[0]), a = parseInt(parts[1])
-    if (!isNaN(h) && !isNaN(a)) {
-      modelProb = matrix?.[h]?.[a] || 0
-    } else if (score === '胜其它') {
-      for (let x = 4; x <= 8; x++) for (let y = 0; y <= x - 1 && y <= 8; y++) modelProb += matrix?.[x]?.[y] || 0
-    } else if (score === '平其它') {
-      for (let n = 3; n <= 8; n++) modelProb += matrix?.[n]?.[n] || 0
-    } else if (score === '负其它') {
-      for (let y = 4; y <= 8; y++) for (let x = 0; x <= y - 1 && x <= 8; x++) modelProb += matrix?.[x]?.[y] || 0
-    }
+    if (isNaN(h) || isNaN(a)) return
+    const modelProb = matrix?.[h]?.[a] || 0
     if (modelProb < 0.005) return
-    const winner = (!isNaN(h) && !isNaN(a)) ? (h > a ? match.home_team : a > h ? match.away_team : 'Draw') : score
+    const winner = h > a ? match.home_team : a > h ? match.away_team : 'Draw'
     addBet(`cs-${score}`, `${score} ${winner} · 比分`, '比分', oddsStr, modelProb, score)
   })
 
@@ -277,13 +297,26 @@ export function collectAllBets({ v1x2Odds, rspfH, rspfD, rspfA, rspfLine, csOdds
   return bets.sort((a, b) => b.edge - a.edge)
 }
 
+const MIN_MODEL_PROB = 0.03
+const MIN_CATCHALL_PROB = 0.05
+const MIN_CATCHALL_EDGE = 0.05
+const MIN_STAKE = 10
+
 export function buildPortfolio(allBets, bankroll, mode) {
   const b = parseFloat(bankroll) || 10000
+
+  // Eligibility: filter low-probability and marginal catch-all bets
+  const eligible = allBets.filter(bet => {
+    if (bet.modelProb < MIN_MODEL_PROB) return false
+    if (bet.isCatchAll && bet.modelProb < MIN_CATCHALL_PROB) return false
+    if (bet.isCatchAll && bet.edge < MIN_CATCHALL_EDGE) return false
+    return true
+  }).filter(bet => kellyStake(bet.edge, bet.odds, b) >= MIN_STAKE)
 
   if (mode === 'edge') {
     const selected = []
     const typeCounts = {}
-    for (const bet of allBets) {
+    for (const bet of eligible) {
       if (bet.edge <= 0.02) continue
       if (selected.length >= 5) break
       const count = typeCounts[bet.marketType] || 0
@@ -296,7 +329,7 @@ export function buildPortfolio(allBets, bankroll, mode) {
   }
 
   if (mode === 'model') {
-    const modelBets = allBets.filter(bet => bet.isModelDirection && bet.edge > -0.10)
+    const modelBets = eligible.filter(bet => bet.isModelDirection && bet.edge > -0.10)
     const selected = []
     const typeCounts = {}
     for (const bet of modelBets) {
@@ -311,10 +344,10 @@ export function buildPortfolio(allBets, bankroll, mode) {
   }
 
   if (mode === 'balanced') {
-    const modelBets = allBets.filter(bet => bet.isModelDirection)
+    const modelBets = eligible.filter(bet => bet.isModelDirection)
     const primary = modelBets.find(bet => bet.edge > -0.10)
-    const secondary = allBets.find(bet => bet.id !== primary?.id && bet.marketType !== primary?.marketType && bet.edge > 0.02)
-    const insurance = allBets.find(bet => bet.id !== primary?.id && bet.id !== secondary?.id && bet.edge > 0.01)
+    const secondary = eligible.find(bet => bet.id !== primary?.id && bet.marketType !== primary?.marketType && bet.edge > 0.02)
+    const insurance = eligible.find(bet => bet.id !== primary?.id && bet.id !== secondary?.id && bet.edge > 0.01)
     const result = []
     if (primary) result.push({ ...primary, role: 'primary', suggestedStake: kellyStake(Math.max(primary.edge, 0.01), primary.odds, b) })
     if (secondary) result.push({ ...secondary, role: 'secondary', suggestedStake: kellyStake(secondary.edge, secondary.odds, b, 0.15) })
