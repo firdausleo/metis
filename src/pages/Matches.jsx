@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTranslation } from '../lib/i18n'
@@ -168,7 +168,7 @@ function dayLabel(key) {
   return `${weekday} ${day} ${month} ${y}`
 }
 
-function FlatMatchList({ matches, onAnalyze, statsMap }) {
+function FlatMatchList({ matches, onAnalyze, statsMap, hideHeaders = false, lang = 'en' }) {
   const byDay = {}
   for (const m of matches) {
     const k = dateKey(m.match_date)
@@ -185,17 +185,31 @@ function FlatMatchList({ matches, onAnalyze, statsMap }) {
     )
   }
 
+  function fullDayLabel(key) {
+    const [y, m, d] = key.split('-').map(Number)
+    const date = new Date(Date.UTC(y, m - 1, d))
+    if (lang === 'zh') {
+      const weekday = date.toLocaleDateString('zh-CN', { weekday: 'long', timeZone: 'UTC' })
+      return `${y}年${m}月${d}日 ${weekday}`
+    }
+    return date.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+  }
+
   return (
     <div>
       {days.map(day => (
         <div key={day} style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <div style={{ flex: 1, height: 1, background: 'var(--color-accent-border)' }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-accent)', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
-              {dayLabel(day)}
-            </span>
-            <div style={{ flex: 1, height: 1, background: 'var(--color-accent-border)' }} />
-          </div>
+          {!hideHeaders && (
+            <div style={{
+              fontSize: 11, fontWeight: 500, color: 'var(--color-text-muted)',
+              textTransform: 'uppercase', letterSpacing: '0.06em',
+              padding: '12px 0 6px',
+              borderBottom: '0.5px solid var(--color-border)',
+              marginBottom: 8,
+            }}>
+              {fullDayLabel(day)}
+            </div>
+          )}
           {byDay[day].map(m => {
             const s = statsMap[m.id] || {}
             return (
@@ -358,13 +372,15 @@ export default function Matches() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuth()
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const { matchesByGroup, matches, loading, error, refetch } = useMatchesByGroup()
   // Restore tab when navigating back from TeamProfile (state.from === 'group')
   const [filter, setFilter] = useState(location.state?.from === 'group' ? 'group' : 'all')
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [refreshMsg, setRefreshMsg] = useState('')
   const [statsMap, setStatsMap] = useState({})
+  const [selectedDate, setSelectedDate] = useState(null) // null = "All dates"
+  const stripRef = useRef(null)
 
   const isAdmin = user?.id === ADMIN_UUID
 
@@ -475,6 +491,65 @@ export default function Matches() {
   // All non-finished (non-TBD) matches for the Upcoming tab and its badge count
   const upcomingMatches = matches.filter(m => m.status !== 'finished' && m.home_team !== 'TBD' && m.away_team !== 'TBD')
 
+  // Today's date key in Beijing time
+  const todayKey = useMemo(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date()), [])
+
+  // Matches for the active stage filter (used for date pill derivation)
+  const stageMatches = useMemo(() => {
+    if (filter === 'upcoming') return upcomingMatches
+    if (filter === 'knockout') return matchesByGroup['knockout'] || []
+    if (filter === 'group') {
+      return GROUPS.flatMap(g => matchesByGroup[g] || [])
+    }
+    return matches
+  }, [filter, matches, upcomingMatches, matchesByGroup])
+
+  // Date pills derived from stage matches
+  const datePills = useMemo(() => {
+    const grouped = {}
+    for (const m of stageMatches) {
+      const key = dateKey(m.match_date)
+      if (!grouped[key]) grouped[key] = []
+      grouped[key].push(m)
+    }
+    return Object.keys(grouped).sort().map(date => ({
+      date,
+      count: grouped[date].length,
+      hasUpcoming: grouped[date].some(m => m.status !== 'finished'),
+    }))
+  }, [stageMatches])
+
+  // Reset date selection when filter changes
+  const handleSetFilter = useCallback((f) => {
+    setFilter(f)
+    setSelectedDate(null)
+  }, [])
+
+  // Auto-select today or next upcoming date when pills load
+  useEffect(() => {
+    if (!datePills.length) return
+    const todayPill = datePills.find(p => p.date === todayKey)
+    if (todayPill) {
+      setSelectedDate(todayKey)
+    } else {
+      const next = datePills.find(p => p.date > todayKey && p.hasUpcoming)
+      setSelectedDate(next?.date ?? null)
+    }
+  }, [datePills.length, todayKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-scroll to the selected pill
+  useEffect(() => {
+    if (!selectedDate) return
+    const el = document.getElementById(`date-pill-${selectedDate}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+  }, [selectedDate])
+
+  // Matches visible after both stage + date filter
+  const displayMatches = useMemo(() => {
+    if (!selectedDate) return stageMatches
+    return stageMatches.filter(m => dateKey(m.match_date) === selectedDate)
+  }, [stageMatches, selectedDate])
+
   if (loading) {
     return (
       <div style={{ padding: '24px 16px', maxWidth: 720, margin: '0 auto' }}>
@@ -532,7 +607,7 @@ export default function Matches() {
     <div className="matches-page">
       {/* Desktop sidebar */}
       <div className="matches-sidebar">
-        <SidebarNav filter={filter} setFilter={setFilter} />
+        <SidebarNav filter={filter} setFilter={handleSetFilter} />
       </div>
 
       {/* Main content */}
@@ -579,7 +654,7 @@ export default function Matches() {
             {filterButtons.map(f => (
               <button
                 key={f.key}
-                onClick={() => setFilter(f.key)}
+                onClick={() => handleSetFilter(f.key)}
                 style={{
                   minHeight: 32,
                   padding: '0 14px',
@@ -611,47 +686,198 @@ export default function Matches() {
               </button>
             ))}
           </div>
+
+          {/* ── Date pill strip ── */}
+          {datePills.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
+              {/* Left arrow (desktop only) */}
+              <button
+                className="date-strip-arrow"
+                onClick={() => stripRef.current?.scrollBy({ left: -(3 * 58), behavior: 'smooth' })}
+                aria-label="Scroll left"
+                style={{
+                  flexShrink: 0, width: 28, height: 28, borderRadius: '50%',
+                  background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)',
+                  cursor: 'pointer', fontSize: 14, color: 'var(--color-text-muted)',
+                  alignItems: 'center', justifyContent: 'center',
+                }}
+              >‹</button>
+
+              {/* Scrollable strip */}
+              <div
+                ref={stripRef}
+                className="date-strip-scroll"
+                style={{
+                  flex: 1, display: 'flex', gap: 6,
+                  overflowX: 'auto', scrollSnapType: 'x mandatory',
+                  WebkitOverflowScrolling: 'touch', padding: '4px 2px',
+                }}
+              >
+                {/* "All dates" pill */}
+                <button
+                  id="date-pill-all"
+                  onClick={() => setSelectedDate(null)}
+                  style={{
+                    scrollSnapAlign: 'start', flexShrink: 0,
+                    width: 52, minHeight: 56, padding: '6px 0',
+                    borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                    border: selectedDate === null ? '0.5px solid #1A3A6C' : '0.5px solid var(--color-border)',
+                    background: selectedDate === null ? '#1A3A6C' : 'var(--color-bg-card)',
+                    color: selectedDate === null ? '#fff' : 'var(--color-text-muted)',
+                    fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-ui)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {lang === 'zh' ? '全部' : 'All'}
+                </button>
+
+                {/* Date pills */}
+                {datePills.map(({ date, count, hasUpcoming }) => {
+                  const [y, mo, d] = date.split('-').map(Number)
+                  const jsDate = new Date(Date.UTC(y, mo - 1, d))
+                  const dayName = jsDate.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
+                  const monthName = jsDate.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+                  const isToday = date === todayKey
+                  const isSelected = date === selectedDate
+                  const isActive = isSelected || isToday
+
+                  return (
+                    <button
+                      key={date}
+                      id={`date-pill-${date}`}
+                      onClick={() => setSelectedDate(date)}
+                      style={{
+                        scrollSnapAlign: 'start', flexShrink: 0, position: 'relative',
+                        width: 52, minHeight: 56, padding: '6px 0 10px',
+                        borderRadius: 'var(--radius-md)', cursor: 'pointer', textAlign: 'center',
+                        border: `0.5px solid ${isActive ? '#1A3A6C' : 'var(--color-border)'}`,
+                        background: isActive ? '#1A3A6C' : 'var(--color-bg-card)',
+                        color: isActive ? '#fff' : hasUpcoming ? 'var(--color-text-secondary)' : 'var(--color-text-muted)',
+                        fontFamily: 'var(--font-ui)',
+                        opacity: hasUpcoming ? 1 : 0.65,
+                      }}
+                    >
+                      {/* Count badge */}
+                      <span style={{
+                        position: 'absolute', top: 2, right: 2,
+                        fontSize: 9, lineHeight: 1,
+                        background: hasUpcoming ? (isActive ? 'rgba(201,168,76,0.25)' : '#EAF3DE') : (isActive ? 'rgba(255,255,255,0.2)' : 'var(--color-bg-elevated)'),
+                        color: hasUpcoming ? (isActive ? '#C9A84C' : '#27500A') : (isActive ? 'rgba(255,255,255,0.7)' : 'var(--color-text-muted)'),
+                        borderRadius: 99, padding: '1px 4px',
+                      }}>
+                        {count}
+                      </span>
+                      {/* Day name */}
+                      <p style={{ fontSize: 10, margin: 0, opacity: isActive ? 0.85 : 1 }}>{dayName}</p>
+                      {/* Day number */}
+                      <p style={{
+                        fontSize: 18, fontWeight: 500, margin: '1px 0',
+                        fontFamily: "'Barlow Condensed', var(--font-display)",
+                        lineHeight: 1,
+                      }}>{d}</p>
+                      {/* Month */}
+                      <p style={{ fontSize: 10, margin: 0, opacity: isActive ? 0.85 : 1 }}>{monthName}</p>
+                      {/* Gold dot for today */}
+                      {isToday && (
+                        <div style={{
+                          width: 4, height: 4, borderRadius: '50%',
+                          background: '#C9A84C',
+                          margin: '3px auto 0',
+                        }} />
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Right arrow (desktop only) */}
+              <button
+                className="date-strip-arrow"
+                onClick={() => stripRef.current?.scrollBy({ left: 3 * 58, behavior: 'smooth' })}
+                aria-label="Scroll right"
+                style={{
+                  flexShrink: 0, width: 28, height: 28, borderRadius: '50%',
+                  background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)',
+                  cursor: 'pointer', fontSize: 14, color: 'var(--color-text-muted)',
+                  alignItems: 'center', justifyContent: 'center',
+                }}
+              >›</button>
+            </div>
+          )}
         </div>
 
-        {/* ── ALL: flat list sorted date ASC, no standings ── */}
+        {/* ── ALL: flat list sorted date ASC ── */}
         {filter === 'all' && (
-          <FlatMatchList matches={matches} onAnalyze={onAnalyze} statsMap={statsMap} />
+          <FlatMatchList
+            matches={displayMatches}
+            onAnalyze={onAnalyze}
+            statsMap={statsMap}
+            hideHeaders={!!selectedDate}
+            lang={lang}
+          />
         )}
 
-        {/* ── UPCOMING: flat list of non-finished matches, no standings ── */}
+        {/* ── UPCOMING: flat list of non-finished matches ── */}
         {filter === 'upcoming' && (
-          <FlatMatchList matches={upcomingMatches} onAnalyze={onAnalyze} statsMap={statsMap} />
+          <FlatMatchList
+            matches={displayMatches}
+            onAnalyze={onAnalyze}
+            statsMap={statsMap}
+            hideHeaders={!!selectedDate}
+            lang={lang}
+          />
         )}
 
-        {/* ── GROUPS: standings + match cards per group ── */}
+        {/* ── GROUPS: standings per group (or flat list when date selected) ── */}
         {filter === 'group' && (
-          <div>
-            {GROUPS.map(g => (
-              <GroupSection
-                key={g}
-                group={g}
-                matches={matchesByGroup[g] || []}
-                onAnalyze={onAnalyze}
-                statsMap={statsMap}
-                showStandings={true}
-                showMatches={false}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* ── KNOCKOUT ── */}
-        {filter === 'knockout' && (
-          <div>
-            <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 12 }}>
-              {t('matches.knockout').toUpperCase()}
-            </p>
-            <KnockoutSection
-              matches={matchesByGroup['knockout'] || []}
+          selectedDate ? (
+            <FlatMatchList
+              matches={displayMatches}
               onAnalyze={onAnalyze}
               statsMap={statsMap}
+              hideHeaders
+              lang={lang}
             />
-          </div>
+          ) : (
+            <div>
+              {GROUPS.map(g => (
+                <GroupSection
+                  key={g}
+                  group={g}
+                  matches={matchesByGroup[g] || []}
+                  onAnalyze={onAnalyze}
+                  statsMap={statsMap}
+                  showStandings={true}
+                  showMatches={false}
+                />
+              ))}
+            </div>
+          )
+        )}
+
+        {/* ── KNOCKOUT: stage sections (or flat list when date selected) ── */}
+        {filter === 'knockout' && (
+          selectedDate ? (
+            <FlatMatchList
+              matches={displayMatches}
+              onAnalyze={onAnalyze}
+              statsMap={statsMap}
+              hideHeaders
+              lang={lang}
+            />
+          ) : (
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 12 }}>
+                {t('matches.knockout').toUpperCase()}
+              </p>
+              <KnockoutSection
+                matches={matchesByGroup['knockout'] || []}
+                onAnalyze={onAnalyze}
+                statsMap={statsMap}
+              />
+            </div>
+          )
         )}
       </div>
     </div>

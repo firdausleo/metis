@@ -217,6 +217,16 @@ body {
 /* ── Horizontal scroll — hide scrollbar ── */
 ::-webkit-scrollbar { display: none; }
 
+/* ── Date pill strip ── */
+.date-strip-scroll {
+  scrollbar-width: none;
+}
+.date-strip-scroll::-webkit-scrollbar { display: none; }
+.date-strip-arrow { display: none; }
+@media (min-width: 600px) {
+  .date-strip-arrow { display: flex; }
+}
+
 /* ── Mobile font scaling ── */
 @media (max-width: 767px) {
   :root {
