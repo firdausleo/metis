@@ -7,8 +7,8 @@ export const DC_PARAMS = {
   mu: 0.1158,
   homeAdv: 0.2686,
   rho: -0.0612,
-  fittedDate: '2026-06-15',
-  matchCount: 15508,
+  fittedDate: '2026-06-17',
+  matchCount: 15524,
   teams: {
     "Algeria":      { att: 0.7756, def: 0.6335 },
     "Argentina":    { att: 1.2256, def: 1.521  },
