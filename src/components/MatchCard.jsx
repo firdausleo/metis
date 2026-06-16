@@ -61,8 +61,9 @@ export default function MatchCard({
   homeStats = null,
   awayStats = null,
   dcDivergent = null,
+  prediction = null,
 }) {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const [hovered, setHovered] = useState(false)
 
   const isTBD = match.home_team === 'TBD' || match.away_team === 'TBD'
@@ -213,6 +214,44 @@ export default function MatchCard({
         </div>
       </div>
 
+      {/* ── Prediction bar (upcoming only) ── */}
+      {!compact && !isFinished && !isLive && prediction?.v3_home_win != null && (
+        <div style={{ padding: '8px 0 10px', borderBottom: '0.5px solid var(--color-border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 500, color: '#1A3A6C', width: 34, flexShrink: 0 }}>
+              {(prediction.v3_home_win * 100).toFixed(0)}%
+            </span>
+            <div style={{ flex: 1, height: 6, borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
+              <div style={{ width: `${prediction.v3_home_win * 100}%`, background: '#1A3A6C', height: '100%' }} />
+              <div style={{ width: `${prediction.v3_draw * 100}%`, background: '#9CA3AF', height: '100%' }} />
+              <div style={{ width: `${prediction.v3_away_win * 100}%`, background: '#C9A84C', height: '100%' }} />
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 500, color: '#C9A84C', width: 34, textAlign: 'right', flexShrink: 0 }}>
+              {(prediction.v3_away_win * 100).toFixed(0)}%
+            </span>
+          </div>
+          <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--color-text-muted)', marginBottom: 6 }}>
+            {lang === 'zh' ? '平局' : 'Draw'} {(prediction.v3_draw * 100).toFixed(0)}%
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
+              {prediction.anchor_total != null
+                ? (lang === 'zh' ? `锚定：${prediction.anchor_total}球` : `Anchor: ${prediction.anchor_total} goals`)
+                : ''}
+              {prediction.v3_top_score ? ` · ${prediction.v3_top_score}` : ''}
+            </span>
+            <div style={{ display: 'flex', gap: 3 }}>
+              <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#EEEDFE', color: '#3C3489', fontWeight: 500 }}>V3</span>
+              {prediction.quality_warning && (
+                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#FAEEDA', color: '#633806', fontWeight: 500 }}>
+                  {lang === 'zh' ? '⚠ 低置信' : '⚠ Low conf'}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bottom row: status badge + stats + analyzed + analyze button */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         <span
@@ -282,6 +321,45 @@ export default function MatchCard({
           </button>
         )}
       </div>
+      {/* ── Accuracy row (finished matches with prediction data) ── */}
+      {!compact && isFinished && prediction?.actual_outcome != null && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '0.5px solid var(--color-border)', flexWrap: 'wrap', gap: 6 }}>
+          <div style={{ fontSize: 11 }}>
+            <span style={{ color: 'var(--color-text-muted)' }}>
+              {lang === 'zh' ? 'V3预测：' : 'V3 predicted: '}
+            </span>
+            <span style={{ fontWeight: 500, color: 'var(--color-text-primary)' }}>
+              {prediction.actual_outcome === 'H'
+                ? `${match.home_team.split(' ')[0]} ${(prediction.v3_home_win * 100).toFixed(0)}%`
+                : prediction.actual_outcome === 'D'
+                ? `Draw ${(prediction.v3_draw * 100).toFixed(0)}%`
+                : `${match.away_team.split(' ')[0]} ${(prediction.v3_away_win * 100).toFixed(0)}%`}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {prediction.correct_v1 !== null && (
+              <span style={{ fontSize: 9, fontWeight: 500, padding: '2px 5px', borderRadius: 99, background: prediction.correct_v1 ? '#EAF3DE' : '#FCEBEB', color: prediction.correct_v1 ? '#27500A' : '#791F1F' }}>
+                V1 {prediction.correct_v1 ? '✓' : '✗'}
+              </span>
+            )}
+            {prediction.correct_v2 !== null && (
+              <span style={{ fontSize: 9, fontWeight: 500, padding: '2px 5px', borderRadius: 99, background: prediction.correct_v2 ? '#EAF3DE' : '#FCEBEB', color: prediction.correct_v2 ? '#27500A' : '#791F1F' }}>
+                V2 {prediction.correct_v2 ? '✓' : '✗'}
+              </span>
+            )}
+            {prediction.correct_v3 !== null && (
+              <span style={{ fontSize: 9, fontWeight: 500, padding: '2px 5px', borderRadius: 99, background: prediction.correct_v3 ? '#EAF3DE' : '#FCEBEB', color: prediction.correct_v3 ? '#27500A' : '#791F1F', border: '0.5px solid #C9A84C' }}>
+                V3 {prediction.correct_v3 ? '✓' : '✗'}
+              </span>
+            )}
+            {prediction.brier_score != null && (
+              <span style={{ fontSize: 9, color: 'var(--color-text-muted)', marginLeft: 2 }}>
+                B:{prediction.brier_score.toFixed(2)}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

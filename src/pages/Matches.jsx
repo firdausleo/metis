@@ -168,7 +168,7 @@ function dayLabel(key) {
   return `${weekday} ${day} ${month} ${y}`
 }
 
-function FlatMatchList({ matches, onAnalyze, statsMap, hideHeaders = false, lang = 'en' }) {
+function FlatMatchList({ matches, onAnalyze, statsMap, predMap = {}, hideHeaders = false, lang = 'en' }) {
   const byDay = {}
   for (const m of matches) {
     const k = dateKey(m.match_date)
@@ -213,7 +213,7 @@ function FlatMatchList({ matches, onAnalyze, statsMap, hideHeaders = false, lang
           {byDay[day].map(m => {
             const s = statsMap[m.id] || {}
             return (
-              <MatchCard key={m.id} match={m} onAnalyze={onAnalyze} homeStats={s.home || null} awayStats={s.away || null} />
+              <MatchCard key={m.id} match={m} onAnalyze={onAnalyze} homeStats={s.home || null} awayStats={s.away || null} prediction={predMap[m.id] || null} />
             )
           })}
         </div>
@@ -319,7 +319,7 @@ function GroupCard({ group, matches }) {
   )
 }
 
-function GroupSection({ group, matches, onAnalyze, statsMap, showStandings = true, showMatches = true }) {
+function GroupSection({ group, matches, onAnalyze, statsMap, predMap = {}, showStandings = true, showMatches = true }) {
   const teamNames = [...new Set(
     matches.flatMap(m => [m.home_team, m.away_team])
   )].filter(n => n !== 'TBD')
@@ -364,6 +364,7 @@ function GroupSection({ group, matches, onAnalyze, statsMap, showStandings = tru
             onAnalyze={onAnalyze}
             homeStats={s.home || null}
             awayStats={s.away || null}
+            prediction={predMap[match.id] || null}
           />
         )
       })}
@@ -371,7 +372,7 @@ function GroupSection({ group, matches, onAnalyze, statsMap, showStandings = tru
   )
 }
 
-function KnockoutSection({ matches, onAnalyze, statsMap }) {
+function KnockoutSection({ matches, onAnalyze, statsMap, predMap = {} }) {
   return (
     <section id="knockout" style={{ marginBottom: 28 }}>
       {KNOCKOUT_STAGES.map(stage => {
@@ -404,6 +405,7 @@ function KnockoutSection({ matches, onAnalyze, statsMap }) {
                   onAnalyze={onAnalyze}
                   homeStats={s.home || null}
                   awayStats={s.away || null}
+                  prediction={predMap[match.id] || null}
                 />
               )
             })}
@@ -480,6 +482,24 @@ export default function Matches() {
   const stripRef = useRef(null)
 
   const isAdmin = user?.id === ADMIN_UUID
+  const [predMap, setPredMap] = useState({})
+
+  // Load model_predictions for all matches
+  useEffect(() => {
+    if (!matches.length) return
+    const matchIds = matches.map(m => m.id)
+    supabase
+      .from('model_predictions')
+      .select('match_id, v3_home_win, v3_draw, v3_away_win, v1_home_win, v1_draw, v1_away_win, anchor_total, v3_top_score, correct_v1, correct_v2, correct_v3, actual_outcome, brier_score, quality_warning')
+      .in('match_id', matchIds)
+      .then(({ data }) => {
+        if (data) {
+          const map = {}
+          data.forEach(p => { map[p.match_id] = p })
+          setPredMap(map)
+        }
+      })
+  }, [matches])
 
   // Load all team_stats for rendering badges / form dots
   useEffect(() => {
@@ -907,6 +927,7 @@ export default function Matches() {
             matches={displayMatches}
             onAnalyze={onAnalyze}
             statsMap={statsMap}
+            predMap={predMap}
             hideHeaders={!!selectedDate}
             lang={lang}
           />
@@ -918,6 +939,7 @@ export default function Matches() {
             matches={displayMatches}
             onAnalyze={onAnalyze}
             statsMap={statsMap}
+            predMap={predMap}
             hideHeaders={!!selectedDate}
             lang={lang}
           />
@@ -942,6 +964,7 @@ export default function Matches() {
               matches={matchesByGroup['knockout'] || []}
               onAnalyze={onAnalyze}
               statsMap={statsMap}
+              predMap={predMap}
             />
           </div>
         )}
