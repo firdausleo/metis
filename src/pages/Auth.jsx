@@ -75,15 +75,17 @@ export default function Auth() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)', position: 'relative', padding: '20px 16px' }}>
-      <button
-        onClick={() => setLanguage(lang === 'en' ? 'zh' : 'en')}
-        style={{ position: 'absolute', top: 16, right: 16, background: 'var(--color-bg-card)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', padding: '6px 14px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontFamily: 'var(--font-ui)', fontSize: 13 }}
-      >
-        {lang === 'en' ? '中文' : 'EN'}
-      </button>
-
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg)', padding: '20px 16px' }}>
       <div style={{ width: '100%', maxWidth: 400, padding: '32px 28px', background: 'var(--color-bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+          <button
+            onClick={() => setLanguage(lang === 'zh' ? 'en' : 'zh')}
+            style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '99px', border: '0.5px solid var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer', minHeight: '32px' }}
+          >
+            {lang === 'zh' ? 'EN' : '中文'}
+          </button>
+        </div>
+
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 800, marginBottom: 4, color: 'var(--color-accent)', letterSpacing: '0.08em' }}>
           METIS
         </h1>
