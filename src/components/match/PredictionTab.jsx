@@ -3,6 +3,7 @@ import { useTranslation } from '../../lib/i18n'
 import { useUser } from '../../context/UserContext'
 import { getFlag } from '../../lib/teamFlags'
 import { SCORE_MAX } from '../../lib/poisson'
+import { getRangeProbabilities } from '../../utils/pasp'
 import InfoTooltip from '../InfoTooltip'
 
 // ── Compact matrix cell ───────────────────────────────────────────────────
@@ -601,6 +602,101 @@ export default function PredictionTab({
               )
             })()}
           </div>
+
+          {/* ── Goal Range Analysis ── */}
+          {v3.totalGoals?.length > 0 && (() => {
+            const ranges = getRangeProbabilities(v3.totalGoals)
+            const top = ranges[0]
+            const maxProb = top.prob
+            const anchorInTop = kStar != null && kStar >= top.min && kStar <= top.max
+
+            const insight = lang === 'zh'
+              ? anchorInTop
+                ? `锚定（${kStar}球）落在概率最高的${top.range}球区间（${(top.prob * 100).toFixed(1)}%）内，该窗口概率集中。`
+                : `锚定（${kStar}球）邻近概率最高区间${top.range}（${(top.prob * 100).toFixed(1)}%），考虑在投注组合中覆盖该区间。`
+              : anchorInTop
+                ? `Anchor (${kStar} goals) falls within the highest-probability range ${top.range} (${(top.prob * 100).toFixed(1)}%). Strong concentration of probability in this window.`
+                : `Anchor (${kStar} goals) is adjacent to the highest range ${top.range} (${(top.prob * 100).toFixed(1)}%). Consider covering ${top.range} in your bet portfolio.`
+
+            return (
+              <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
+                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: 4 }}>
+                  {lang === 'zh' ? '进球区间分析' : 'GOAL RANGE ANALYSIS'}
+                  <InfoTooltip
+                    title={lang === 'zh' ? '3球滑动窗口' : '3-Goal Window'}
+                    explanation="Each row is the probability that total goals fall within a 3-goal window. The top range is the PASP sweet spot."
+                    explanationZh="每行是进球数落在3球窗口内的概率。最高区间是PASP的最优投注窗口。"
+                    lang={lang}
+                  />
+                </p>
+                <p style={{ fontSize: 10, color: 'var(--color-text-muted)', marginBottom: 10 }}>
+                  {lang === 'zh' ? '按概率排序的3球区间' : '3-goal windows sorted by probability'}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {ranges.map((r, i) => {
+                    const isTop = i === 0
+                    const barPct = maxProb > 0 ? (r.prob / maxProb) * 100 : 0
+                    return (
+                      <div key={r.range} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '6px 0',
+                        borderBottom: '0.5px solid var(--color-border-light)',
+                        background: isTop ? 'rgba(201,168,76,0.06)' : 'transparent',
+                      }}>
+                        {/* Left column — fixed labels */}
+                        <div style={{ width: '130px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{
+                            fontSize: '12px', fontWeight: isTop ? 600 : 500,
+                            color: isTop ? '#C9A84C' : 'var(--color-text-primary)',
+                            minWidth: '38px', flexShrink: 0,
+                          }}>
+                            {r.range}
+                          </span>
+                          <span style={{
+                            fontSize: '11px',
+                            color: isTop ? '#C9A84C' : 'var(--color-text-secondary)',
+                            fontWeight: isTop ? 600 : 400,
+                            minWidth: '40px', flexShrink: 0,
+                          }}>
+                            {(r.prob * 100).toFixed(1)}%
+                          </span>
+                          {isTop && (
+                            <span style={{
+                              fontSize: '9px', fontWeight: 600,
+                              padding: '1px 5px', borderRadius: '99px',
+                              background: 'rgba(201,168,76,0.15)', color: '#C9A84C',
+                              flexShrink: 0,
+                            }}>★</span>
+                          )}
+                        </div>
+                        {/* Right column — bar */}
+                        <div style={{ flex: 1, minWidth: 0, height: '5px', background: 'var(--color-bg)', borderRadius: '3px', position: 'relative' }}>
+                          <div style={{
+                            position: 'absolute', left: 0, top: 0,
+                            height: '100%', borderRadius: '3px',
+                            width: `${barPct}%`,
+                            background: isTop ? '#C9A84C' : '#6B7280',
+                            transition: 'width 0.4s ease',
+                          }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                {kStar != null && (
+                  <div style={{
+                    background: 'var(--color-bg-elevated)', borderRadius: 'var(--radius-sm)',
+                    padding: '8px 12px', marginTop: 10,
+                    fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5,
+                  }}>
+                    {insight}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* ── Top Scorelines grid ── */}
           {v3.topScores?.length > 0 && (

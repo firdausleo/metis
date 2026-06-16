@@ -3,7 +3,7 @@ import { useTranslation } from '../../lib/i18n'
 import { getFlag } from '../../lib/teamFlags'
 import { analyse1X2, calcStake, formatProb } from '../../lib/evEngine'
 import { placeBet } from '../../lib/bets'
-import { buildPaspPlan, paspText, quarterKelly, correlatedKelly } from '../../utils/pasp'
+import { buildPaspPlan, paspText, quarterKelly, correlatedKelly, getRangeProbabilities } from '../../utils/pasp'
 import InfoTooltip from '../InfoTooltip'
 
 // ── Asian Handicap helpers (pure, no deps) ──────────────────────────────
@@ -124,7 +124,7 @@ function SH({ children }) {
 
 // ── PASP plan display ─────────────────────────────────────────────────────
 
-function PaspPlanSection({ plan, match, bankroll, odds1x2, lang }) {
+function PaspPlanSection({ plan, match, bankroll, odds1x2, lang, topRange }) {
   if (!plan) return (
     <p style={{ fontSize: 13, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
       Stats required for PASP algorithm (MT06)
@@ -159,6 +159,13 @@ function PaspPlanSection({ plan, match, bankroll, odds1x2, lang }) {
       {/* Strategy text */}
       <div style={{ background: '#EEEDFE', border: '0.5px solid #534AB7', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
         <p style={{ fontSize: 12, color: '#534AB7', lineHeight: 1.6 }}>{paspText(plan, lang)}</p>
+        {topRange && (
+          <p style={{ fontSize: 12, color: '#534AB7', lineHeight: 1.6, marginTop: 4 }}>
+            {lang === 'zh'
+              ? `进球区间 ${topRange.range} 概率最高，达 ${(topRange.prob * 100).toFixed(1)}%。`
+              : `Goal range ${topRange.range} leads at ${(topRange.prob * 100).toFixed(1)}% — consider covering this window.`}
+          </p>
+        )}
       </div>
 
       {/* Step cards */}
@@ -509,6 +516,7 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   const v3Goals = sidebarModel?.v3?.totalGoals
   const kStar = v3Goals?.length ? [...v3Goals].sort((a, b) => b.prob - a.prob)[0]?.goals ?? 2 : 2
   const anchorLine = kStar - 0.5
+  const topRange = v3Goals?.length ? getRangeProbabilities(v3Goals)[0] : null
 
   const cardStyle = { background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
 
@@ -536,7 +544,7 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
       {/* ── PASP Strategy ── */}
       <div style={cardStyle}>
         <SH>PASP · Betting Strategy Recommendation</SH>
-        <PaspPlanSection plan={plan} match={match} bankroll={bankroll} odds1x2={v1x2Odds} lang={lang} />
+        <PaspPlanSection plan={plan} match={match} bankroll={bankroll} odds1x2={v1x2Odds} lang={lang} topRange={topRange} />
       </div>
 
       {/* ── 1X2 Market ── */}

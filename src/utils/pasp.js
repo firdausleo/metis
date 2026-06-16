@@ -98,6 +98,25 @@ export function buildPaspPlan(model, match) {
   }
 }
 
+// 3-goal sliding window probabilities, sorted by probability descending.
+export function getRangeProbabilities(totalGoalsDist) {
+  const p = {}
+  ;(totalGoalsDist || []).forEach(item => { p[Number(item.goals)] = item.prob })
+  const get = g => p[g] || 0
+
+  const ranges = [
+    { range: '0–2', min: 0, max: 2, prob: get(0) + get(1) + get(2) },
+    { range: '1–3', min: 1, max: 3, prob: get(1) + get(2) + get(3) },
+    { range: '2–4', min: 2, max: 4, prob: get(2) + get(3) + get(4) },
+    { range: '3–5', min: 3, max: 5, prob: get(3) + get(4) + get(5) },
+    { range: '4–6', min: 4, max: 6, prob: get(4) + get(5) + get(6) },
+    { range: '5–7', min: 5, max: 7, prob: get(5) + get(6) + get(7) },
+    { range: '6–8', min: 6, max: 8, prob: get(6) + get(7) + get(8) },
+  ]
+  ranges.sort((a, b) => b.prob - a.prob)
+  return ranges
+}
+
 // One-line strategy text for the recommendation banner.
 export function paspText(plan, lang = 'en') {
   if (!plan) return ''
