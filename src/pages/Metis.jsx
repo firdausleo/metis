@@ -1,41 +1,91 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
+import { useBrainCanvas, useMiniCanvas } from '../hooks/useBrainCanvas'
 
+/* ─── MiniAvatar ─── */
+function MiniAvatar() {
+  const canvasRef = useRef(null)
+  useMiniCanvas(canvasRef, true)
+  return (
+    <canvas
+      ref={canvasRef}
+      width={36}
+      height={36}
+      style={{
+        width: 36, height: 36,
+        borderRadius: '50%',
+        border: '1px solid rgba(201,168,76,0.35)',
+        flexShrink: 0,
+      }}
+    />
+  )
+}
+
+/* ─── MetisMessage ─── */
+function MetisMessage({ content }) {
+  if (!content) return null
+  const lines = content.split('\n')
+  return (
+    <div style={{ lineHeight: 1.7, fontSize: 13 }}>
+      {lines.map((line, i) => {
+        if (!line.trim()) return <div key={i} style={{ height: 6 }} />
+        const isGood = line.startsWith('✅')
+        const isWarn = line.startsWith('⚠')
+        const isBad  = line.startsWith('❌')
+        const isRec  = line.startsWith('⚡')
+        const color = isGood ? '#4ade80' : isWarn ? '#fbbf24' : isBad ? '#f87171' : isRec ? '#C9A84C' : 'rgba(220,230,255,0.88)'
+        const parsed = line
+          .replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#C9A84C">$1</strong>')
+          .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        return (
+          <div
+            key={i}
+            style={{
+              color,
+              marginBottom: 3,
+              paddingLeft: line.match(/^[•\-\*›]\s/) ? 14 : 0,
+              fontWeight: isRec ? 500 : 400,
+              background: isRec ? 'rgba(201,168,76,0.08)' : 'transparent',
+              borderLeft: isRec ? '2px solid rgba(201,168,76,0.5)' : 'none',
+              borderRadius: isRec ? '0 4px 4px 0' : 0,
+              padding: isRec ? '5px 10px' : '0',
+            }}
+            dangerouslySetInnerHTML={{ __html: parsed }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+/* ─── Main page ─── */
 export default function MetisWizard() {
   const { lang } = useTranslation()
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [context, setContext] = useState(null)
-  const scrollRef = useRef(null)
-  const inputRef = useRef(null)
+
+  const scrollRef  = useRef(null)
+  const inputRef   = useRef(null)
+  const brainRef   = useRef(null)
+
+  const chatActive = messages.length > 0
+  useBrainCanvas(brainRef, !chatActive)
 
   useEffect(() => { loadContext() }, [])
-
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages])
 
   async function loadContext() {
     try {
       const [{ data: matches }, { data: predictions }, { data: bets }] = await Promise.all([
-        supabase
-          .from('matches')
-          .select('id, home_team, away_team, match_date, status, home_score, away_score, group_name')
-          .order('match_date'),
-        supabase
-          .from('model_predictions')
-          .select('match_id, v3_home_win, v3_draw, v3_away_win, anchor_total, v3_top_score, quality_warning'),
-        supabase
-          .from('user_bets')
-          .select('selection, odds, stake, status, actual_return, bet_type')
-          .order('placed_at', { ascending: false })
-          .limit(20),
+        supabase.from('matches').select('id, home_team, away_team, match_date, status, home_score, away_score, group_name').order('match_date'),
+        supabase.from('model_predictions').select('match_id, v3_home_win, v3_draw, v3_away_win, anchor_total, v3_top_score, quality_warning'),
+        supabase.from('user_bets').select('selection, odds, stake, status, actual_return, bet_type').order('placed_at', { ascending: false }).limit(20),
       ])
-
       const predMap = {}
       predictions?.forEach(p => { predMap[p.match_id] = p })
       setContext({ matches: matches || [], predMap, bets: bets || [] })
@@ -46,45 +96,30 @@ export default function MetisWizard() {
 
   function buildSystemPrompt() {
     if (!context) return BASE_SYSTEM_PROMPT
-
     const now = new Date()
     const beijingNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }))
-
     const finished = context.matches.filter(m => m.status === 'finished')
     const upcoming = context.matches.filter(m => m.status === 'upcoming')
     const todayUpcoming = upcoming.filter(m => {
       const bj = new Date(new Date(m.match_date).toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }))
-      return bj.toDateString() === beijingNow.toDateString() ||
-        Math.abs(bj - beijingNow) < 12 * 60 * 60 * 1000
+      return bj.toDateString() === beijingNow.toDateString() || Math.abs(bj - beijingNow) < 12 * 60 * 60 * 1000
     }).slice(0, 6)
-
-    const resultsText = finished.slice(-16).map(m =>
-      `  ${m.home_team} ${m.home_score}-${m.away_score} ${m.away_team}`
-    ).join('\n')
-
+    const resultsText = finished.slice(-16).map(m => `  ${m.home_team} ${m.home_score}-${m.away_score} ${m.away_team}`).join('\n')
     const upcomingText = todayUpcoming.map(m => {
       const pred = context.predMap[m.id]
-      const bj = new Date(m.match_date).toLocaleString('zh-CN', {
-        timeZone: 'Asia/Shanghai',
-        month: 'numeric', day: 'numeric',
-        hour: '2-digit', minute: '2-digit',
-      })
+      const bj = new Date(m.match_date).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
       const predStr = pred?.v3_home_win
         ? `V3: ${m.home_team} ${(pred.v3_home_win * 100).toFixed(0)}% / D ${(pred.v3_draw * 100).toFixed(0)}% / ${m.away_team} ${(pred.v3_away_win * 100).toFixed(0)}% | Anchor: ${pred.anchor_total}g | Top: ${pred.v3_top_score}`
         : 'Prediction: DC ratings only'
       const warn = pred?.quality_warning ? ' ⚠ Low confidence' : ''
       return `  ${m.home_team} vs ${m.away_team} (${bj} BJ)${warn}\n  ${predStr}`
     }).join('\n\n')
-
     const settled = context.bets.filter(b => b.status !== 'pending')
     const totalStaked = settled.reduce((s, b) => s + b.stake, 0)
     const totalReturned = settled.reduce((s, b) => s + (b.actual_return || 0), 0)
     const pnl = totalReturned - totalStaked
-
     const betsText = context.bets.length > 0
-      ? context.bets.slice(0, 10).map(b =>
-          `  ${b.selection} @${b.odds} ¥${b.stake} → ${b.status}${b.actual_return ? ` (returned ¥${b.actual_return})` : ''}`
-        ).join('\n')
+      ? context.bets.slice(0, 10).map(b => `  ${b.selection} @${b.odds} ¥${b.stake} → ${b.status}${b.actual_return ? ` (returned ¥${b.actual_return})` : ''}`).join('\n')
       : '  No bets recorded yet'
 
     return `You are METIS — an elite WC2026 football prediction and betting intelligence AI. You are the central brain of the Metis app, built for a private group of friends who track predictions and bets together.
@@ -217,7 +252,7 @@ FORMAT YOUR RESPONSES
 
 - Use **bold** for all key numbers: **56.5%**, **@7.30**, **¥150**
 - Start each bet analysis line with ✅ ⚠ or ❌
-- Use • for bullet points
+- Use › for bullet points
 - Keep paragraphs to 2-3 sentences max
 - Always end with: ⚡ RECOMMENDATION: [your call]
 - Separate sections with a blank line`
@@ -226,13 +261,10 @@ FORMAT YOUR RESPONSES
   async function sendMessage() {
     const userMsg = input.trim()
     if (!userMsg || loading) return
-
     setInput('')
     setLoading(true)
-
     const newMessages = [...messages, { role: 'user', content: userMsg }]
     setMessages([...newMessages, { role: 'assistant', content: '', loading: true }])
-
     try {
       const response = await fetch('/api/metis-chat', {
         method: 'POST',
@@ -242,16 +274,11 @@ FORMAT YOUR RESPONSES
           messages: newMessages.map(m => ({ role: m.role, content: m.content })),
         }),
       })
-
       const data = await response.json()
       const reply = data.content?.[0]?.text || 'Analysis unavailable — please try again'
-
       setMessages([...newMessages, { role: 'assistant', content: reply }])
-    } catch (err) {
-      setMessages([
-        ...newMessages,
-        { role: 'assistant', content: 'Connection error — please try again' },
-      ])
+    } catch {
+      setMessages([...newMessages, { role: 'assistant', content: 'Connection error — please try again' }])
     } finally {
       setLoading(false)
       inputRef.current?.focus()
@@ -262,61 +289,94 @@ FORMAT YOUR RESPONSES
   const upcoming = context?.matches.filter(m => m.status === 'upcoming') ?? []
 
   const CHIPS = lang === 'zh'
-    ? ['今晚最佳投注？', '法国胜率多少？', '分析我的投注历史', '今晚哪场最有价值？']
-    : ['Best bets tonight?', 'France win probability?', 'Analyze my bet history', 'Best value match tonight?']
+    ? ['› 今晚最佳投注？', '› 法国胜率多少？', '› 分析我的投注历史', '› 今晚哪场最有价值？']
+    : ['› Best bets tonight?', '› France win probability?', '› Analyze my bet history', '› Best value match tonight?']
 
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
       height: 'calc(100vh - 56px)',
-      maxWidth: 720,
-      margin: '0 auto',
-      padding: 0,
+      background: '#080c14',
+      overflow: 'hidden',
     }}>
-
-      {/* ── HEADER ── */}
-      <div style={{
-        padding: '12px 16px',
-        borderBottom: '0.5px solid var(--color-border-tertiary)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        flexShrink: 0,
-        background: 'var(--color-background-primary)',
-      }}>
+      {/* ── COMPACT HEADER (chat active) ── */}
+      {chatActive && (
         <div style={{
-          width: 40, height: 40,
-          borderRadius: '50%',
-          background: 'linear-gradient(135deg, #1A3A6C 0%, #C9A84C 100%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 20, flexShrink: 0,
-        }}>⚡</div>
-        <div style={{ flex: 1 }}>
-          <div style={{
-            fontSize: 18, fontWeight: 600,
-            color: 'var(--color-text-primary)',
-            fontFamily: "'IBM Plex Mono', monospace",
-            letterSpacing: '0.2em',
-          }}>METIS</div>
-          <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 1 }}>
-            {context
-              ? `${finished.length} results · ${upcoming.length} upcoming`
-              : 'Loading match data...'}
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '10px 20px',
+          borderBottom: '1px solid rgba(201,168,76,0.12)',
+          background: 'rgba(8,12,20,0.95)',
+          backdropFilter: 'blur(10px)',
+          flexShrink: 0,
+        }}>
+          <MiniAvatar />
+          <div>
+            <div style={{
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: 14, fontWeight: 600,
+              color: '#C9A84C', letterSpacing: '0.18em',
+            }}>METIS</div>
+            <div style={{ fontSize: 10, color: 'rgba(201,168,76,0.45)', letterSpacing: '0.08em' }}>
+              {context
+                ? `${finished.length} RESULTS · ${upcoming.length} UPCOMING`
+                : 'LOADING DATA...'}
+            </div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: context ? '#4ade80' : 'rgba(201,168,76,0.3)',
+              boxShadow: context ? '0 0 6px #4ade80' : 'none',
+            }} />
+            <span style={{
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: 9, color: context ? '#4ade80' : 'rgba(201,168,76,0.3)',
+              letterSpacing: '0.12em',
+            }}>{context ? 'ONLINE' : 'LOADING'}</span>
           </div>
         </div>
+      )}
+
+      {/* ── WELCOME / BRAIN STATE ── */}
+      {!chatActive && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 5,
-          fontSize: 11,
-          color: context ? '#2D7A4F' : 'var(--color-text-tertiary)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          flexShrink: 0,
+          paddingTop: 8,
         }}>
+          {/* Brain canvas */}
+          <canvas
+            ref={brainRef}
+            style={{
+              width: '100%',
+              height: '52vh',
+              display: 'block',
+              cursor: 'default',
+            }}
+          />
+
+          {/* Context bar */}
           <div style={{
-            width: 7, height: 7, borderRadius: '50%',
-            background: context ? '#2D7A4F' : '#9CA3AF',
-          }} />
-          {context ? (lang === 'zh' ? '在线' : 'Online') : (lang === 'zh' ? '加载中' : 'Loading')}
+            fontFamily: "'IBM Plex Mono', monospace",
+            fontSize: 9,
+            color: 'rgba(201,168,76,0.38)',
+            letterSpacing: '0.15em',
+            marginTop: 4,
+            marginBottom: 2,
+          }}>
+            {context
+              ? `${finished.length} MATCHES PLAYED · ${upcoming.length} UPCOMING · V3 ENSEMBLE ACTIVE`
+              : 'LOADING MATCH DATA...'}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── MESSAGES AREA ── */}
       <div
@@ -324,64 +384,76 @@ FORMAT YOUR RESPONSES
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '16px',
+          padding: chatActive ? '20px 16px 8px' : '8px 16px 8px',
           display: 'flex',
           flexDirection: 'column',
-          gap: 12,
-          background: 'var(--color-background-secondary)',
+          gap: 10,
+          maxWidth: 760,
+          width: '100%',
+          margin: '0 auto',
+          boxSizing: 'border-box',
         }}
       >
-        {/* Welcome bubble */}
+        {/* Welcome message */}
         {messages.length === 0 && (
           <>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <SmallAvatar />
+              <MiniAvatar />
               <div style={{
-                background: 'var(--color-background-primary)',
-                borderRadius: '4px 16px 16px 16px',
-                padding: '12px 14px',
-                maxWidth: '80%',
+                background: 'rgba(17,24,39,0.92)',
+                border: '1px solid rgba(201,168,76,0.18)',
+                borderLeft: '2px solid rgba(201,168,76,0.6)',
+                borderRadius: '2px 12px 12px 12px',
+                padding: '12px 16px',
+                maxWidth: '82%',
                 fontSize: 13,
-                color: 'var(--color-text-primary)',
-                lineHeight: 1.65,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                color: 'rgba(220,230,255,0.88)',
+                lineHeight: 1.7,
               }}>
                 {lang === 'zh' ? (
                   <>
-                    <strong>你好，我是 METIS。</strong><br /><br />
-                    你的WC2026智能投注顾问。我掌握所有比赛数据、V1/V2/V3预测模型、赔率分析和你的投注历史。<br /><br />
-                    你可以问我任何关于WC2026的问题。
+                    <span style={{ color: '#C9A84C', fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600 }}>METIS / </span>
+                    <span style={{ color: 'rgba(201,168,76,0.55)', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11 }}>WC2026 INTELLIGENCE</span>
+                    <br /><br />
+                    我掌握所有比赛数据、V1/V2/V3预测模型、赔率分析和你的投注历史。直接问我。
                   </>
                 ) : (
                   <>
-                    <strong>I'm METIS.</strong><br /><br />
-                    Your WC2026 betting intelligence. I have full access to all match data, V1/V2/V3 predictions, edge calculations, and your betting history.<br /><br />
-                    Ask me anything about WC2026.
+                    <span style={{ color: '#C9A84C', fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600 }}>METIS / </span>
+                    <span style={{ color: 'rgba(201,168,76,0.55)', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11 }}>WC2026 INTELLIGENCE</span>
+                    <br /><br />
+                    Full access to match data, V3 predictions, PASP edge calculations, and your betting history. Ask directly.
                   </>
                 )}
               </div>
             </div>
 
             {/* Suggestion chips */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 42 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 46 }}>
               {CHIPS.map(chip => (
                 <button
                   key={chip}
-                  onClick={() => { setInput(chip); inputRef.current?.focus() }}
+                  onClick={() => { setInput(chip.replace(/^›\s/, '')); inputRef.current?.focus() }}
                   style={{
                     padding: '7px 14px',
-                    borderRadius: '99px',
-                    border: '0.5px solid var(--color-border-secondary)',
-                    background: 'var(--color-background-primary)',
-                    color: 'var(--color-text-secondary)',
+                    borderRadius: 4,
+                    border: '1px solid rgba(201,168,76,0.22)',
+                    background: 'rgba(201,168,76,0.04)',
+                    color: 'rgba(201,168,76,0.75)',
                     fontSize: 12,
                     cursor: 'pointer',
-                    minHeight: 34,
-                    fontFamily: 'var(--font-sans)',
-                    transition: 'border-color 0.15s',
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    letterSpacing: '0.03em',
+                    transition: 'border-color 0.15s, background 0.15s',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = '#C9A84C'}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--color-border-secondary)'}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = 'rgba(201,168,76,0.6)'
+                    e.currentTarget.style.background = 'rgba(201,168,76,0.09)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = 'rgba(201,168,76,0.22)'
+                    e.currentTarget.style.background = 'rgba(201,168,76,0.04)'
+                  }}
                 >
                   {chip}
                 </button>
@@ -398,37 +470,50 @@ FORMAT YOUR RESPONSES
             alignItems: 'flex-start',
             justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
           }}>
-            {msg.role === 'assistant' && <SmallAvatar />}
+            {msg.role === 'assistant' && <MiniAvatar />}
 
             <div style={{
-              maxWidth: '78%',
+              maxWidth: '80%',
               padding: '10px 14px',
-              borderRadius: msg.role === 'user'
-                ? '16px 4px 16px 16px'
-                : '4px 16px 16px 16px',
+              borderRadius: msg.role === 'user' ? '12px 2px 12px 12px' : '2px 12px 12px 12px',
               background: msg.role === 'user'
-                ? '#1A3A6C'
-                : 'var(--color-background-primary)',
-              color: msg.role === 'user' ? 'white' : 'var(--color-text-primary)',
+                ? 'rgba(26,58,108,0.85)'
+                : 'rgba(17,24,39,0.92)',
+              border: msg.role === 'user'
+                ? '1px solid rgba(100,140,220,0.25)'
+                : '1px solid rgba(201,168,76,0.14)',
+              borderLeft: msg.role === 'assistant' ? '2px solid rgba(201,168,76,0.45)' : undefined,
+              color: msg.role === 'user' ? 'rgba(220,235,255,0.92)' : 'rgba(220,230,255,0.88)',
               fontSize: 13,
-              lineHeight: 1.65,
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+              lineHeight: 1.7,
             }}>
               {msg.loading
-                ? <span style={{ opacity: 0.5 }}>{lang === 'zh' ? '分析中' : 'Analyzing'} ▋</span>
+                ? (
+                  <span style={{
+                    color: 'rgba(201,168,76,0.7)',
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: 12,
+                  }}>
+                    {lang === 'zh' ? '分析中' : 'Analyzing'} <span style={{ animation: 'none' }}>▋</span>
+                  </span>
+                )
                 : msg.role === 'assistant'
                   ? <MetisMessage content={msg.content} />
-                  : msg.content}
+                  : <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13 }}>{msg.content}</span>
+              }
             </div>
 
             {msg.role === 'user' && (
               <div style={{
                 width: 32, height: 32, borderRadius: '50%',
-                background: 'var(--color-background-primary)',
-                border: '0.5px solid var(--color-border-secondary)',
+                background: 'rgba(26,58,108,0.8)',
+                border: '1px solid rgba(100,140,220,0.3)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 14, flexShrink: 0,
-              }}>👤</div>
+                color: 'rgba(160,190,255,0.8)',
+              }}>
+                ›
+              </div>
             )}
           </div>
         ))}
@@ -436,19 +521,23 @@ FORMAT YOUR RESPONSES
 
       {/* ── INPUT AREA ── */}
       <div style={{
-        padding: '12px 16px',
-        borderTop: '0.5px solid var(--color-border-tertiary)',
-        background: 'var(--color-background-primary)',
+        padding: '12px 16px 16px',
+        background: 'rgba(8,12,20,0.97)',
+        borderTop: '1px solid rgba(201,168,76,0.12)',
         flexShrink: 0,
+        maxWidth: 760,
+        width: '100%',
+        margin: '0 auto',
+        boxSizing: 'border-box',
       }}>
         <div style={{
           display: 'flex',
-          gap: 8,
-          alignItems: 'flex-end',
-          background: 'var(--color-background-secondary)',
-          border: '0.5px solid var(--color-border-secondary)',
-          borderRadius: '16px',
-          padding: '8px 8px 8px 14px',
+          gap: 0,
+          alignItems: 'stretch',
+          background: 'rgba(17,24,39,0.9)',
+          border: '1px solid rgba(201,168,76,0.22)',
+          borderRadius: 4,
+          overflow: 'hidden',
         }}>
           <textarea
             ref={inputRef}
@@ -461,112 +550,69 @@ FORMAT YOUR RESPONSES
               }
             }}
             placeholder={lang === 'zh'
-              ? '问我任何关于WC2026的问题... (Enter发送)'
-              : 'Ask METIS anything about WC2026... (Enter to send)'}
+              ? '问 METIS... (Enter发送, Shift+Enter换行)'
+              : 'Ask METIS... (Enter to send, Shift+Enter for newline)'}
             rows={1}
             style={{
               flex: 1,
-              fontSize: 14,
+              fontSize: 13,
               border: 'none',
               outline: 'none',
               background: 'transparent',
-              color: 'var(--color-text-primary)',
+              color: 'rgba(220,230,255,0.92)',
               resize: 'none',
-              minHeight: 24,
+              minHeight: 20,
               maxHeight: 100,
-              fontFamily: 'var(--font-sans)',
-              lineHeight: 1.5,
-              padding: 0,
+              fontFamily: "'IBM Plex Mono', monospace",
+              lineHeight: 1.55,
+              padding: '12px 14px',
+              caretColor: '#C9A84C',
+              letterSpacing: '0.02em',
             }}
           />
           <button
             onClick={sendMessage}
             disabled={!input.trim() || loading}
             style={{
-              width: 36, height: 36,
-              borderRadius: '50%',
+              width: 48,
               background: input.trim() && !loading
-                ? 'linear-gradient(135deg, #1A3A6C, #C9A84C)'
-                : 'var(--color-border-tertiary)',
+                ? 'rgba(201,168,76,0.18)'
+                : 'transparent',
               border: 'none',
+              borderLeft: '1px solid rgba(201,168,76,0.15)',
               cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 16, flexShrink: 0,
-              transition: 'background 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              transition: 'background 0.15s',
+              color: input.trim() && !loading ? '#C9A84C' : 'rgba(201,168,76,0.25)',
+              fontSize: 18,
+              fontFamily: "'IBM Plex Mono', monospace",
+            }}
+            onMouseEnter={e => {
+              if (input.trim() && !loading) e.currentTarget.style.background = 'rgba(201,168,76,0.28)'
+            }}
+            onMouseLeave={e => {
+              if (input.trim() && !loading) e.currentTarget.style.background = 'rgba(201,168,76,0.18)'
             }}
           >
             ⚡
           </button>
         </div>
         <div style={{
-          fontSize: 10,
-          color: 'var(--color-text-tertiary)',
+          fontSize: 9,
+          color: 'rgba(201,168,76,0.22)',
           textAlign: 'center',
-          marginTop: 6,
+          marginTop: 7,
+          fontFamily: "'IBM Plex Mono', monospace",
+          letterSpacing: '0.1em',
         }}>
           {lang === 'zh'
             ? 'METIS基于统计模型 · 预测存在不确定性 · 理性投注'
-            : 'METIS uses statistical models · Predictions carry uncertainty · Bet responsibly'}
+            : 'STATISTICAL MODEL · PREDICTIONS CARRY UNCERTAINTY · BET RESPONSIBLY'}
         </div>
       </div>
-    </div>
-  )
-}
-
-function SmallAvatar() {
-  return (
-    <div style={{
-      width: 32, height: 32, borderRadius: '50%',
-      background: 'linear-gradient(135deg, #1A3A6C, #C9A84C)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 15, flexShrink: 0,
-    }}>⚡</div>
-  )
-}
-
-function MetisMessage({ content }) {
-  if (!content) return null
-
-  const lines = content.split('\n')
-
-  return (
-    <div style={{ lineHeight: 1.65, fontSize: 13 }}>
-      {lines.map((line, i) => {
-        if (!line.trim()) {
-          return <div key={i} style={{ height: 8 }} />
-        }
-
-        const isGood = line.startsWith('✅')
-        const isWarn = line.startsWith('⚠')
-        const isBad  = line.startsWith('❌')
-        const isRec  = line.startsWith('⚡')
-
-        const color = isGood ? '#27500A'
-          : isWarn ? '#BA7517'
-          : isBad  ? '#791F1F'
-          : isRec  ? '#C9A84C'
-          : 'var(--color-text-primary)'
-
-        const parsed = line
-          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-          .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-
-        return (
-          <div
-            key={i}
-            style={{
-              color,
-              marginBottom: 3,
-              paddingLeft: line.match(/^[•\-\*]\s/) ? 12 : 0,
-              fontWeight: isRec ? 500 : 400,
-              background: isRec ? 'rgba(201,168,76,0.08)' : 'transparent',
-              borderRadius: isRec ? 6 : 0,
-              padding: isRec ? '4px 8px' : undefined,
-            }}
-            dangerouslySetInnerHTML={{ __html: parsed }}
-          />
-        )
-      })}
     </div>
   )
 }
