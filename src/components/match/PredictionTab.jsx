@@ -619,21 +619,11 @@ export default function PredictionTab({
           {/* ── Goal Range Analysis ── */}
           {v3.totalGoals?.length > 0 && (() => {
             const ranges = getRangeProbabilities(v3.totalGoals)
-            const top = ranges[0]
-            const maxProb = top.prob
-            const anchorInTop = kStar != null && kStar >= top.min && kStar <= top.max
-
-            const insight = lang === 'zh'
-              ? anchorInTop
-                ? `锚定（${kStar}球）落在概率最高的${top.range}球区间（${(top.prob * 100).toFixed(1)}%）内，该窗口概率集中。`
-                : `锚定（${kStar}球）邻近概率最高区间${top.range}（${(top.prob * 100).toFixed(1)}%），考虑在投注组合中覆盖该区间。`
-              : anchorInTop
-                ? `Anchor (${kStar} goals) falls within the highest-probability range ${top.range} (${(top.prob * 100).toFixed(1)}%). Strong concentration of probability in this window.`
-                : `Anchor (${kStar} goals) is adjacent to the highest range ${top.range} (${(top.prob * 100).toFixed(1)}%). Consider covering ${top.range} in your bet portfolio.`
+            const maxRangeProb = ranges[0]?.prob || 1
 
             return (
               <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
-                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: 4 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: 4, display: 'flex', alignItems: 'center' }}>
                   {lang === 'zh' ? '进球区间分析' : 'GOAL RANGE ANALYSIS'}
                   <InfoTooltip
                     title={lang === 'zh' ? '3球滑动窗口' : '3-Goal Window'}
@@ -645,126 +635,114 @@ export default function PredictionTab({
                 <p style={{ fontSize: 10, color: 'var(--color-text-muted)', marginBottom: 10 }}>
                   {lang === 'zh' ? '按概率排序的3球区间' : '3-goal windows sorted by probability'}
                 </p>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {(() => {
-                    const maxRangeProb = ranges[0]?.prob || 1
-                    return ranges.map((r, i) => {
-                    const isTop = i === 0
-                    const goalsInRange = [r.min, r.min + 1, r.max]
-                    const probsInRange = goalsInRange.map(g => getGoalP(g))
-                    const totalP = probsInRange.reduce((s, p) => s + p, 0)
-                    const rowRankColor = getRankColor(i + 1)
-                    const fillPct = (r.prob / maxRangeProb) * 100
 
-                    return (
-                      <div key={r.range} style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        padding: '5px 0',
-                        borderBottom: '0.5px solid var(--color-border-light)',
-                        background: isTop ? 'rgba(201,168,76,0.06)' : 'transparent',
-                      }}>
-                        {/* LINE 1: label + % + star + stacked bar — all on one row */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{
-                            fontSize: '11px', fontWeight: isTop ? 500 : 400,
-                            color: rowRankColor,
-                            width: '28px', flexShrink: 0,
-                          }}>{r.range}</span>
+                {ranges.map((r, i) => {
+                  const isTop = i === 0
+                  const goalsInRange = [r.min, r.min + 1, r.max]
+                  const probsInRange = goalsInRange.map(g => getGoalP(g))
+                  const fillPct = (r.prob / maxRangeProb) * 100
+                  const rowRankColor = getRankColor(i + 1)
 
-                          <span style={{
-                            fontSize: '11px',
-                            color: rowRankColor,
-                            fontWeight: isTop ? 500 : 400,
-                            width: '38px', flexShrink: 0,
-                          }}>{(r.prob * 100).toFixed(1)}%</span>
+                  return (
+                    <div key={r.range} style={{ marginBottom: '10px' }}>
+                      {/* LINE 1: range + % + star + proportional track */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span style={{
+                          fontSize: '12px', fontWeight: isTop ? 600 : 400,
+                          color: rowRankColor, width: '32px', flexShrink: 0,
+                        }}>{r.range}</span>
 
-                          {/* always in flow so layout is stable across rows */}
-                          <span style={{
-                            fontSize: '10px', color: '#C9A84C',
-                            flexShrink: 0, width: '10px',
-                            visibility: isTop ? 'visible' : 'hidden',
-                          }}>★</span>
+                        <span style={{
+                          fontSize: '11px', color: rowRankColor,
+                          width: '40px', flexShrink: 0,
+                        }}>{(r.prob * 100).toFixed(1)}%</span>
 
-                          {/* Track — full width gray background */}
+                        {/* visibility:hidden keeps layout stable across rows */}
+                        <span style={{
+                          fontSize: '11px', color: '#C9A84C',
+                          width: '12px', flexShrink: 0,
+                          visibility: isTop ? 'visible' : 'hidden',
+                        }}>★</span>
+
+                        {/* Track — full flex:1, gray */}
+                        <div style={{
+                          flex: 1, minWidth: 0, height: '10px',
+                          background: 'var(--color-bg)',
+                          borderRadius: '5px',
+                          position: 'relative',
+                          overflow: 'hidden',
+                        }}>
+                          {/* Fill — proportional to this range's probability */}
                           <div style={{
-                            flex: 1, minWidth: 0, height: '8px',
-                            background: 'var(--color-bg)',
-                            borderRadius: '4px',
-                            position: 'relative',
-                            overflow: 'hidden',
+                            position: 'absolute', left: 0, top: 0, height: '100%',
+                            width: `${fillPct}%`,
+                            display: 'flex', gap: '1px',
                           }}>
-                            {/* Fill — width proportional to this range's probability */}
-                            <div style={{
-                              position: 'absolute',
-                              left: 0, top: 0, height: '100%',
-                              width: `${fillPct}%`,
-                              display: 'flex',
-                              gap: '1px',
-                            }}>
-                              {goalsInRange.map((g, idx) => (
-                                <div key={g} style={{
-                                  flex: probsInRange[idx] || 1,
-                                  height: '100%',
-                                  background: getRankColor(rankMap[g] ?? 99),
-                                  minWidth: 0,
-                                }} />
-                              ))}
-                            </div>
+                            {goalsInRange.map((g, idx) => (
+                              <div key={g} style={{
+                                flex: probsInRange[idx] || 0.001,
+                                height: '100%',
+                                background: getRankColor(rankMap[g] ?? 99),
+                                minWidth: 0,
+                              }} />
+                            ))}
                           </div>
                         </div>
-
-                        {/* LINE 2: goal labels aligned under bar segments */}
-                        {/* paddingLeft = range(28) + gap(6) + %(38) + gap(6) + star(10) + gap(6) = 94px */}
-                        <div style={{ display: 'flex', marginTop: '3px', paddingLeft: '94px' }}>
-                          {goalsInRange.map((g, idx) => {
-                            const gRank = rankMap[g] ?? 99
-                            const gColor = getRankColor(gRank)
-                            return (
-                              <div key={g} style={{
-                                flex: 1,
-                                display: 'flex', flexDirection: 'column', alignItems: 'center',
-                              }}>
-                                <span style={{ fontWeight: 500, fontSize: '10px', color: gColor }}>
-                                  {g}{gRank === 1 ? '★' : ''}
-                                </span>
-                                <span style={{
-                                  fontSize: '8px', padding: '0 3px', borderRadius: '99px',
-                                  background: `${gColor}20`,
-                                  color: gColor,
-                                  fontWeight: 500,
-                                }}>#{gRank}</span>
-                                <span style={{ fontSize: '9px', color: gColor, opacity: 0.85 }}>
-                                  {(probsInRange[idx] * 100).toFixed(1)}%
-                                </span>
-                              </div>
-                            )
-                          })}
-                        </div>
                       </div>
-                    )
-                  })
-                  })()}
-                </div>
+
+                      {/* LINE 2: goal labels — flex matches bar segments so they align
+                          paddingLeft = 32 + 8 + 40 + 8 + 12 + 8 = 108px */}
+                      <div style={{ paddingLeft: '108px', display: 'flex' }}>
+                        {goalsInRange.map((g, idx) => {
+                          const gRank = rankMap[g] ?? 99
+                          const gColor = getRankColor(gRank)
+                          return (
+                            <div key={g} style={{
+                              flex: probsInRange[idx] || 1,
+                              display: 'flex', flexDirection: 'column', alignItems: 'center',
+                              minWidth: 0,
+                            }}>
+                              <span style={{ fontSize: '11px', fontWeight: 500, color: gColor }}>
+                                {g}{gRank === 1 ? '★' : ''}
+                              </span>
+                              <span style={{
+                                fontSize: '9px', padding: '0 4px', borderRadius: '99px',
+                                background: `${gColor}20`, color: gColor, fontWeight: 500,
+                              }}>#{gRank}</span>
+                              <span style={{ fontSize: '10px', color: gColor, opacity: 0.85 }}>
+                                {(probsInRange[idx] * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* Insight line */}
                 {kStar != null && (
                   <div style={{
-                    background: 'var(--color-bg-elevated)', borderRadius: 'var(--radius-sm)',
-                    padding: '8px 12px', marginTop: 10,
-                    fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5,
+                    marginTop: '8px', paddingTop: '8px',
+                    borderTop: '0.5px solid var(--color-border-light)',
+                    fontSize: 11, color: 'var(--color-text-secondary)',
                   }}>
-                    {insight}
+                    {lang === 'zh'
+                      ? `最佳区间：${ranges[0]?.range}球 (${(ranges[0]?.prob * 100).toFixed(1)}%) · 锚定：${kStar}球`
+                      : `Sweet spot: ${ranges[0]?.range} goals (${(ranges[0]?.prob * 100).toFixed(1)}%) · Anchor: ${kStar} goals`}
                   </div>
                 )}
+
                 {/* Legend */}
-                <div style={{ display: 'flex', gap: '12px', marginTop: '10px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
                   {[
-                    { rank: 1, label: lang === 'zh' ? '第1' : '#1 Most likely' },
-                    { rank: 2, label: lang === 'zh' ? '第2' : '#2' },
-                    { rank: 3, label: lang === 'zh' ? '第3' : '#3' },
-                    { rank: 6, label: lang === 'zh' ? '其他' : 'Others' },
+                    { color: '#C9A84C', label: lang === 'zh' ? '#1 最高' : '#1 Most likely' },
+                    { color: '#1A3A6C', label: '#2' },
+                    { color: '#2D7A4F', label: '#3' },
+                    { color: '#6B7280', label: lang === 'zh' ? '其他' : 'Others' },
                   ].map(item => (
-                    <div key={item.rank} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: 'var(--color-text-muted)' }}>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: getRankColor(item.rank), flexShrink: 0 }} />
+                    <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: 'var(--color-text-muted)' }}>
+                      <div style={{ width: '10px', height: '10px', borderRadius: '2px', background: item.color, flexShrink: 0 }} />
                       {item.label}
                     </div>
                   ))}
