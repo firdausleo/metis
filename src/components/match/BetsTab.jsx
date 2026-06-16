@@ -3,7 +3,7 @@ import { useTranslation } from '../../lib/i18n'
 import { getFlag } from '../../lib/teamFlags'
 import { analyse1X2, calcStake, formatProb } from '../../lib/evEngine'
 import { placeBet } from '../../lib/bets'
-import { buildPaspPlan, paspText, quarterKelly, correlatedKelly, getRangeProbabilities, getChineseHandicapProbs } from '../../utils/pasp'
+import { buildPaspPlan, paspText, quarterKelly, correlatedKelly, getRangeProbabilities, getChineseHandicapProbs, collectAllBets, buildPortfolio } from '../../utils/pasp'
 import { parseIndonesiaOdds } from '../../utils/indonesiaOddsParser'
 import InfoTooltip from '../InfoTooltip'
 import { supabase } from '../../lib/supabase'
@@ -862,6 +862,10 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
   const [uploadError, setUploadError] = useState(null)
   const [uploadSuccess, setUploadSuccess] = useState(null)
   const [lastSaved, setLastSaved] = useState(null)
+  const [portfolioMode, setPortfolioMode] = useState('balanced')
+  const [portfolioOverrides, setPortfolioOverrides] = useState({})
+  const [recordingBets, setRecordingBets] = useState(false)
+  const [recordSuccess, setRecordSuccess] = useState(null)
   const fileInputRef = useRef(null)
   const isNavigating = useRef(false)
 
@@ -1123,6 +1127,52 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
     return bets.filter(b => b.edge > -0.5).sort((a, b) => b.edge - a.edge)
   }, [sidebarModel, v1x2Odds, csOdds, chinaGoalsOdds, ahLine, homeAhOdds, awayAhOdds, tgLine, overOdds, underOdds, match, lang])
 
+  const allBets = useMemo(() => collectAllBets({
+    v1x2Odds, rspfH, rspfD, rspfA, rspfLine,
+    csOdds, chinaGoalsOdds, model: sidebarModel, match,
+  }), [v1x2Odds, rspfH, rspfD, rspfA, rspfLine, csOdds, chinaGoalsOdds, sidebarModel, match])
+
+  const basePortfolio = useMemo(() =>
+    buildPortfolio(allBets, bankroll, portfolioMode),
+    [allBets, bankroll, portfolioMode]
+  )
+
+  const portfolio = basePortfolio.map(bet => ({
+    ...bet,
+    suggestedStake: portfolioOverrides[bet.id] ?? bet.suggestedStake,
+  }))
+
+  async function handleRecordPortfolio(bets) {
+    setRecordingBets(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) throw new Error('Not logged in')
+      const rows = bets.map(bet => ({
+        user_id: session.user.id,
+        match_id: match.id,
+        bet_type: bet.marketType,
+        selection: bet.label,
+        odds: bet.odds,
+        stake: portfolioOverrides[bet.id] ?? bet.suggestedStake,
+        platform: 'china',
+        bet_mode: 'single',
+        edge_pct: Math.round(bet.edge * 10000) / 10000,
+        model_prob: Math.round(bet.modelProb * 10000) / 10000,
+        kelly_stake: bet.suggestedStake,
+        status: 'pending',
+      }))
+      const { error } = await supabase.from('user_bets').insert(rows)
+      if (error) throw error
+      setRecordSuccess(lang === 'zh' ? `✓ 已记录 ${rows.length} 笔投注` : `✓ ${rows.length} bets recorded`)
+      setTimeout(() => setRecordSuccess(null), 3000)
+      setPortfolioOverrides({})
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setRecordingBets(false)
+    }
+  }
+
   const cardStyle = { background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
 
   return (
@@ -1154,6 +1204,112 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
         <SH>PASP · Betting Strategy Recommendation</SH>
         <PaspPlanSection plan={plan} match={match} bankroll={bankroll} odds1x2={v1x2Odds} lang={lang} topRange={topRange} />
       </div>
+
+      {/* ════════════════════════════════════════════════
+           🎯  PORTFOLIO SUGGESTION
+           ════════════════════════════════════════════════ */}
+      {portfolio.length > 0 && (
+        <div style={{ border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+          {/* Header + mode tabs */}
+          <div style={{ background: 'var(--color-bg-secondary)', padding: '10px 14px', borderBottom: '0.5px solid var(--color-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                {lang === 'zh' ? '🎯 投注组合建议' : '🎯 PORTFOLIO SUGGESTION'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[
+                { key: 'balanced',    en: '⚖️ Balanced',     zh: '⚖️ 均衡' },
+                { key: 'model',       en: '🏆 Follow Model', zh: '🏆 跟随模型' },
+                { key: 'edge',        en: '🎯 Best Edge',    zh: '🎯 最优赔率' },
+              ].map(m => (
+                <button key={m.key} onClick={() => setPortfolioMode(m.key)} style={{
+                  padding: '4px 10px', borderRadius: 99, border: '0.5px solid', fontSize: 11,
+                  fontWeight: portfolioMode === m.key ? 600 : 400, cursor: 'pointer',
+                  borderColor: portfolioMode === m.key ? '#1A3A6C' : 'var(--color-border)',
+                  background: portfolioMode === m.key ? '#1A3A6C' : 'transparent',
+                  color: portfolioMode === m.key ? '#fff' : 'var(--color-text-secondary)',
+                }}>
+                  {lang === 'zh' ? m.zh : m.en}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 6 }}>
+              {portfolioMode === 'balanced' && (lang === 'zh' ? '主注跟随模型方向，副注和保险注选最优赔率' : 'Primary follows model direction · secondary & insurance pick best edge')}
+              {portfolioMode === 'model'    && (lang === 'zh' ? '只投模型预测方向的结果' : 'Only bet outcomes in the model\'s predicted direction')}
+              {portfolioMode === 'edge'     && (lang === 'zh' ? '⚠ 纯数学套利 — 可能与模型方向相反' : '⚠ Pure math arbitrage — may bet against model direction')}
+            </div>
+          </div>
+
+          {/* Bet rows */}
+          {portfolio.map((bet, i) => {
+            const roleColour = bet.role === 'primary' ? '#C9A84C' : bet.role === 'secondary' ? '#1A3A6C' : '#2D7A4F'
+            const roleLabel = { primary: lang === 'zh' ? '主注' : 'Primary', secondary: lang === 'zh' ? '副注' : 'Secondary', insurance: lang === 'zh' ? '保险' : 'Insurance' }[bet.role] || `#${i+1}`
+            const stake = portfolioOverrides[bet.id] ?? bet.suggestedStake
+            const potReturn = Math.round(stake * bet.odds)
+            const conflictsWithModel = !bet.isModelDirection && portfolioMode !== 'model'
+            return (
+              <div key={bet.id} style={{ padding: '10px 14px', borderBottom: '0.5px solid var(--color-border)', background: conflictsWithModel ? 'rgba(201,168,76,0.04)' : 'transparent' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 99, background: roleColour + '20', color: roleColour, flexShrink: 0, minWidth: 42, textAlign: 'center' }}>
+                    {roleLabel}
+                  </span>
+                  <span style={{ flex: 1, fontSize: 12, color: 'var(--color-text-primary)' }}>{bet.label}</span>
+                  <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--color-text-secondary)', flexShrink: 0 }}>@{bet.odds.toFixed(2)}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: bet.edge > 0.05 ? 'var(--color-edge-green)' : bet.edge > 0 ? 'var(--color-edge-amber)' : 'var(--color-edge-red)', flexShrink: 0, minWidth: 48, textAlign: 'right' }}>
+                    {bet.edge > 0 ? '+' : ''}{(bet.edge * 100).toFixed(1)}%
+                  </span>
+                </div>
+                {conflictsWithModel && (
+                  <div style={{ fontSize: 10, color: 'var(--color-edge-amber)', marginTop: 4, marginLeft: 50 }}>
+                    ⚠ {lang === 'zh' ? '与模型预测方向相反 — 纯赔率机会' : 'Opposite to model direction — pure edge play'}
+                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, marginLeft: 50 }}>
+                  <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{lang === 'zh' ? '投注：' : 'Stake:'}</span>
+                  <span style={{ fontSize: 12 }}>¥</span>
+                  <input
+                    type="number" inputMode="decimal" value={stake}
+                    onChange={e => setPortfolioOverrides(prev => ({ ...prev, [bet.id]: parseFloat(e.target.value) || 0 }))}
+                    style={{ width: 70, fontSize: 15, fontWeight: 600, textAlign: 'right', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '4px 8px', background: 'var(--color-bg)', minHeight: 36, color: 'var(--color-text-primary)' }}
+                  />
+                  <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{lang === 'zh' ? '→ 赢' : '→ win'}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-edge-green)' }}>¥{potReturn}</span>
+                </div>
+              </div>
+            )
+          })}
+
+          {/* Summary + Record button */}
+          {(() => {
+            const totalStake = portfolio.reduce((s, b) => s + (portfolioOverrides[b.id] ?? b.suggestedStake), 0)
+            const bestCase   = portfolio.reduce((s, b) => s + (portfolioOverrides[b.id] ?? b.suggestedStake) * b.odds, 0)
+            const ev         = portfolio.reduce((s, b) => s + b.modelProb * (portfolioOverrides[b.id] ?? b.suggestedStake) * b.odds - (portfolioOverrides[b.id] ?? b.suggestedStake), 0)
+            return (
+              <div style={{ padding: '10px 14px', background: 'var(--color-bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <span>{lang === 'zh' ? '总投注' : 'Total'} <strong>¥{totalStake}</strong></span>
+                  <span>{lang === 'zh' ? '最佳回报' : 'Best case'} <strong style={{ color: 'var(--color-edge-green)' }}>¥{Math.round(bestCase)}</strong></span>
+                  <span>{lang === 'zh' ? '期望值' : 'EV'} <strong style={{ color: ev > 0 ? 'var(--color-edge-green)' : 'var(--color-edge-red)' }}>{ev > 0 ? '+' : ''}¥{Math.round(ev)}</strong></span>
+                </div>
+                <button
+                  onClick={() => handleRecordPortfolio(portfolio)}
+                  disabled={recordingBets}
+                  style={{ padding: '8px 16px', background: '#1A3A6C', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 12, fontWeight: 600, cursor: recordingBets ? 'not-allowed' : 'pointer', minHeight: 36, opacity: recordingBets ? 0.6 : 1 }}
+                >
+                  {recordingBets ? (lang === 'zh' ? '记录中...' : 'Recording...') : (lang === 'zh' ? `记录全部 ${portfolio.length} 笔` : `Record all ${portfolio.length} bets`)}
+                </button>
+              </div>
+            )
+          })()}
+
+          {recordSuccess && (
+            <div style={{ padding: '8px 14px', background: 'var(--color-success-bg, #EAF3DE)', color: 'var(--color-edge-green)', fontSize: 12, fontWeight: 600, textAlign: 'center' }}>
+              {recordSuccess}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ════════════════════════════════════════════════
            🇨🇳  CHINA LOTTERY BLOCK

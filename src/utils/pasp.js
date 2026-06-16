@@ -164,3 +164,163 @@ export function getChineseHandicapProbs(matrix, line) {
     awayWin: Math.round(awayWin * 1000) / 1000,
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PORTFOLIO ENGINE
+// ─────────────────────────────────────────────────────────────────────────────
+
+function kellyStake(edge, odds, bankroll, fraction = 0.25) {
+  if (edge <= 0) return 0
+  const k = edge / (odds - 1)
+  const raw = k * bankroll * fraction
+  const capped = Math.min(raw, bankroll * 0.05)
+  return Math.max(Math.round(capped / 10) * 10, 10)
+}
+
+// Classify a bet ID or score key as home / draw / away direction
+function betDirection(id, scoreKey) {
+  if (id === 'spf-home' || id === 'rspf-home') return 'home'
+  if (id === 'spf-away' || id === 'rspf-away') return 'away'
+  if (id === 'spf-draw' || id === 'rspf-draw') return 'draw'
+  if (id.startsWith('tg-')) return 'neutral'
+  if (id.startsWith('cs-')) {
+    const parts = scoreKey.split('-')
+    const h = parseInt(parts[0]), a = parseInt(parts[1])
+    if (!isNaN(h) && !isNaN(a)) {
+      return h > a ? 'home' : a > h ? 'away' : 'draw'
+    }
+    if (scoreKey === '胜其它') return 'home'
+    if (scoreKey === '平其它') return 'draw'
+    if (scoreKey === '负其它') return 'away'
+  }
+  return 'neutral'
+}
+
+export function collectAllBets({ v1x2Odds, rspfH, rspfD, rspfA, rspfLine, csOdds, chinaGoalsOdds, model, match }) {
+  if (!model || !match) return []
+
+  const probs = model?.v3?.probs || model?.v2?.probs
+  const matrix = model?.v3?.matrix || model?.v2?.matrix
+  const totalGoalsDist = model?.v3?.totalGoals || []
+
+  if (!probs) return []
+
+  const bets = []
+
+  const addBet = (id, label, marketType, oddsStr, modelProb, scoreKey = '') => {
+    if (!oddsStr) return
+    const o = parseFloat(oddsStr)
+    if (!o || isNaN(o) || o <= 1) return
+    if (!modelProb || modelProb < 0.001) return
+    const edge = modelProb - (1 / o)
+    bets.push({ id, label, marketType, odds: o, modelProb, edge, scoreKey })
+  }
+
+  // 胜平负 1X2
+  addBet('spf-home', `${match.home_team} win · 胜平负`, '胜平负', v1x2Odds?.home, probs.homeWin)
+  addBet('spf-draw', `Draw · 胜平负`, '胜平负', v1x2Odds?.draw, probs.draw)
+  addBet('spf-away', `${match.away_team} win · 胜平负`, '胜平负', v1x2Odds?.away, probs.awayWin)
+
+  // 比分 correct scores
+  Object.entries(csOdds || {}).forEach(([score, oddsStr]) => {
+    if (!oddsStr) return
+    let modelProb = 0
+    const parts = score.split('-')
+    const h = parseInt(parts[0]), a = parseInt(parts[1])
+    if (!isNaN(h) && !isNaN(a)) {
+      modelProb = matrix?.[h]?.[a] || 0
+    } else if (score === '胜其它') {
+      for (let x = 4; x <= 8; x++) for (let y = 0; y <= x - 1 && y <= 8; y++) modelProb += matrix?.[x]?.[y] || 0
+    } else if (score === '平其它') {
+      for (let n = 3; n <= 8; n++) modelProb += matrix?.[n]?.[n] || 0
+    } else if (score === '负其它') {
+      for (let y = 4; y <= 8; y++) for (let x = 0; x <= y - 1 && x <= 8; x++) modelProb += matrix?.[x]?.[y] || 0
+    }
+    if (modelProb < 0.005) return
+    const winner = (!isNaN(h) && !isNaN(a)) ? (h > a ? match.home_team : a > h ? match.away_team : 'Draw') : score
+    addBet(`cs-${score}`, `${score} ${winner} · 比分`, '比分', oddsStr, modelProb, score)
+  })
+
+  // 总进球数
+  Object.entries(chinaGoalsOdds || {}).forEach(([key, oddsStr]) => {
+    if (!oddsStr) return
+    let modelProb = 0
+    if (key === '7plus') {
+      modelProb = totalGoalsDist.filter(t => t.goals >= 7).reduce((s, t) => s + t.prob, 0)
+    } else {
+      const goals = parseInt(key)
+      modelProb = totalGoalsDist.find(t => t.goals === goals)?.prob || 0
+    }
+    if (modelProb < 0.005) return
+    addBet(`tg-${key}`, `${key === '7plus' ? '7+' : key} goals · 总进球`, '总进球', oddsStr, modelProb, key)
+  })
+
+  // 让球胜平负 RSPF
+  if ((rspfH || rspfD || rspfA) && matrix) {
+    const rspfProbs = getChineseHandicapProbs(matrix, rspfLine)
+    const absLine = Math.abs(parseInt(rspfLine) || 0)
+    if (rspfH) addBet('rspf-home', `${match.home_team} 让${absLine}球胜 · 让球`, '让球', rspfH, rspfProbs.homeWin)
+    if (rspfD) addBet('rspf-draw', `让球平 · 让球`, '让球', rspfD, rspfProbs.draw)
+    if (rspfA) addBet('rspf-away', `${match.away_team} 让球胜 · 让球`, '让球', rspfA, rspfProbs.awayWin)
+  }
+
+  // Tag model direction
+  const dominant = probs.homeWin >= probs.awayWin && probs.homeWin >= probs.draw ? 'home'
+    : probs.awayWin >= probs.homeWin && probs.awayWin >= probs.draw ? 'away'
+    : 'draw'
+
+  bets.forEach(bet => {
+    const dir = betDirection(bet.id, bet.scoreKey)
+    bet.isModelDirection = dir === 'neutral' || dir === dominant
+  })
+
+  return bets.sort((a, b) => b.edge - a.edge)
+}
+
+export function buildPortfolio(allBets, bankroll, mode) {
+  const b = parseFloat(bankroll) || 10000
+
+  if (mode === 'edge') {
+    const selected = []
+    const typeCounts = {}
+    for (const bet of allBets) {
+      if (bet.edge <= 0.02) continue
+      if (selected.length >= 5) break
+      const count = typeCounts[bet.marketType] || 0
+      if (count >= 2) continue
+      typeCounts[bet.marketType] = count + 1
+      const roles = ['primary', 'secondary', 'insurance']
+      selected.push({ ...bet, role: roles[selected.length] || 'insurance', suggestedStake: kellyStake(bet.edge, bet.odds, b) })
+    }
+    return selected
+  }
+
+  if (mode === 'model') {
+    const modelBets = allBets.filter(bet => bet.isModelDirection && bet.edge > -0.10)
+    const selected = []
+    const typeCounts = {}
+    for (const bet of modelBets) {
+      if (selected.length >= 4) break
+      const count = typeCounts[bet.marketType] || 0
+      if (count >= 2) continue
+      typeCounts[bet.marketType] = count + 1
+      const roles = ['primary', 'secondary', 'insurance']
+      selected.push({ ...bet, role: roles[selected.length] || 'insurance', suggestedStake: kellyStake(Math.max(bet.edge, 0.01), bet.odds, b) })
+    }
+    return selected
+  }
+
+  if (mode === 'balanced') {
+    const modelBets = allBets.filter(bet => bet.isModelDirection)
+    const primary = modelBets.find(bet => bet.edge > -0.10)
+    const secondary = allBets.find(bet => bet.id !== primary?.id && bet.marketType !== primary?.marketType && bet.edge > 0.02)
+    const insurance = allBets.find(bet => bet.id !== primary?.id && bet.id !== secondary?.id && bet.edge > 0.01)
+    const result = []
+    if (primary) result.push({ ...primary, role: 'primary', suggestedStake: kellyStake(Math.max(primary.edge, 0.01), primary.odds, b) })
+    if (secondary) result.push({ ...secondary, role: 'secondary', suggestedStake: kellyStake(secondary.edge, secondary.odds, b, 0.15) })
+    if (insurance) result.push({ ...insurance, role: 'insurance', suggestedStake: kellyStake(insurance.edge, insurance.odds, b, 0.10) })
+    return result
+  }
+
+  return []
+}
