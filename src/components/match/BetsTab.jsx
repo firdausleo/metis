@@ -717,6 +717,12 @@ function MarketChinaCorrectScore({ model, match, odds, setOdds, lang }) {
 
 // ── Best bets summary ─────────────────────────────────────────────────────
 
+function marketBadgeStyle(market) {
+  if (market.includes('🇨🇳')) return { background: '#FEE2E2', color: '#C0392B' }
+  if (market.includes('🇮🇩')) return { background: '#DBEAFE', color: '#1A3A6C' }
+  return { background: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)' }
+}
+
 function BestBetsSummary({ bets, bankroll, lang }) {
   if (!bets || !bets.length) return null
   const bkrl = parseFloat(bankroll)
@@ -734,7 +740,7 @@ function BestBetsSummary({ bets, bankroll, lang }) {
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: isGood ? 'rgba(45,122,79,0.06)' : 'transparent', borderRadius: 'var(--radius-sm)', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 11 }}>{isGood ? '✅' : isFair ? '〰' : '❌'}</span>
               <span style={{ flex: 1, minWidth: 100, fontSize: 12, fontWeight: 500 }}>{b.label}</span>
-              <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 99, background: 'var(--color-bg-secondary)', color: 'var(--color-text-muted)', flexShrink: 0 }}>{b.market}</span>
+              {(() => { const bs = marketBadgeStyle(b.market); return <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 99, background: bs.background, color: bs.color, flexShrink: 0 }}>{b.market}</span> })()}
               <span style={{ fontSize: 11, fontFamily: 'monospace', flexShrink: 0 }}>@{b.odds.toFixed(2)}</span>
               <span style={{ fontSize: 12, fontWeight: 700, color: col, flexShrink: 0 }}>{b.edge >= 0 ? '+' : ''}{(b.edge * 100).toFixed(1)}%</span>
               {stakeAmt != null && stakeAmt > 0 && (
@@ -783,8 +789,8 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
         const o = parseFloat(v1x2Odds?.[key])
         const p = v3probs[key]
         if (o > 1 && p) {
-          const label = key === 'home' ? (match?.home_team || 'Home') : key === 'away' ? (match?.away_team || 'Away') : 'Draw'
-          bets.push({ label: `1X2 ${label}`, edge: p - 1 / o, odds: o, prob: p, market: lang === 'zh' ? '胜平负' : '1X2' })
+          const teamLabel = key === 'home' ? `${match?.home_team || 'Home'} win` : key === 'away' ? `${match?.away_team || 'Away'} win` : 'Draw'
+          bets.push({ label: `${teamLabel} · 1X2`, edge: p - 1 / o, odds: o, prob: p, market: '1X2' })
         }
       })
     }
@@ -794,16 +800,19 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
       if (indoParsed.handicap) {
         const ah = calcAHProbs(matrix, indoParsed.handicap.line)
         if (indoParsed.handicap.homeOdds) {
-          bets.push({ label: `Indo AH ${match?.home_team} (${indoParsed.handicap.line})`, edge: ah.pHome - 1 / indoParsed.handicap.homeOdds, odds: indoParsed.handicap.homeOdds, prob: ah.pHome, market: '🇮🇩 AH' })
+          const hL = indoParsed.handicap.line
+          bets.push({ label: `${match?.home_team} ${hL > 0 ? '+' : ''}${hL} · 亚盘`, edge: ah.pHome - 1 / indoParsed.handicap.homeOdds, odds: indoParsed.handicap.homeOdds, prob: ah.pHome, market: '🇮🇩 亚盘' })
         }
         if (indoParsed.handicap.awayOdds) {
-          bets.push({ label: `Indo AH ${match?.away_team} (${-indoParsed.handicap.line})`, edge: ah.pAway - 1 / indoParsed.handicap.awayOdds, odds: indoParsed.handicap.awayOdds, prob: ah.pAway, market: '🇮🇩 AH' })
+          const aL = -indoParsed.handicap.line
+          bets.push({ label: `${match?.away_team} ${aL > 0 ? '+' : ''}${aL} · 亚盘`, edge: ah.pAway - 1 / indoParsed.handicap.awayOdds, odds: indoParsed.handicap.awayOdds, prob: ah.pAway, market: '🇮🇩 亚盘' })
         }
       }
       if (indoParsed.totalGoals) {
         const tg = calcTGProbs(matrix, indoParsed.totalGoals.line)
-        const prob = indoParsed.totalGoals.side === 'over' ? tg.pOver : tg.pUnder
-        bets.push({ label: `Indo ${indoParsed.totalGoals.side === 'over' ? 'Over' : 'Under'} ${indoParsed.totalGoals.line}`, edge: prob - 1 / indoParsed.totalGoals.odds, odds: indoParsed.totalGoals.odds, prob, market: '🇮🇩 TG' })
+        const tgIsOver = indoParsed.totalGoals.side === 'over'
+        const prob = tgIsOver ? tg.pOver : tg.pUnder
+        bets.push({ label: `${tgIsOver ? 'Over' : 'Under'} ${indoParsed.totalGoals.line} · ${tgIsOver ? '大球' : '小球'}`, edge: prob - 1 / indoParsed.totalGoals.odds, odds: indoParsed.totalGoals.odds, prob, market: tgIsOver ? '🇮🇩 大球' : '🇮🇩 小球' })
       }
     }
 
@@ -818,7 +827,17 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
         else if (score === '负其它') prob = getOtherProb(matrix, 'away')
         else prob = getScoreProb(matrix, score)
         if (prob != null) {
-          bets.push({ label: `China 比分 ${score.includes('-') ? score.replace('-', ':') : score}`, edge: prob - 1 / o, odds: o, prob, market: '🇨🇳 比分' })
+          let csLabel
+          if (score === '胜其它') csLabel = `${match?.home_team || 'Home'} wins (other) · 比分`
+          else if (score === '平其它') csLabel = `Draw (other score) · 比分`
+          else if (score === '负其它') csLabel = `${match?.away_team || 'Away'} wins (other) · 比分`
+          else {
+            const [h, a] = score.split('-').map(Number)
+            if (h === a) csLabel = `${h}-${a} Draw · 比分`
+            else if (h > a) csLabel = `${h}-${a} ${match?.home_team || 'Home'} · 比分`
+            else csLabel = `${h}-${a} ${match?.away_team || 'Away'} · 比分`
+          }
+          bets.push({ label: csLabel, edge: prob - 1 / o, odds: o, prob, market: '🇨🇳比分' })
         }
       })
     }

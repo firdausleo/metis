@@ -133,7 +133,7 @@ export function paspText(plan, lang = 'en') {
   }
 
   const lines = [
-    `Primary: ${dominantLabel} win (${(dominantProb * 100).toFixed(1)}%)`,
+    `Primary: ${dominantLabel === 'Draw' ? `Draw (${(dominantProb * 100).toFixed(1)}%)` : `${dominantLabel} win (${(dominantProb * 100).toFixed(1)}%)`}`,
     `Anchor: ${anchorGoal} goals — Over ${anchorLine} (${(anchorProb * 100).toFixed(1)}%)`,
     primary ? `Top score: ${primary.score} (${(primary.prob * 100).toFixed(1)}%)` : null,
     drawInsurance ? `Draw insurance: ${(drawProb * 100).toFixed(1)}% — small hedge` : null,
