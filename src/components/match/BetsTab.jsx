@@ -152,8 +152,7 @@ function OddsInput({ value, onChange, placeholder = '—', style }) {
       type="number"
       inputMode="decimal"
       value={local}
-      onChange={e => setLocal(e.target.value)}
-      onBlur={() => { if (local !== (value || '')) onChange(local) }}
+      onChange={e => { setLocal(e.target.value); onChange(e.target.value) }}
       onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
       placeholder={placeholder}
       style={{
@@ -959,22 +958,6 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
 
   const COLON_TO_DASH = { '1:0':'1-0','2:0':'2-0','2:1':'2-1','3:0':'3-0','3:1':'3-1','3:2':'3-2','4:0':'4-0','4:1':'4-1','4:2':'4-2','5:0':'5-0','5:1':'5-1','5:2':'5-2','homeOther':'胜其它','0:0':'0-0','1:1':'1-1','2:2':'2-2','3:3':'3-3','drawOther':'平其它','0:1':'0-1','0:2':'0-2','1:2':'1-2','0:3':'0-3','1:3':'1-3','2:3':'2-3','0:4':'0-4','1:4':'1-4','2:4':'2-4','0:5':'0-5','1:5':'1-5','2:5':'2-5','awayOther':'负其它' }
 
-  function saveOddsToStorage() {
-    if (!match?.id) return
-    try {
-      localStorage.setItem(`metis_odds_${match.id}`, JSON.stringify({
-        spf: v1x2Odds,
-        rspf: { line: rspfLine, home: rspfH, draw: rspfD, away: rspfA },
-        scores: csOdds,
-        totalGoals: chinaGoalsOdds,
-        savedAt: Date.now(),
-      }))
-      setLastSaved(new Date())
-    } catch (err) {
-      console.warn('Could not save odds:', err)
-    }
-  }
-
   async function handleImageUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1047,7 +1030,6 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
       }
 
       setUploadSuccess(lang === 'zh' ? `已从截图填入 ${filled} 个赔率` : `Filled ${filled} odds from screenshot`)
-      setTimeout(saveOddsToStorage, 100)
       e.target.value = ''
     } catch (err) {
       setUploadError(lang === 'zh' ? `读取失败：${err.message}` : `Failed to read screenshot: ${err.message}`)
