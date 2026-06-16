@@ -632,59 +632,110 @@ export default function PredictionTab({
                 <p style={{ fontSize: 10, color: 'var(--color-text-muted)', marginBottom: 10 }}>
                   {lang === 'zh' ? '按概率排序的3球区间' : '3-goal windows sorted by probability'}
                 </p>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {ranges.map((r, i) => {
-                    const isTop = i === 0
-                    const barPct = maxProb > 0 ? (r.prob / maxProb) * 100 : 0
-                    return (
-                      <div key={r.range} style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        padding: '6px 0',
-                        borderBottom: '0.5px solid var(--color-border-light)',
-                        background: isTop ? 'rgba(201,168,76,0.06)' : 'transparent',
-                      }}>
-                        {/* Left column — fixed labels */}
-                        <div style={{ width: '130px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{
-                            fontSize: '12px', fontWeight: isTop ? 600 : 500,
-                            color: isTop ? '#C9A84C' : 'var(--color-text-primary)',
-                            minWidth: '38px', flexShrink: 0,
+                {(() => {
+                  // rank map: goal count → rank by probability (1 = highest)
+                  const rankMap = {}
+                  ;[...(v3.totalGoals || [])].sort((a, b) => b.prob - a.prob)
+                    .forEach((item, idx) => { rankMap[item.goals] = idx + 1 })
+                  const goalProbMap = {}
+                  ;(v3.totalGoals || []).forEach(item => { goalProbMap[item.goals] = item.prob })
+                  const getP = g => goalProbMap[g] || 0
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      {ranges.map((r, i) => {
+                        const isTop = i === 0
+                        const goalsInRange = [r.min, r.min + 1, r.max]
+                        const probsInRange = goalsInRange.map(g => getP(g))
+                        const totalP = probsInRange.reduce((s, p) => s + p, 0)
+
+                        return (
+                          <div key={r.range} style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            padding: '5px 0',
+                            borderBottom: '0.5px solid var(--color-border-light)',
+                            background: isTop ? 'rgba(201,168,76,0.06)' : 'transparent',
                           }}>
-                            {r.range}
-                          </span>
-                          <span style={{
-                            fontSize: '11px',
-                            color: isTop ? '#C9A84C' : 'var(--color-text-secondary)',
-                            fontWeight: isTop ? 600 : 400,
-                            minWidth: '40px', flexShrink: 0,
-                          }}>
-                            {(r.prob * 100).toFixed(1)}%
-                          </span>
-                          {isTop && (
-                            <span style={{
-                              fontSize: '9px', fontWeight: 600,
-                              padding: '1px 5px', borderRadius: '99px',
-                              background: 'rgba(201,168,76,0.15)', color: '#C9A84C',
-                              flexShrink: 0,
-                            }}>★</span>
-                          )}
-                        </div>
-                        {/* Right column — bar */}
-                        <div style={{ flex: 1, minWidth: 0, height: '5px', background: 'var(--color-bg)', borderRadius: '3px', position: 'relative' }}>
-                          <div style={{
-                            position: 'absolute', left: 0, top: 0,
-                            height: '100%', borderRadius: '3px',
-                            width: `${barPct}%`,
-                            background: isTop ? '#C9A84C' : '#6B7280',
-                            transition: 'width 0.4s ease',
-                          }} />
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                            {/* LINE 1: label + % + star + stacked bar — all on one row */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{
+                                fontSize: '11px', fontWeight: isTop ? 500 : 400,
+                                color: isTop ? '#C9A84C' : 'var(--color-text-primary)',
+                                width: '28px', flexShrink: 0,
+                              }}>{r.range}</span>
+
+                              <span style={{
+                                fontSize: '11px',
+                                color: isTop ? '#C9A84C' : 'var(--color-text-secondary)',
+                                width: '38px', flexShrink: 0,
+                              }}>{(r.prob * 100).toFixed(1)}%</span>
+
+                              {/* always in flow so layout is stable across rows */}
+                              <span style={{
+                                fontSize: '10px', color: '#C9A84C',
+                                flexShrink: 0, width: '10px',
+                                visibility: isTop ? 'visible' : 'hidden',
+                              }}>★</span>
+
+                              {/* stacked bar — 3 segments, widths ∝ individual probabilities */}
+                              <div style={{
+                                flex: 1, minWidth: 0, height: '8px',
+                                display: 'flex', borderRadius: '4px',
+                                overflow: 'hidden', gap: '1px',
+                              }}>
+                                {goalsInRange.map((g, idx) => (
+                                  <div key={g} style={{
+                                    width: `${totalP > 0 ? (probsInRange[idx] / totalP) * 100 : 33.3}%`,
+                                    background: g === kStar
+                                      ? '#C9A84C'
+                                      : idx === 0 ? '#6B7280' : '#9CA3AF',
+                                    flexShrink: 0,
+                                  }} />
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* LINE 2: goal labels aligned under bar segments */}
+                            {/* paddingLeft = range(28) + gap(6) + %(38) + gap(6) + star(10) + gap(6) = 94px */}
+                            <div style={{
+                              display: 'flex',
+                              marginTop: '3px',
+                              paddingLeft: '94px',
+                            }}>
+                              {goalsInRange.map((g, idx) => (
+                                <div key={g} style={{
+                                  flex: 1,
+                                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                                  fontSize: '9px',
+                                  color: g === kStar ? '#C9A84C' : 'var(--color-text-muted)',
+                                  fontWeight: g === kStar ? 500 : 400,
+                                }}>
+                                  <span style={{ fontWeight: 500, fontSize: '10px' }}>
+                                    {g}{g === kStar ? '★' : ''}
+                                  </span>
+                                  <span style={{
+                                    fontSize: '8px', padding: '0 3px', borderRadius: '99px',
+                                    background: rankMap[g] === 1
+                                      ? 'rgba(201,168,76,0.15)'
+                                      : 'var(--color-bg-elevated)',
+                                    color: rankMap[g] === 1
+                                      ? '#C9A84C'
+                                      : rankMap[g] <= 3
+                                      ? 'var(--color-text-secondary)'
+                                      : 'var(--color-text-muted)',
+                                    fontWeight: 500,
+                                  }}>#{rankMap[g]}</span>
+                                  <span>{(probsInRange[idx] * 100).toFixed(1)}%</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
                 {kStar != null && (
                   <div style={{
                     background: 'var(--color-bg-elevated)', borderRadius: 'var(--radius-sm)',
