@@ -826,9 +826,15 @@ function BestBetsSummary({ bets, bankroll, lang }) {
 
 // ── BetsTab ───────────────────────────────────────────────────────────────
 
+function toBeijingTime(date) {
+  return date.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit' })
+}
+
 export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, isAdmin }) {
   const { t, lang } = useTranslation()
-  const [bankroll, setBankroll] = useState('')
+  const [bankroll, setBankroll] = useState(() => {
+    try { return localStorage.getItem('metis_bankroll') || '10000' } catch { return '10000' }
+  })
   const [indoParsed, setIndoParsed] = useState(null)
   const [csOdds, setCsOdds] = useState({})
   const [chinaGoalsOdds, setChinaGoalsOdds] = useState({ '0': '', '1': '', '2': '', '3': '', '4': '', '5': '', '6': '', '7plus': '' })
@@ -856,14 +862,68 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   const [uploadLoading, setUploadLoading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
   const [uploadSuccess, setUploadSuccess] = useState(null)
+  const [lastSaved, setLastSaved] = useState(null)
   const fileInputRef = useRef(null)
 
-  // Pre-fill China correct score odds for France vs Senegal
+  // Pre-fill China correct score odds for France vs Senegal (localStorage overwrites below if present)
   useEffect(() => {
     if (match?.home_team === 'France' && match?.away_team === 'Senegal') {
       setCsOdds(FRANCE_SENEGAL_CS)
     }
   }, [match?.id])
+
+  // Load saved odds from localStorage when match changes
+  useEffect(() => {
+    if (!match?.id) return
+    try {
+      const saved = localStorage.getItem(`metis_odds_${match.id}`)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Date.now() - parsed.savedAt < 24 * 60 * 60 * 1000) {
+          if (parsed.spf) setV1x2Odds(parsed.spf)
+          if (parsed.rspf) {
+            setRspfLine(parsed.rspf.line ?? -1)
+            if (parsed.rspf.home != null) setRspfH(String(parsed.rspf.home))
+            if (parsed.rspf.draw != null) setRspfD(String(parsed.rspf.draw))
+            if (parsed.rspf.away != null) setRspfA(String(parsed.rspf.away))
+          }
+          if (parsed.scores) setCsOdds(parsed.scores)
+          if (parsed.totalGoals) setChinaGoalsOdds(parsed.totalGoals)
+        }
+      }
+    } catch (err) {
+      console.warn('Could not restore odds:', err)
+    }
+  }, [match?.id])
+
+  // Auto-save China odds to localStorage on any change
+  useEffect(() => {
+    if (!match?.id) return
+    try {
+      localStorage.setItem(`metis_odds_${match.id}`, JSON.stringify({
+        spf: v1x2Odds,
+        rspf: { line: rspfLine, home: rspfH, draw: rspfD, away: rspfA },
+        scores: csOdds,
+        totalGoals: chinaGoalsOdds,
+        savedAt: Date.now(),
+      }))
+      setLastSaved(new Date())
+    } catch (err) {
+      console.warn('Could not save odds:', err)
+    }
+  }, [match?.id, v1x2Odds, rspfH, rspfD, rspfA, rspfLine, csOdds, chinaGoalsOdds])
+
+  // Clear stored odds when match is finished
+  useEffect(() => {
+    if (match?.status === 'finished' && match?.id) {
+      localStorage.removeItem(`metis_odds_${match.id}`)
+    }
+  }, [match?.status])
+
+  // Persist bankroll setting
+  useEffect(() => {
+    try { localStorage.setItem('metis_bankroll', bankroll) } catch {}
+  }, [bankroll])
 
   const plan = useMemo(() => buildPaspPlan(sidebarModel, match), [sidebarModel, match])
 
@@ -891,6 +951,22 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   }
 
   const COLON_TO_DASH = { '1:0':'1-0','2:0':'2-0','2:1':'2-1','3:0':'3-0','3:1':'3-1','3:2':'3-2','4:0':'4-0','4:1':'4-1','4:2':'4-2','5:0':'5-0','5:1':'5-1','5:2':'5-2','homeOther':'胜其它','0:0':'0-0','1:1':'1-1','2:2':'2-2','3:3':'3-3','drawOther':'平其它','0:1':'0-1','0:2':'0-2','1:2':'1-2','0:3':'0-3','1:3':'1-3','2:3':'2-3','0:4':'0-4','1:4':'1-4','2:4':'2-4','0:5':'0-5','1:5':'1-5','2:5':'2-5','awayOther':'负其它' }
+
+  function saveOddsToStorage() {
+    if (!match?.id) return
+    try {
+      localStorage.setItem(`metis_odds_${match.id}`, JSON.stringify({
+        spf: v1x2Odds,
+        rspf: { line: rspfLine, home: rspfH, draw: rspfD, away: rspfA },
+        scores: csOdds,
+        totalGoals: chinaGoalsOdds,
+        savedAt: Date.now(),
+      }))
+      setLastSaved(new Date())
+    } catch (err) {
+      console.warn('Could not save odds:', err)
+    }
+  }
 
   async function handleImageUpload(e) {
     const file = e.target.files?.[0]
@@ -964,6 +1040,7 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
       }
 
       setUploadSuccess(lang === 'zh' ? `已从截图填入 ${filled} 个赔率` : `Filled ${filled} odds from screenshot`)
+      setTimeout(saveOddsToStorage, 100)
       e.target.value = ''
     } catch (err) {
       setUploadError(lang === 'zh' ? `读取失败：${err.message}` : `Failed to read screenshot: ${err.message}`)
@@ -1072,9 +1149,19 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
 
         {/* Block header */}
         <div style={{ background: 'var(--color-bg-secondary)', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '0.5px solid var(--color-border)' }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)' }}>
-            🇨🇳 {lang === 'zh' ? '中国彩票' : 'China Lottery'}
-          </span>
+          <div>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+              🇨🇳 {lang === 'zh' ? '中国彩票' : 'China Lottery'}
+            </span>
+            {lastSaved && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                <i className="ti ti-check" aria-hidden="true" style={{ color: 'var(--color-success)', fontSize: 11 }} />
+                <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
+                  {lang === 'zh' ? `赔率已保存 · ${toBeijingTime(lastSaved)}` : `Odds saved · ${toBeijingTime(lastSaved)}`}
+                </span>
+              </div>
+            )}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {uploadSuccess && <span style={{ fontSize: 11, color: 'var(--color-success)' }}><i className="ti ti-check" /> {uploadSuccess}</span>}
             {uploadError && <span style={{ fontSize: 11, color: 'var(--color-danger)' }}>{uploadError}</span>}
