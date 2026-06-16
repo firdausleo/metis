@@ -829,7 +829,7 @@ function toBeijingTime(date) {
   return date.toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit' })
 }
 
-export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, isAdmin }) {
+export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds, setV1x2Odds: setParentV1x2Odds, isAdmin }) {
   const { t, lang } = useTranslation()
   const [bankroll, setBankroll] = useState(() => {
     try { return localStorage.getItem('metis_bankroll') || '10000' } catch { return '10000' }
@@ -864,6 +864,22 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   const [lastSaved, setLastSaved] = useState(null)
   const fileInputRef = useRef(null)
   const isNavigating = useRef(false)
+
+  // Local state for 1X2 odds — avoids desktop timing bug where save effect fires
+  // before parent re-render propagates updated prop back to BetsTab.
+  const [v1x2Odds, setV1x2Odds] = useState(initialV1x2Odds || { home: '', draw: '', away: '' })
+
+  // Keep parent in sync (for admin Supabase save + sidebar EV display).
+  useEffect(() => { setParentV1x2Odds(v1x2Odds) }, [v1x2Odds])
+
+  // Sync non-empty prop changes into local state (e.g. parent DB load).
+  // Defined BEFORE restore effect so restore always wins in the same commit phase.
+  // Empty-guard skips the navigation reset so localStorage restore isn't overwritten.
+  useEffect(() => {
+    if (!initialV1x2Odds) return
+    if (!initialV1x2Odds.home && !initialV1x2Odds.draw && !initialV1x2Odds.away) return
+    setV1x2Odds(initialV1x2Odds)
+  }, [initialV1x2Odds])
 
   // Reset local China state + restore from localStorage when match changes.
   // France/Senegal prefill happens first (as the default), then localStorage overwrites if present.
