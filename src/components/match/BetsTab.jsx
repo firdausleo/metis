@@ -3,7 +3,7 @@ import { useTranslation } from '../../lib/i18n'
 import { getFlag } from '../../lib/teamFlags'
 import { analyse1X2, calcStake, formatProb } from '../../lib/evEngine'
 import { placeBet } from '../../lib/bets'
-import { buildPaspPlan, paspText, quarterKelly, correlatedKelly, getRangeProbabilities } from '../../utils/pasp'
+import { buildPaspPlan, paspText, quarterKelly, correlatedKelly, getRangeProbabilities, getChineseHandicapProbs } from '../../utils/pasp'
 import { parseIndonesiaOdds } from '../../utils/indonesiaOddsParser'
 import InfoTooltip from '../InfoTooltip'
 import { supabase } from '../../lib/supabase'
@@ -459,30 +459,41 @@ function MarketAsian({ model, match, bankroll }) {
 
 function MarketChineseHandicap({ model, match, lang, line, setLine, oddsH, setOddsH, oddsD, setOddsD, oddsA, setOddsA }) {
   const CH_LINES = [-3, -2, -1, 0, 1, 2, 3]
+  const H = parseInt(line) || 0
+  const home = match?.home_team || '主队'
+  const away = match?.away_team || '客队'
 
-  const matrix = model?.v2?.matrix
-  let probs = null
-  if (matrix) {
-    const N = matrix.length
-    let pH = 0, pD = 0, pA = 0
-    for (let i = 0; i < N; i++) {
-      for (let j = 0; j < N; j++) {
-        const diff = i - j
-        if (diff > -line) pH += matrix[i][j]
-        else if (diff === -line) pD += matrix[i][j]
-        else pA += matrix[i][j]
-      }
-    }
-    probs = { pH, pD, pA }
-  }
+  // v3 matrix preferred, fall back to v2
+  const matrix = model?.v3?.matrix || model?.v2?.matrix
+  const probs = matrix ? getChineseHandicapProbs(matrix, H) : null
 
   function edgeFor(p, oddsStr) {
     const o = parseFloat(oddsStr)
     if (!o || !p || o <= 1) return null
-    return p - 1 / o
+    return p * o - 1
   }
 
-  const lineLabel = line > 0 ? `主让${line}球` : line < 0 ? `客让${-line}球` : '平手'
+  // Dynamic labels based on handicap direction
+  function rowLabels(H) {
+    if (H < 0) {
+      const n = Math.abs(H)
+      return [`${home}让${n}球胜`, `${home}让${n}球平`, `${home}让${n}球负`]
+    }
+    if (H > 0) {
+      return [`${home}受${H}球胜`, `${home}受${H}球平`, `${home}受${H}球负`]
+    }
+    return [`${home}平手胜`, '平局', `${away}胜`]
+  }
+
+  const [labelH, labelD, labelA] = rowLabels(H)
+
+  // Select option labels: negative line = home is favorite (gives goals)
+  function optLabel(l) {
+    if (l < 0) return `主让${-l}球 (${l})`
+    if (l > 0) return `主受${l}球 (+${l})`
+    return '平手 (0)'
+  }
+
   const thS = { padding: '5px 8px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--color-text-muted)', background: 'var(--color-bg-elevated)', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap', textAlign: 'center' }
   const tdS = { padding: '8px 8px', fontSize: 12, borderBottom: '0.5px solid var(--color-border)', textAlign: 'center' }
 
@@ -493,9 +504,8 @@ function MarketChineseHandicap({ model, match, lang, line, setLine, oddsH, setOd
         <label style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>让球盘口：</label>
         <select value={line} onChange={e => setLine(Number(e.target.value))}
           style={{ fontSize: 16, minHeight: 44, padding: '0 8px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)', cursor: 'pointer' }}>
-          {CH_LINES.map(l => <option key={l} value={l}>{l > 0 ? `主让${l}` : l < 0 ? `客让${-l}` : '平手 (0)'}</option>)}
+          {CH_LINES.map(l => <option key={l} value={l}>{optLabel(l)}</option>)}
         </select>
-        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{lineLabel}</span>
       </div>
 
       {probs ? (
@@ -504,16 +514,16 @@ function MarketChineseHandicap({ model, match, lang, line, setLine, oddsH, setOd
             <thead>
               <tr>
                 <th style={{ ...thS, textAlign: 'left' }}>结果</th>
-                <th style={thS}>V2概率</th>
+                <th style={thS}>模型概率</th>
                 <th style={thS}>您的赔率</th>
-                <th style={thS}>边际 <InfoTooltip title="Edge %" explanation="Your advantage over the bookmaker's implied probability after removing the vig. >5% = BET, 0–5% = Marginal, <0 = SKIP." explanationZh="扣除水位后您相对庄家的数学优势。>5%=下注，0-5%=边缘，<0=跳过。" lang={lang} /></th>
+                <th style={thS}>边际 <InfoTooltip title="Edge %" explanation="modelProb × odds − 1. >5% = BET, 0–5% = Marginal, <0 = SKIP." explanationZh="模型概率×赔率−1。>5%=下注，0-5%=边缘，<0=跳过。" lang={lang} /></th>
               </tr>
             </thead>
             <tbody>
               {[
-                { label: `${match?.home_team} 让球胜`, p: probs.pH, odds: oddsH, set: setOddsH },
-                { label: '让球平', p: probs.pD, odds: oddsD, set: setOddsD },
-                { label: `${match?.away_team} 让球胜`, p: probs.pA, odds: oddsA, set: setOddsA },
+                { label: labelH, p: probs.homeWin, odds: oddsH, set: setOddsH },
+                { label: labelD, p: probs.draw,    odds: oddsD, set: setOddsD },
+                { label: labelA, p: probs.awayWin, odds: oddsA, set: setOddsA },
               ].map(row => {
                 const edge = edgeFor(row.p, row.odds)
                 return (

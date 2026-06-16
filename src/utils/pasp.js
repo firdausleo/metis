@@ -140,3 +140,27 @@ export function paspText(plan, lang = 'en') {
   ]
   return lines.filter(Boolean).join(' · ')
 }
+
+// Chinese handicap (让球胜平负) probability calculator.
+// matrix[homeGoals][awayGoals] = probability
+// line = handicap integer applied to home team (e.g. -1 = home gives 1, +1 = home receives 1)
+export function getChineseHandicapProbs(matrix, line) {
+  const H = parseInt(line) || 0
+  let homeWin = 0, draw = 0, awayWin = 0
+
+  for (let x = 0; x <= 8; x++) {
+    for (let y = 0; y <= 8; y++) {
+      const p = matrix?.[x]?.[y] || 0
+      const adjustedDiff = (x - y) + H   // positive = home covers after handicap
+      if (adjustedDiff > 0) homeWin += p
+      else if (adjustedDiff === 0) draw += p
+      else awayWin += p
+    }
+  }
+
+  return {
+    homeWin: Math.round(homeWin * 1000) / 1000,
+    draw:    Math.round(draw    * 1000) / 1000,
+    awayWin: Math.round(awayWin * 1000) / 1000,
+  }
+}

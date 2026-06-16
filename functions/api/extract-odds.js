@@ -15,6 +15,8 @@ export async function onRequest(context) {
       )
     }
 
+    const matchStr = homeTeam && awayTeam ? `${homeTeam} vs ${awayTeam}` : 'a football match'
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -38,9 +40,22 @@ export async function onRequest(context) {
             },
             {
               type: 'text',
-              text: `This is a screenshot of a Chinese sports lottery (彩票) app showing betting odds for a football match${homeTeam ? ` between ${homeTeam} and ${awayTeam}` : ''}.
+              text: `This screenshot shows a Chinese sports lottery (彩票) app for ${matchStr}.
 
-Extract ALL visible odds and return as JSON only, no other text, no markdown:
+Extract ALL visible odds carefully.
+
+IMPORTANT — 让球胜平负 (handicap):
+  The handicap line is shown as a number in a gray/dark box on the LEFT of the row. It is usually -1, -2, +1 etc.
+  主胜 = home team wins AFTER applying handicap
+  平   = draw AFTER applying handicap
+  主负 = away team wins AFTER applying handicap
+
+  Example: if line = -1 and ${homeTeam || 'Home'} vs ${awayTeam || 'Away'}:
+    主胜 means ${homeTeam || 'Home'} wins by 2+ goals (covers -1)
+    平   means ${homeTeam || 'Home'} wins by exactly 1 goal (push)
+    主负 means ${homeTeam || 'Home'} draws or loses (${awayTeam || 'Away'} covers)
+
+Return JSON only, no other text, no markdown fences:
 {
   "spf": {
     "home": null,
@@ -48,7 +63,7 @@ Extract ALL visible odds and return as JSON only, no other text, no markdown:
     "away": null
   },
   "rspf": {
-    "line": -1,
+    "line": null,
     "home": null,
     "draw": null,
     "away": null
@@ -66,14 +81,25 @@ Extract ALL visible odds and return as JSON only, no other text, no markdown:
     "0:4": null, "1:4": null, "2:4": null,
     "0:5": null, "1:5": null, "2:5": null,
     "awayOther": null
+  },
+  "totalGoals": {
+    "0": null, "1": null, "2": null, "3": null,
+    "4": null, "5": null, "6": null, "7plus": null
+  },
+  "halfFullTime": {
+    "homeHome": null, "homeDraw": null, "homeAway": null,
+    "drawHome": null, "drawDraw": null, "drawAway": null,
+    "awayHome": null, "awayDraw": null, "awayAway": null
   }
 }
 
 Rules:
-- Numbers only for odds values (e.g. 6.25 not "6.25x")
-- null for any score not visible in the screenshot
-- The rspf line number is the handicap shown (e.g. -1)
-- Return pure JSON, nothing else`
+- rspf.line = the integer in the gray box (e.g. -1, -2, +1) — NOT null if visible
+- rspf.home = 主胜 odds
+- rspf.draw = 平 odds (the middle value)
+- rspf.away = 主负 odds
+- All odds are numbers only (e.g. 2.12 not "2.12x")
+- null for anything not visible in the screenshot`
             }
           ]
         }]
