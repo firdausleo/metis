@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useTranslation } from '../../lib/i18n'
 import { getFlag } from '../../lib/teamFlags'
 import { analyse1X2, calcStake, formatProb } from '../../lib/evEngine'
@@ -6,6 +6,7 @@ import { placeBet } from '../../lib/bets'
 import { buildPaspPlan, paspText, quarterKelly, correlatedKelly, getRangeProbabilities } from '../../utils/pasp'
 import { parseIndonesiaOdds } from '../../utils/indonesiaOddsParser'
 import InfoTooltip from '../InfoTooltip'
+import { supabase } from '../../lib/supabase'
 
 // ── Asian Handicap helpers (pure, no deps) ──────────────────────────────
 
@@ -456,12 +457,8 @@ function MarketAsian({ model, match, bankroll }) {
 
 // ── Chinese Handicap 1X2 section (让球胜平负) ──────────────────────────────
 
-function MarketChineseHandicap({ model, match, lang }) {
+function MarketChineseHandicap({ model, match, lang, line, setLine, oddsH, setOddsH, oddsD, setOddsD, oddsA, setOddsA }) {
   const CH_LINES = [-3, -2, -1, 0, 1, 2, 3]
-  const [line, setLine] = useState(-1)
-  const [oddsH, setOddsH] = useState('')
-  const [oddsD, setOddsD] = useState('')
-  const [oddsA, setOddsA] = useState('')
 
   const matrix = model?.v2?.matrix
   let probs = null
@@ -762,6 +759,18 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   const [indoParsed, setIndoParsed] = useState(null)
   const [csOdds, setCsOdds] = useState({})
 
+  // Lifted RSPF state (shared with upload handler)
+  const [rspfLine, setRspfLine] = useState(-1)
+  const [rspfH, setRspfH] = useState('')
+  const [rspfD, setRspfD] = useState('')
+  const [rspfA, setRspfA] = useState('')
+
+  // Screenshot upload state
+  const [uploadLoading, setUploadLoading] = useState(false)
+  const [uploadError, setUploadError] = useState(null)
+  const [uploadSuccess, setUploadSuccess] = useState(null)
+  const fileInputRef = useRef(null)
+
   // Pre-fill China correct score odds for France vs Senegal
   useEffect(() => {
     if (match?.home_team === 'France' && match?.away_team === 'Senegal') {
@@ -777,6 +786,81 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   const kStar = v3Goals?.length ? [...v3Goals].sort((a, b) => b.prob - a.prob)[0]?.goals ?? 2 : 2
   const anchorLine = kStar - 0.5
   const topRange = v3Goals?.length ? getRangeProbabilities(v3Goals)[0] : null
+
+  // Score key mapping: Claude returns "1:0" colon format, csOdds uses "1-0" dash format
+  const COLON_TO_DASH = { '1:0':'1-0','2:0':'2-0','2:1':'2-1','3:0':'3-0','3:1':'3-1','3:2':'3-2','4:0':'4-0','4:1':'4-1','4:2':'4-2','5:0':'5-0','5:1':'5-1','5:2':'5-2','homeOther':'胜其它','0:0':'0-0','1:1':'1-1','2:2':'2-2','3:3':'3-3','drawOther':'平其它','0:1':'0-1','0:2':'0-2','1:2':'1-2','0:3':'0-3','1:3':'1-3','2:3':'2-3','0:4':'0-4','1:4':'1-4','2:4':'2-4','0:5':'0-5','1:5':'1-5','2:5':'2-5','awayOther':'负其它' }
+
+  async function handleImageUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadLoading(true)
+    setUploadError(null)
+    setUploadSuccess(null)
+
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result.split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+
+      const mediaType = file.type || 'image/jpeg'
+      const { data: { session } } = await supabase.auth.getSession()
+
+      const response = await fetch('/api/extract-odds', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ image: base64, mediaType, homeTeam: match?.home_team, awayTeam: match?.away_team }),
+      })
+
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || 'Failed to extract odds')
+      }
+
+      const parsed = await response.json()
+      let filled = 0
+
+      if (parsed.spf) {
+        const spf = {}
+        if (parsed.spf.home != null) { spf.home = String(parsed.spf.home); filled++ }
+        if (parsed.spf.draw != null) { spf.draw = String(parsed.spf.draw); filled++ }
+        if (parsed.spf.away != null) { spf.away = String(parsed.spf.away); filled++ }
+        if (Object.keys(spf).length) setV1x2Odds(prev => ({ ...prev, ...spf }))
+      }
+
+      if (parsed.rspf) {
+        if (parsed.rspf.line != null) setRspfLine(parsed.rspf.line)
+        if (parsed.rspf.home != null) { setRspfH(String(parsed.rspf.home)); filled++ }
+        if (parsed.rspf.draw != null) { setRspfD(String(parsed.rspf.draw)); filled++ }
+        if (parsed.rspf.away != null) { setRspfA(String(parsed.rspf.away)); filled++ }
+      }
+
+      if (parsed.scores) {
+        const newScores = { ...csOdds }
+        Object.entries(parsed.scores).forEach(([key, val]) => {
+          if (val != null) {
+            const dashKey = COLON_TO_DASH[key] ?? key
+            newScores[dashKey] = String(val)
+            filled++
+          }
+        })
+        setCsOdds(newScores)
+      }
+
+      setUploadSuccess(lang === 'zh' ? `已从截图填入 ${filled} 个赔率` : `Filled ${filled} odds from screenshot`)
+      e.target.value = ''
+    } catch (err) {
+      setUploadError(lang === 'zh' ? `读取失败：${err.message}` : `Failed to read screenshot: ${err.message}`)
+    } finally {
+      setUploadLoading(false)
+    }
+  }
 
   const bestBets = useMemo(() => {
     const bets = []
@@ -903,16 +987,75 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
         </div>
       )}
 
-      {/* ── Chinese Handicap 彩票 ── */}
+      {/* ── China Lottery (upload + handicap + correct score) ── */}
       {sidebarModel && (
-        <div style={cardStyle}>
-          <MarketChineseHandicap model={sidebarModel} match={match} lang={lang} />
-        </div>
-      )}
+        <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Upload button */}
+          <div>
+            <span style={{ display: 'block', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-accent)', textTransform: 'uppercase', borderBottom: '1px solid var(--color-accent)', paddingBottom: 6, marginBottom: 14 }}>
+              🇨🇳 {lang === 'zh' ? '中国彩票' : 'China Lottery'}
+            </span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleImageUpload}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadLoading}
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                border: '1px dashed var(--color-border)',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--color-bg-secondary)',
+                cursor: uploadLoading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                fontSize: 13,
+                color: 'var(--color-text-secondary)',
+                minHeight: 44,
+              }}
+            >
+              {uploadLoading ? (
+                <>
+                  <i className="ti ti-loader-2" style={{ animation: 'spin 1s linear infinite' }} aria-hidden="true" />
+                  {lang === 'zh' ? '正在读取赔率...' : 'Reading odds from screenshot...'}
+                </>
+              ) : (
+                <>
+                  <i className="ti ti-camera" aria-hidden="true" />
+                  {lang === 'zh' ? '上传彩票截图 — 自动填入赔率' : 'Upload China lottery screenshot — auto-fill odds'}
+                </>
+              )}
+            </button>
+            {uploadSuccess && (
+              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <i className="ti ti-check" aria-hidden="true" />
+                {uploadSuccess}
+              </div>
+            )}
+            {uploadError && (
+              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-danger)' }}>
+                {uploadError}
+              </div>
+            )}
+          </div>
 
-      {/* ── China Correct Score (比分) ── */}
-      {sidebarModel && (
-        <div style={cardStyle}>
+          {/* 让球胜平负 */}
+          <MarketChineseHandicap
+            model={sidebarModel} match={match} lang={lang}
+            line={rspfLine} setLine={setRspfLine}
+            oddsH={rspfH} setOddsH={setRspfH}
+            oddsD={rspfD} setOddsD={setRspfD}
+            oddsA={rspfA} setOddsA={setRspfA}
+          />
+
+          {/* 比分 */}
           <MarketChinaCorrectScore model={sidebarModel} match={match} odds={csOdds} setOdds={setCsOdds} lang={lang} />
         </div>
       )}
