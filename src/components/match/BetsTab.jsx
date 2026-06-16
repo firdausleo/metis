@@ -863,11 +863,13 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
   const [uploadSuccess, setUploadSuccess] = useState(null)
   const [lastSaved, setLastSaved] = useState(null)
   const fileInputRef = useRef(null)
+  const isNavigating = useRef(false)
 
   // Reset local China state + restore from localStorage when match changes.
   // France/Senegal prefill happens first (as the default), then localStorage overwrites if present.
   useEffect(() => {
     if (!match?.id) return
+    isNavigating.current = true
 
     // Reset all local China odds state to avoid carrying over from previous match
     setRspfLine(-1)
@@ -884,27 +886,33 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds, setV1x2Odds, is
 
     try {
       const saved = localStorage.getItem(`metis_odds_${match.id}`)
-      if (!saved) return
-      const parsed = JSON.parse(saved)
-      if (Date.now() - parsed.savedAt > 24 * 60 * 60 * 1000) return
-      if (parsed.spf) setV1x2Odds(parsed.spf)
-      if (parsed.rspf) {
-        setRspfLine(parsed.rspf.line ?? -1)
-        if (parsed.rspf.home != null) setRspfH(String(parsed.rspf.home))
-        if (parsed.rspf.draw != null) setRspfD(String(parsed.rspf.draw))
-        if (parsed.rspf.away != null) setRspfA(String(parsed.rspf.away))
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Date.now() - parsed.savedAt < 24 * 60 * 60 * 1000) {
+          if (parsed.spf) setV1x2Odds(parsed.spf)
+          if (parsed.rspf) {
+            setRspfLine(parsed.rspf.line ?? -1)
+            if (parsed.rspf.home != null) setRspfH(String(parsed.rspf.home))
+            if (parsed.rspf.draw != null) setRspfD(String(parsed.rspf.draw))
+            if (parsed.rspf.away != null) setRspfA(String(parsed.rspf.away))
+          }
+          if (parsed.scores) setCsOdds(parsed.scores)
+          if (parsed.totalGoals) setChinaGoalsOdds(parsed.totalGoals)
+        }
       }
-      if (parsed.scores) setCsOdds(parsed.scores)
-      if (parsed.totalGoals) setChinaGoalsOdds(parsed.totalGoals)
     } catch (err) {
       console.warn('Could not restore odds:', err)
     }
+
+    // Clear flag after React processes all setState calls above
+    setTimeout(() => { isNavigating.current = false }, 0)
   }, [match?.id])
 
   // Auto-save China odds to localStorage only when odds state changes (NOT on match.id change,
   // to avoid writing stale previous-match values under the new match's key).
   useEffect(() => {
     if (!match?.id) return
+    if (isNavigating.current) return
     try {
       localStorage.setItem(`metis_odds_${match.id}`, JSON.stringify({
         spf: v1x2Odds,
