@@ -18,6 +18,7 @@ import AdminKnockout from './pages/AdminKnockout'
 import FAQ from './pages/FAQ'
 import Simulator from './pages/Simulator'
 import MetisWizard from './pages/Metis'
+import MetisSettings from './pages/MetisSettings'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { session, sessionLoading, profile, profileLoading, tier } = useUser()
@@ -74,6 +75,7 @@ export default function App() {
             <Route path="/simulator" element={<ProtectedRoute><Simulator /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute adminOnly><AdminUsers /></ProtectedRoute>} />
             <Route path="/admin/knockout" element={<ProtectedRoute adminOnly><AdminKnockout /></ProtectedRoute>} />
+            <Route path="/settings/metis" element={<ProtectedRoute adminOnly><MetisSettings /></ProtectedRoute>} />
           </Routes>
         </Layout>
       </UserProvider>
