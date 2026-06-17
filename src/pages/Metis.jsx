@@ -364,7 +364,7 @@ FORMAT YOUR RESPONSES
 
       {/* ── WELCOME / BRAIN STATE ── */}
       {!chatActive && (
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', paddingBottom: 4 }}>
 
           {/* ── TITLE SECTION ── */}
           <div style={{ textAlign: 'center', padding: '28px 16px 16px', flexShrink: 0 }}>
@@ -442,7 +442,7 @@ FORMAT YOUR RESPONSES
 
           {/* ── SUGGESTION CHIPS ── */}
           <div style={{
-            padding: '10px 16px 6px',
+            padding: '10px 16px 4px',
             display: 'flex',
             flexWrap: 'wrap',
             gap: 6,
@@ -568,7 +568,7 @@ FORMAT YOUR RESPONSES
       {/* ── INPUT AREA — always visible ── */}
       <div style={{
         flexShrink: 0,
-        padding: '10px 16px 16px',
+        padding: '8px 16px 16px',
         borderTop: '0.5px solid rgba(201,168,76,0.10)',
         background: '#080c14',
       }}>

@@ -3,10 +3,10 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation, setLanguage } from '../lib/i18n'
 
 const NAV_ITEMS = [
-  { path: '/metis',   icon: '⚡', labelEn: 'METIS',   labelZh: 'METIS',  gold: true },
-  { path: '/matches', icon: '📅', labelEn: 'Matches',  labelZh: '比赛' },
-  { path: '/my-bets', icon: '💰', labelEn: 'My Bets',  labelZh: '投注' },
-  { path: '/faq',     icon: '❓', labelEn: 'FAQ',       labelZh: '帮助' },
+  { path: '/metis',   icon: 'ti-bolt',           labelEn: 'METIS',   labelZh: 'METIS',  gold: true },
+  { path: '/matches', icon: 'ti-calendar-event', labelEn: 'Matches', labelZh: '比赛' },
+  { path: '/my-bets', icon: 'ti-coins',          labelEn: 'My Bets', labelZh: '投注' },
+  { path: '/faq',     icon: 'ti-help-circle',    labelEn: 'FAQ',     labelZh: '帮助' },
 ]
 
 function DropdownPanel({ open, userName, isAdmin, lang, navigate, onLogout, setOpen, posStyle }) {
@@ -174,7 +174,11 @@ export default function NavBar({ user, isAdmin, onLogout }) {
                 flex: 1, height: '100%', textDecoration: 'none',
                 borderTop: active ? '2px solid #C9A84C' : '2px solid transparent',
               }}>
-                <span style={{ fontSize: 20 }}>{item.icon}</span>
+                <i className={`ti ${item.icon}`} aria-hidden="true" style={{
+                  fontSize: 22,
+                  color: active ? '#C9A84C' : 'rgba(255,255,255,0.50)',
+                  display: 'block', lineHeight: 1,
+                }} />
                 <span style={{
                   fontSize: 9, fontFamily: "'IBM Plex Mono', monospace",
                   color: active ? '#C9A84C' : 'rgba(255,255,255,0.5)',
@@ -193,20 +197,25 @@ export default function NavBar({ user, isAdmin, onLogout }) {
   // ── DESKTOP SIDEBAR ──────────────────────────────────────────────────────
   return (
     <div style={{
-      position: 'fixed', top: 0, left: 0, bottom: 0, width: 64,
+      position: 'fixed', top: 0, left: 0, bottom: 0, width: 72,
       background: '#1A3A6C', display: 'flex', flexDirection: 'column',
       alignItems: 'center', paddingTop: 8, paddingBottom: 8,
       zIndex: 300, borderRight: '0.5px solid rgba(255,255,255,0.08)',
     }}>
       {/* Brand */}
       <div style={{
-        fontSize: 9, fontFamily: "'IBM Plex Mono', monospace",
-        fontWeight: 600, letterSpacing: '0.15em',
-        color: '#C9A84C', marginBottom: 16, marginTop: 8, textAlign: 'center',
+        padding: '14px 0 10px',
+        textAlign: 'center',
+        borderBottom: '0.5px solid rgba(255,255,255,0.08)',
+        marginBottom: 6,
+        width: '100%',
       }}>
-        M<br />E<br />T<br />I<br />S
+        <div style={{
+          fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+          fontWeight: 600, letterSpacing: '0.18em',
+          color: '#C9A84C', lineHeight: 1,
+        }}>METIS</div>
       </div>
-      <div style={{ width: 32, height: '0.5px', background: 'rgba(255,255,255,0.12)', marginBottom: 12 }} />
 
       {/* Nav items */}
       {NAV_ITEMS.map(item => {
@@ -215,18 +224,22 @@ export default function NavBar({ user, isAdmin, onLogout }) {
           <NavLink key={item.path} to={item.path} style={{
             display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
-            width: 52, height: 52, borderRadius: 10, marginBottom: 4,
+            width: '100%', padding: '10px 0', borderRadius: 10, marginBottom: 4,
             textDecoration: 'none',
             background: active ? 'rgba(201,168,76,0.15)' : 'transparent',
             border: active ? '0.5px solid rgba(201,168,76,0.3)' : '0.5px solid transparent',
             transition: 'all 0.15s',
           }}>
-            <span style={{ fontSize: 18 }}>{item.icon}</span>
+            <i className={`ti ${item.icon}`} aria-hidden="true" style={{
+              fontSize: 22,
+              color: active ? '#C9A84C' : 'rgba(255,255,255,0.50)',
+              marginBottom: 3, display: 'block', lineHeight: 1,
+            }} />
             <span style={{
               fontSize: 8, fontFamily: "'IBM Plex Mono', monospace",
               letterSpacing: '0.05em',
               color: active ? '#C9A84C' : 'rgba(255,255,255,0.55)',
-              marginTop: 2, textAlign: 'center', fontWeight: active ? 600 : 400,
+              textAlign: 'center', fontWeight: active ? 600 : 400,
             }}>
               {lang === 'zh' ? item.labelZh : item.labelEn}
             </span>
@@ -241,7 +254,7 @@ export default function NavBar({ user, isAdmin, onLogout }) {
       <button
         onClick={() => setLanguage(lang === 'zh' ? 'en' : 'zh')}
         style={{
-          width: 52, height: 28, borderRadius: 6, minHeight: 'auto',
+          width: 58, height: 28, borderRadius: 6, minHeight: 'auto',
           background: 'rgba(255,255,255,0.08)',
           border: '0.5px solid rgba(255,255,255,0.15)',
           color: 'rgba(255,255,255,0.6)',
@@ -268,14 +281,14 @@ export default function NavBar({ user, isAdmin, onLogout }) {
           fontSize: 7, color: 'rgba(255,255,255,0.4)',
           fontFamily: "'IBM Plex Mono', monospace",
           textAlign: 'center', marginBottom: 4,
-          maxWidth: 52, overflow: 'hidden',
+          maxWidth: 60, overflow: 'hidden',
           textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{userName.slice(0, 7)}</div>
         <DropdownPanel
           open={userMenuOpen} userName={userName} isAdmin={isAdmin}
           lang={lang} navigate={navigate} onLogout={onLogout}
           setOpen={setUserMenuOpen}
-          posStyle={{ bottom: 48, left: 60 }}
+          posStyle={{ bottom: 48, left: 68 }}
         />
       </div>
     </div>
