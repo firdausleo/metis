@@ -924,59 +924,67 @@ export default function Matches() {
           )}
         </div>
 
-        {/* ── OVERVIEW: today's matches + recent results ── */}
+        {/* ── OVERVIEW: upcoming + recent results ── */}
         {filter === 'overview' && (
-          <div style={{ padding: '8px 0' }}>
+          <div style={{ padding: '16px 0' }}>
             <div style={{
               fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
               letterSpacing: '0.08em', color: 'var(--color-text-muted)',
               textTransform: 'uppercase', marginBottom: 10,
             }}>
-              {lang === 'zh' ? '今日赛事' : "Today's Matches"}
+              {lang === 'zh' ? '即将到来' : 'Upcoming'}
             </div>
-            {(() => {
-              const beijingNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }))
-              const todayMatches = matches
-                .filter(m => {
-                  const bj = new Date(new Date(m.match_date).toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }))
-                  return bj.toDateString() === beijingNow.toDateString()
+
+            {(matches || [])
+              .filter(m => m.status === 'upcoming' && m.home_team !== 'TBD')
+              .sort((a, b) => new Date(a.match_date) - new Date(b.match_date))
+              .slice(0, 6)
+              .map(m => {
+                const pred = predMap?.[m.id]
+                const bj = new Date(m.match_date).toLocaleString('zh-CN', {
+                  timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric',
+                  hour: '2-digit', minute: '2-digit',
                 })
-                .slice(0, 6)
-              const upcoming6 = todayMatches.length > 0 ? todayMatches : matches
-                .filter(m => m.status === 'upcoming' && m.home_team !== 'TBD')
-                .sort((a, b) => new Date(a.match_date) - new Date(b.match_date))
-                .slice(0, 6)
-              return upcoming6.length === 0
-                ? <div style={{ fontSize: 13, color: 'var(--color-text-muted)', padding: '8px 0' }}>
-                    {lang === 'zh' ? '今日无赛事' : 'No matches today'}
-                  </div>
-                : upcoming6.map(m => (
-                  <div key={m.id} style={{
-                    display: 'flex', alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '10px 14px',
-                    border: '0.5px solid var(--color-border)',
-                    borderRadius: 'var(--radius-md)',
-                    marginBottom: 8,
-                    background: 'var(--color-bg-card)',
-                  }}>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)' }}>
-                      {m.home_team} vs {m.away_team}
-                    </span>
-                    <span style={{
+                return (
+                  <div
+                    key={m.id}
+                    onClick={() => navigate(`/matches/${m.id}`)}
+                    style={{
+                      display: 'flex', alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '10px 14px',
+                      border: '0.5px solid var(--color-border)',
+                      borderRadius: 'var(--radius-md)',
+                      marginBottom: 8,
+                      background: 'var(--color-bg-card)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)' }}>
+                        {m.home_team} vs {m.away_team}
+                      </div>
+                      {pred?.v3_home_win && (
+                        <div style={{
+                          fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+                          color: 'var(--color-text-muted)', marginTop: 2,
+                        }}>
+                          V3: {m.home_team} {(pred.v3_home_win * 100).toFixed(0)}%
+                          · D {(pred.v3_draw * 100).toFixed(0)}%
+                          · {m.away_team} {(pred.v3_away_win * 100).toFixed(0)}%
+                        </div>
+                      )}
+                    </div>
+                    <div style={{
                       fontSize: 11, fontFamily: "'IBM Plex Mono', monospace",
-                      color: 'var(--color-text-muted)',
+                      color: 'var(--color-text-muted)', flexShrink: 0, marginLeft: 12,
                     }}>
-                      {m.status === 'finished'
-                        ? `${m.home_score}-${m.away_score}`
-                        : new Date(m.match_date).toLocaleString('zh-CN', {
-                            timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit',
-                          })
-                      }
-                    </span>
+                      {bj}
+                    </div>
                   </div>
-                ))
-            })()}
+                )
+              })
+            }
 
             <div style={{
               fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
@@ -985,26 +993,32 @@ export default function Matches() {
             }}>
               {lang === 'zh' ? '最近结果' : 'Recent Results'}
             </div>
-            {matches
+
+            {(matches || [])
               .filter(m => m.status === 'finished')
-              .slice(-5)
-              .reverse()
+              .sort((a, b) => new Date(b.match_date) - new Date(a.match_date))
+              .slice(0, 5)
               .map(m => (
-                <div key={m.id} style={{
-                  display: 'flex', alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 14px',
-                  borderBottom: '0.5px solid var(--color-border-light)',
-                }}>
-                  <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                <div
+                  key={m.id}
+                  onClick={() => navigate(`/matches/${m.id}`)}
+                  style={{
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    borderBottom: '0.5px solid var(--color-border-light)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
                     {m.home_team} vs {m.away_team}
                   </span>
                   <span style={{
-                    fontSize: 13, fontWeight: 500,
+                    fontSize: 14, fontWeight: 600,
                     fontFamily: "'IBM Plex Mono', monospace",
                     color: 'var(--color-text-primary)',
                   }}>
-                    {m.home_score} - {m.away_score}
+                    {m.home_score} – {m.away_score}
                   </span>
                 </div>
               ))
