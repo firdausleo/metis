@@ -20,106 +20,163 @@ export function useBrainCanvas(canvasRef, active = true) {
       const ctx = canvas.getContext('2d')
       ctx.scale(dpr, dpr)
 
-      // Brain oval parameters
       const cx = W * 0.50
-      const cy = H * 0.47
-      const rx = W * 0.28
-      const ry = H * 0.38
+      const cy = H * 0.48
+      const baseR = Math.min(W, H) * 0.36
+      const rx = baseR * 1.15
+      const ry = baseR * 0.92
 
-      function rand(a, b) { return a + Math.random() * (b - a) }
+      function lerp(a, b, t) { return a + (b - a) * t }
 
-      // ── NODE GENERATION — structured grid on oval ──────────────────
-      const nodes = []
-      const COLS = 14
-      const ROWS = 10
-
-      for (let row = 0; row < ROWS; row++) {
-        for (let col = 0; col < COLS; col++) {
-          const u = (col / (COLS - 1)) * 2 - 1  // -1 to 1
-          const v = (row / (ROWS - 1)) * 2 - 1  // -1 to 1
-
-          // Slight pear shape — wider top, narrower bottom
-          const vAdj = v * (1 + v * 0.15)
-          const dist = (u * u) + (vAdj * vAdj)
-          if (dist > 0.88) continue
-
-          const jitterX = (Math.random() - 0.5) * rx * 0.08
-          const jitterY = (Math.random() - 0.5) * ry * 0.08
-          const x = cx + u * rx + jitterX
-          const y = cy + vAdj * ry + jitterY
-
-          const type = Math.random() < 0.75 ? 'white' : 'gold'
-          const centreDist = Math.sqrt(u * u + v * v)
-          const r = rand(1.2, 3.5) * (1 - centreDist * 0.2)
-
-          nodes.push({
-            x, y, baseX: x, baseY: y,
-            vx: rand(-0.08, 0.08), vy: rand(-0.06, 0.06),
-            r: Math.max(r, 0.8),
-            phase: rand(0, Math.PI * 2),
-            type, u, v,
-          })
+      function fiberColor(distRatio, alpha) {
+        if (distRatio < 0.25) {
+          // orange core
+          return `rgba(220,90,30,${alpha})`
+        } else if (distRatio < 0.55) {
+          // orange → teal transition
+          const tl = (distRatio - 0.25) / 0.30
+          const r = Math.round(lerp(220, 40, tl))
+          const g = Math.round(lerp(90, 190, tl))
+          const b = Math.round(lerp(30, 180, tl))
+          return `rgba(${r},${g},${b},${alpha})`
+        } else {
+          // teal → blue transition
+          const tl = Math.min((distRatio - 0.55) / 0.45, 1)
+          const r = Math.round(lerp(40, 20, tl))
+          const g = Math.round(lerp(190, 120, tl))
+          const b = Math.round(lerp(180, 255, tl))
+          return `rgba(${r},${g},${b},${alpha})`
         }
       }
 
-      // Extra nodes along centre divide (corpus callosum)
-      for (let i = 0; i < 12; i++) {
-        const v = rand(-0.85, 0.85)
-        const vAdj = v * (1 + v * 0.15)
-        if (Math.abs(vAdj) > 0.88) continue
-        const x = cx + rand(-rx * 0.04, rx * 0.04)
-        const y = cy + vAdj * ry
-        nodes.push({
-          x, y, baseX: cx, baseY: y,
-          vx: rand(-0.04, 0.04), vy: rand(-0.06, 0.06),
-          r: rand(0.8, 1.8),
-          phase: rand(0, Math.PI * 2),
-          type: 'white', u: 0, v,
-        })
-      }
+      // Background stars
+      const STARS = Array.from({ length: 55 }, () => ({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: 0.3 + Math.random() * 0.8,
+        a: 0.1 + Math.random() * 0.25,
+        phase: Math.random() * Math.PI * 2,
+      }))
 
-      // ── EDGES ─────────────────────────────────────────────────────
-      const edges = []
-      const MAX_DIST = rx * 0.28
+      class FiberTract {
+        constructor() { this.init() }
 
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[i].baseX - nodes[j].baseX
-          const dy = nodes[i].baseY - nodes[j].baseY
-          const d = Math.sqrt(dx * dx + dy * dy)
-          if (d < MAX_DIST) {
-            const crossesCenter = nodes[i].u * nodes[j].u < -0.1
-            if (crossesCenter && d > MAX_DIST * 0.5) continue
-            edges.push({
-              a: i, b: j, d,
-              isCentre: Math.abs(nodes[i].u) < 0.15 && Math.abs(nodes[j].u) < 0.15,
-            })
+        init() {
+          // Start near centre with slight random offset
+          const startSpread = baseR * 0.12
+          this.startX = cx + (Math.random() - 0.5) * startSpread * 2
+          this.startY = cy + (Math.random() - 0.5) * startSpread * 2
+
+          // Random outward angle
+          this.angle = Math.random() * Math.PI * 2
+
+          // Thin/deep variant for 30%
+          this.thin = Math.random() < 0.30
+          const maxLen = this.thin ? baseR * lerp(0.45, 0.75, Math.random()) : baseR * lerp(0.7, 1.05, Math.random())
+
+          this.length = maxLen
+          this.speed = lerp(0.006, 0.014, Math.random()) * (this.thin ? 1.3 : 1.0)
+          this.curvature = (Math.random() - 0.5) * 1.8  // bend direction
+          this.noiseAmt = lerp(0.3, 0.9, Math.random())
+          this.noiseSeed = Math.random() * 100
+
+          this.t = 0
+          this.done = false
+          this.fadeIn = true
+          this.alpha = 0
+          this.lineWidth = this.thin ? lerp(0.4, 0.8, Math.random()) : lerp(0.8, 1.6, Math.random())
+
+          // Pulse dot
+          this.hasPulse = !this.thin && Math.random() < 0.4
+          this.pulseT = Math.random()  // position along tract [0,1]
+          this.pulseSpeed = lerp(0.008, 0.018, Math.random())
+        }
+
+        _pos(tNorm) {
+          // Generate point at normalised position tNorm along tract
+          const len = tNorm * this.length
+          // Base straight direction
+          const bx = this.startX + Math.cos(this.angle) * len
+          const by = this.startY + Math.sin(this.angle) * len
+          // Curvature offset (perpendicular)
+          const perpX = -Math.sin(this.angle)
+          const perpY = Math.cos(this.angle)
+          const curve = this.curvature * len * len / (this.length + 1) * 0.012
+          // Noise layer
+          const noiseX = Math.sin(tNorm * 4.2 + this.noiseSeed) * this.noiseAmt * baseR * 0.04
+          const noiseY = Math.cos(tNorm * 3.7 + this.noiseSeed + 1.1) * this.noiseAmt * baseR * 0.04
+          return {
+            x: bx + perpX * curve + noiseX,
+            y: by + perpY * curve + noiseY,
+          }
+        }
+
+        _distRatio(p) {
+          const dx = (p.x - cx) / rx
+          const dy = (p.y - cy) / ry
+          return Math.sqrt(dx * dx + dy * dy)
+        }
+
+        update() {
+          if (this.done) return
+          this.t += this.speed
+          if (this.t >= 1) { this.t = 1; this.done = true }
+          // Fade in first 15%, fade out last 20%
+          if (this.t < 0.15) this.alpha = this.t / 0.15
+          else if (this.t > 0.80) this.alpha = (1 - this.t) / 0.20
+          else this.alpha = 1.0
+          // Pulse dot advance
+          if (this.hasPulse) {
+            this.pulseT += this.pulseSpeed
+            if (this.pulseT > 1) this.pulseT -= 1
+          }
+        }
+
+        draw() {
+          if (this.t <= 0) return
+          const STEPS = 22
+          const drawnT = this.t  // only draw up to current head
+          ctx.beginPath()
+          for (let i = 0; i <= STEPS; i++) {
+            const tNorm = (i / STEPS) * drawnT
+            const p = this._pos(tNorm)
+            if (i === 0) ctx.moveTo(p.x, p.y)
+            else ctx.lineTo(p.x, p.y)
+          }
+          // Color by midpoint distRatio
+          const mid = this._pos(drawnT * 0.5)
+          const distRatio = this._distRatio(mid)
+          const baseAlpha = this.alpha * (this.thin ? 0.28 : 0.52)
+          ctx.strokeStyle = fiberColor(distRatio, baseAlpha)
+          ctx.lineWidth = this.lineWidth
+          ctx.lineCap = 'round'
+          ctx.lineJoin = 'round'
+          ctx.stroke()
+
+          // Pulse dot
+          if (this.hasPulse && this.pulseT < drawnT) {
+            const pp = this._pos(this.pulseT)
+            const pd = this._distRatio(pp)
+            const g = ctx.createRadialGradient(pp.x, pp.y, 0, pp.x, pp.y, 4)
+            g.addColorStop(0, fiberColor(pd, this.alpha * 0.9))
+            g.addColorStop(1, fiberColor(pd, 0))
+            ctx.beginPath()
+            ctx.arc(pp.x, pp.y, 4, 0, Math.PI * 2)
+            ctx.fillStyle = g
+            ctx.fill()
           }
         }
       }
 
-      // ── PULSES ────────────────────────────────────────────────────
-      const pulses = []
-      const pulseTimer = setInterval(() => {
-        if (!edges.length) return
-        const e = edges[Math.floor(Math.random() * edges.length)]
-        pulses.push({
-          edge: e, t: 0,
-          speed: rand(0.008, 0.020),
-          rev: Math.random() > 0.5,
-          alpha: rand(0.5, 0.9),
-          trail: [],
-        })
-        if (pulses.length > 30) pulses.shift()
-      }, 160)
+      const TRACT_COUNT = Math.floor(Math.min(W, H) * 0.35 + 80)
+      const tracts = Array.from({ length: TRACT_COUNT }, () => new FiberTract())
+      // Stagger initial progress so not all start at zero
+      tracts.forEach(t => { t.t = Math.random() * 0.8; t.alpha = Math.min(t.t / 0.15, 1) })
 
-      // ── SURGE ─────────────────────────────────────────────────────
+      // Surge
       let surgeActive = false
       let surgeRadius = 0
-      const surgeTimer = setInterval(() => {
-        surgeActive = true
-        surgeRadius = 0
-      }, 6000)
+      const surgeTimer = setInterval(() => { surgeActive = true; surgeRadius = 0 }, 6000)
 
       let frame = 0
       let animId
@@ -127,130 +184,81 @@ export function useBrainCanvas(canvasRef, active = true) {
       function draw() {
         ctx.clearRect(0, 0, W, H)
 
-        // Outer brain aura — pulsing blue glow
-        const framePulse = 0.5 + 0.5 * Math.sin(frame * 0.015)
+        // ── Background star field ──
+        const starPulse = 0.5 + 0.5 * Math.sin(frame * 0.008)
+        for (const s of STARS) {
+          const flicker = 0.5 + 0.5 * Math.sin(frame * 0.02 + s.phase)
+          ctx.beginPath()
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2)
+          ctx.fillStyle = `rgba(180,220,255,${s.a * flicker * 0.6})`
+          ctx.fill()
+        }
+
+        // ── Outer blue aura (3 layers) ──
+        const auraPulse = 0.5 + 0.5 * Math.sin(frame * 0.018)
         ;[
-          { r: rx * 1.25, a: 0.04 + framePulse * 0.02 },
-          { r: rx * 1.10, a: 0.08 + framePulse * 0.03 },
-          { r: rx * 0.98, a: 0.12 + framePulse * 0.04 },
+          { r: rx * 1.30, a: 0.04 + auraPulse * 0.02 },
+          { r: rx * 1.12, a: 0.08 + auraPulse * 0.03 },
+          { r: rx * 0.96, a: 0.13 + auraPulse * 0.04 },
         ].forEach(layer => {
-          const g = ctx.createRadialGradient(cx, cy, rx * 0.3, cx, cy, layer.r)
-          g.addColorStop(0, 'rgba(80,160,255,0)')
-          g.addColorStop(0.6, `rgba(80,160,255,${layer.a * 0.3})`)
-          g.addColorStop(1, `rgba(80,160,255,${layer.a})`)
+          const g = ctx.createRadialGradient(cx, cy, rx * 0.2, cx, cy, layer.r)
+          g.addColorStop(0, 'rgba(20,100,255,0)')
+          g.addColorStop(0.55, `rgba(40,130,255,${layer.a * 0.25})`)
+          g.addColorStop(1, `rgba(20,80,200,${layer.a})`)
           ctx.beginPath()
           ctx.ellipse(cx, cy, layer.r, layer.r * (ry / rx), 0, 0, Math.PI * 2)
           ctx.fillStyle = g
           ctx.fill()
         })
 
-        // Hemisphere divide line (corpus callosum — subtle)
+        // ── Hot core — orange/amber glow ──
+        const coreR = baseR * 0.18
+        const corePulse = 0.5 + 0.5 * Math.sin(frame * 0.028)
+        const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR + corePulse * 8)
+        cg.addColorStop(0, `rgba(255,130,40,${0.35 + corePulse * 0.15})`)
+        cg.addColorStop(0.4, `rgba(220,80,20,${0.18 + corePulse * 0.08})`)
+        cg.addColorStop(1, 'rgba(180,60,10,0)')
         ctx.beginPath()
-        ctx.moveTo(cx, cy - ry * 0.85)
-        ctx.lineTo(cx, cy + ry * 0.85)
-        ctx.strokeStyle = 'rgba(150,200,255,0.12)'
-        ctx.lineWidth = 0.8
+        ctx.arc(cx, cy, coreR + corePulse * 8, 0, Math.PI * 2)
+        ctx.fillStyle = cg
+        ctx.fill()
+
+        // ── Hemisphere divide ──
+        ctx.beginPath()
+        ctx.moveTo(cx, cy - ry * 0.88)
+        ctx.lineTo(cx, cy + ry * 0.88)
+        ctx.strokeStyle = 'rgba(100,160,255,0.07)'
+        ctx.lineWidth = 0.6
         ctx.stroke()
 
-        // Edges — thin white mesh lines
-        for (const e of edges) {
-          const na = nodes[e.a], nb = nodes[e.b]
-          const baseAlpha = (1 - e.d / MAX_DIST) * 0.18
-          ctx.beginPath()
-          ctx.moveTo(na.x, na.y)
-          ctx.lineTo(nb.x, nb.y)
-          ctx.strokeStyle = e.isCentre
-            ? `rgba(180,220,255,${baseAlpha * 1.8})`
-            : `rgba(180,220,255,${baseAlpha})`
-          ctx.lineWidth = 0.5
-          ctx.stroke()
+        // ── Fiber tracts ──
+        for (const t of tracts) {
+          t.update()
+          t.draw()
+          if (t.done && Math.random() < 0.004) t.init()
         }
 
-        // Pulses — gold travelling dots
-        for (let i = pulses.length - 1; i >= 0; i--) {
-          const p = pulses[i]
-          p.t += p.speed
-          if (p.t > 1) { pulses.splice(i, 1); continue }
-          const na = nodes[p.edge.a], nb = nodes[p.edge.b]
-          const t = p.rev ? 1 - p.t : p.t
-          const px = na.x + (nb.x - na.x) * t
-          const py = na.y + (nb.y - na.y) * t
-          p.trail.push({ x: px, y: py })
-          if (p.trail.length > 5) p.trail.shift()
-          p.trail.forEach((pt, ti) => {
-            const ta = p.alpha * (ti / p.trail.length) * 0.3
-            ctx.beginPath()
-            ctx.arc(pt.x, pt.y, 2, 0, Math.PI * 2)
-            ctx.fillStyle = `rgba(201,168,76,${ta})`
-            ctx.fill()
-          })
-          const g = ctx.createRadialGradient(px, py, 0, px, py, 5)
-          g.addColorStop(0, `rgba(201,168,76,${p.alpha})`)
-          g.addColorStop(1, 'rgba(201,168,76,0)')
-          ctx.beginPath()
-          ctx.arc(px, py, 5, 0, Math.PI * 2)
-          ctx.fillStyle = g
-          ctx.fill()
-        }
-
-        // Nodes
-        for (const n of nodes) {
-          const pulse = 0.5 + 0.5 * Math.sin(frame * 0.020 + n.phase)
-          const isGold = n.type === 'gold'
-
-          // Node glow
-          const glowR = n.r * 3.5
-          const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, glowR + pulse * 1.5)
-          if (isGold) {
-            g.addColorStop(0, `rgba(201,168,76,${0.25 + pulse * 0.15})`)
-            g.addColorStop(1, 'rgba(201,168,76,0)')
-          } else {
-            g.addColorStop(0, `rgba(200,230,255,${0.22 + pulse * 0.13})`)
-            g.addColorStop(1, 'rgba(180,220,255,0)')
-          }
-          ctx.beginPath()
-          ctx.arc(n.x, n.y, glowR + pulse * 1.5, 0, Math.PI * 2)
-          ctx.fillStyle = g
-          ctx.fill()
-
-          // Node body
-          ctx.beginPath()
-          ctx.arc(n.x, n.y, n.r + pulse * 0.6, 0, Math.PI * 2)
-          ctx.fillStyle = isGold
-            ? `rgba(201,168,76,${0.80 + pulse * 0.18})`
-            : `rgba(220,240,255,${0.82 + pulse * 0.16})`
-          ctx.fill()
-
-          // Drift + soft return to base
-          n.x += n.vx
-          n.y += n.vy
-          n.vx += (n.baseX - n.x) * 0.0008
-          n.vy += (n.baseY - n.y) * 0.0008
-          n.vx *= 0.98
-          n.vy *= 0.98
-        }
-
-        // Surge ring
+        // ── Surge ring ──
         if (surgeActive) {
-          surgeRadius += 3
-          const a = Math.max(0, 0.15 - surgeRadius / (rx * 2) * 0.15)
+          surgeRadius += 2.5
+          const sa = Math.max(0, 0.18 - surgeRadius / (rx * 2.2) * 0.18)
           ctx.beginPath()
           ctx.ellipse(cx, cy, surgeRadius, surgeRadius * (ry / rx), 0, 0, Math.PI * 2)
-          ctx.strokeStyle = `rgba(180,220,255,${a})`
-          ctx.lineWidth = 1
+          ctx.strokeStyle = `rgba(80,200,255,${sa})`
+          ctx.lineWidth = 1.2
           ctx.stroke()
-          if (surgeRadius > rx * 1.3) surgeActive = false
+          if (surgeRadius > rx * 1.4) surgeActive = false
         }
 
-        // Region labels — very subtle
+        // ── Region labels ──
         ctx.font = '400 8px "IBM Plex Mono", monospace'
         ctx.textAlign = 'center'
-        ctx.fillStyle = 'rgba(150,200,255,0.15)'
+        ctx.fillStyle = 'rgba(120,190,255,0.12)'
         ;[
-          ['FRONTAL',    cx,          cy - ry * 0.78],
-          ['L TEMPORAL', cx - rx * 0.78, cy + ry * 0.10],
-          ['R TEMPORAL', cx + rx * 0.78, cy + ry * 0.10],
-          ['OCCIPITAL',  cx,          cy + ry * 0.78],
+          ['FRONTAL',    cx,              cy - ry * 0.82],
+          ['L TEMPORAL', cx - rx * 0.82,  cy + ry * 0.08],
+          ['R TEMPORAL', cx + rx * 0.82,  cy + ry * 0.08],
+          ['OCCIPITAL',  cx,              cy + ry * 0.82],
         ].forEach(([l, lx, ly]) => ctx.fillText(l, lx, ly))
 
         frame++
@@ -260,7 +268,6 @@ export function useBrainCanvas(canvasRef, active = true) {
       animId = requestAnimationFrame(draw)
       cleanup = () => {
         cancelAnimationFrame(animId)
-        clearInterval(pulseTimer)
         clearInterval(surgeTimer)
       }
     })
@@ -277,55 +284,102 @@ export function useMiniCanvas(canvasRef, active = true) {
   useEffect(() => {
     if (!active || !canvasRef.current) return
     const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
     const S = 36
     canvas.width = S * window.devicePixelRatio
     canvas.height = S * window.devicePixelRatio
+    const ctx = canvas.getContext('2d')
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
 
-    const nodes = Array.from({ length: 9 }, () => ({
-      x: 6 + Math.random() * 24,
-      y: 6 + Math.random() * 24,
-      vx: (Math.random() - 0.5) * 0.3,
-      vy: (Math.random() - 0.5) * 0.3,
-      r: 1.2 + Math.random() * 1.8,
-      phase: Math.random() * Math.PI * 2,
-    }))
+    const mc = S * 0.5
 
-    const edges = []
-    for (let i = 0; i < nodes.length; i++)
-      for (let j = i + 1; j < nodes.length; j++) {
-        const dx = nodes[i].x - nodes[j].x
-        const dy = nodes[i].y - nodes[j].y
-        if (Math.sqrt(dx * dx + dy * dy) < 18) edges.push([i, j])
+    function lerp(a, b, t) { return a + (b - a) * t }
+    function miniColor(distRatio, alpha) {
+      if (distRatio < 0.28) return `rgba(220,90,30,${alpha})`
+      if (distRatio < 0.58) {
+        const tl = (distRatio - 0.28) / 0.30
+        return `rgba(${Math.round(lerp(220,40,tl))},${Math.round(lerp(90,190,tl))},${Math.round(lerp(30,180,tl))},${alpha})`
       }
+      const tl = Math.min((distRatio - 0.58) / 0.42, 1)
+      return `rgba(${Math.round(lerp(40,20,tl))},${Math.round(lerp(190,120,tl))},${Math.round(lerp(180,255,tl))},${alpha})`
+    }
+
+    class MiniTract {
+      constructor() { this.init() }
+      init() {
+        this.startX = mc + (Math.random() - 0.5) * 3
+        this.startY = mc + (Math.random() - 0.5) * 3
+        this.angle = Math.random() * Math.PI * 2
+        this.length = lerp(8, 15, Math.random())
+        this.curvature = (Math.random() - 0.5) * 1.5
+        this.noiseSeed = Math.random() * 100
+        this.t = Math.random() * 0.7
+        this.speed = lerp(0.012, 0.022, Math.random())
+        this.alpha = Math.min(this.t / 0.15, 1)
+        this.lineWidth = lerp(0.5, 1.2, Math.random())
+        this.done = false
+      }
+      _pos(tNorm) {
+        const len = tNorm * this.length
+        const bx = this.startX + Math.cos(this.angle) * len
+        const by = this.startY + Math.sin(this.angle) * len
+        const perpX = -Math.sin(this.angle)
+        const perpY = Math.cos(this.angle)
+        const curve = this.curvature * len * len / (this.length + 1) * 0.015
+        const nx = Math.sin(tNorm * 4 + this.noiseSeed) * 0.4
+        const ny = Math.cos(tNorm * 3.5 + this.noiseSeed) * 0.4
+        return { x: bx + perpX * curve + nx, y: by + perpY * curve + ny }
+      }
+      update() {
+        if (this.done) return
+        this.t += this.speed
+        if (this.t >= 1) { this.t = 1; this.done = true }
+        if (this.t < 0.15) this.alpha = this.t / 0.15
+        else if (this.t > 0.80) this.alpha = (1 - this.t) / 0.20
+        else this.alpha = 1.0
+      }
+      draw() {
+        if (this.t <= 0) return
+        const STEPS = 10
+        ctx.beginPath()
+        for (let i = 0; i <= STEPS; i++) {
+          const p = this._pos((i / STEPS) * this.t)
+          if (i === 0) ctx.moveTo(p.x, p.y)
+          else ctx.lineTo(p.x, p.y)
+        }
+        const mid = this._pos(this.t * 0.5)
+        const dr = Math.sqrt(((mid.x - mc) / 14) ** 2 + ((mid.y - mc) / 14) ** 2)
+        ctx.strokeStyle = miniColor(dr, this.alpha * 0.55)
+        ctx.lineWidth = this.lineWidth
+        ctx.lineCap = 'round'
+        ctx.stroke()
+      }
+    }
+
+    const MINI_TRACTS = 18
+    const tracts = Array.from({ length: MINI_TRACTS }, () => new MiniTract())
 
     let frame = 0, animId
 
     function draw() {
       ctx.clearRect(0, 0, S, S)
-      ctx.fillStyle = '#080c14'
+      ctx.fillStyle = '#070b12'
       ctx.fillRect(0, 0, S, S)
 
-      edges.forEach(([a, b]) => {
-        ctx.beginPath()
-        ctx.moveTo(nodes[a].x, nodes[a].y)
-        ctx.lineTo(nodes[b].x, nodes[b].y)
-        ctx.strokeStyle = 'rgba(180,220,255,0.25)'
-        ctx.lineWidth = 0.6
-        ctx.stroke()
-      })
+      // Core glow
+      const cp = 0.5 + 0.5 * Math.sin(frame * 0.04)
+      const cg = ctx.createRadialGradient(mc, mc, 0, mc, mc, 7 + cp * 2)
+      cg.addColorStop(0, `rgba(230,100,30,${0.45 + cp * 0.15})`)
+      cg.addColorStop(1, 'rgba(180,60,10,0)')
+      ctx.beginPath()
+      ctx.arc(mc, mc, 7 + cp * 2, 0, Math.PI * 2)
+      ctx.fillStyle = cg
+      ctx.fill()
 
-      nodes.forEach(n => {
-        const p = 0.5 + 0.5 * Math.sin(frame * 0.04 + n.phase)
-        ctx.beginPath()
-        ctx.arc(n.x, n.y, n.r + p * 0.8, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(220,240,255,${0.5 + p * 0.4})`
-        ctx.fill()
-        n.x += n.vx; n.y += n.vy
-        if (n.x < 3 || n.x > S - 3) n.vx *= -1
-        if (n.y < 3 || n.y > S - 3) n.vy *= -1
-      })
+      for (const t of tracts) {
+        t.update()
+        t.draw()
+        if (t.done && Math.random() < 0.012) t.init()
+      }
 
       frame++
       animId = requestAnimationFrame(draw)

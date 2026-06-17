@@ -424,7 +424,7 @@ FORMAT YOUR RESPONSES
             position: 'relative',
             width: '100vw',
             marginLeft: 'calc(-50vw + 50%)',
-            height: 'clamp(180px, 36vh, 320px)',
+            height: 'clamp(240px, 45vh, 420px)',
             flexShrink: 0,
             overflow: 'hidden',
           }}>
