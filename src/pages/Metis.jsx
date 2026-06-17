@@ -351,16 +351,26 @@ FORMAT YOUR RESPONSES
           flexShrink: 0,
           paddingTop: 8,
         }}>
-          {/* Brain canvas */}
-          <canvas
-            ref={brainRef}
-            style={{
-              width: '100%',
-              height: '52vh',
-              display: 'block',
-              cursor: 'default',
-            }}
-          />
+          {/* Full-bleed brain canvas wrapper */}
+          <div style={{
+            position: 'relative',
+            width: '100vw',
+            marginLeft: 'calc(-50vw + 50%)',
+            height: '52vh',
+            flexShrink: 0,
+            overflow: 'hidden',
+          }}>
+            <canvas
+              ref={brainRef}
+              style={{
+                position: 'absolute',
+                top: 0, left: 0,
+                width: '100%',
+                height: '100%',
+                display: 'block',
+              }}
+            />
+          </div>
 
           {/* Context bar */}
           <div style={{

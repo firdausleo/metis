@@ -32,24 +32,24 @@ export function useBrainCanvas(canvasRef, active = true) {
         return (Math.random() + Math.random() + Math.random() + Math.random() - 2) / 2
       }
 
-      // Left lobe — 32 nodes
+      // Left lobe — 32 nodes, sqrt distribution for denser centre
       for (let i = 0; i < 32; i++) {
         const a = rand(0, Math.PI * 2)
-        const r = rand(0, W * 0.14)
+        const r = Math.sqrt(Math.random()) * W * 0.18
         nodes.push({
-          x: W * 0.27 + Math.cos(a) * r + gauss() * 12,
+          x: W * 0.30 + Math.cos(a) * r + gauss() * 10,
           y: H * 0.46 + Math.sin(a) * r * 0.78 + gauss() * 8,
           vx: rand(-0.15, 0.15), vy: rand(-0.10, 0.10),
           r: rand(1.5, 4.5), phase: rand(0, Math.PI * 2), type: 'lobe',
         })
       }
 
-      // Right lobe — 32 nodes
+      // Right lobe — 32 nodes, sqrt distribution for denser centre
       for (let i = 0; i < 32; i++) {
         const a = rand(0, Math.PI * 2)
-        const r = rand(0, W * 0.14)
+        const r = Math.sqrt(Math.random()) * W * 0.18
         nodes.push({
-          x: W * 0.73 + Math.cos(a) * r + gauss() * 12,
+          x: W * 0.70 + Math.cos(a) * r + gauss() * 10,
           y: H * 0.46 + Math.sin(a) * r * 0.78 + gauss() * 8,
           vx: rand(-0.15, 0.15), vy: rand(-0.10, 0.10),
           r: rand(1.5, 4.5), phase: rand(0, Math.PI * 2), type: 'lobe',
@@ -59,8 +59,8 @@ export function useBrainCanvas(canvasRef, active = true) {
       // Corpus callosum bridge — 14 nodes
       for (let i = 0; i < 14; i++) {
         nodes.push({
-          x: rand(W * 0.37, W * 0.63),
-          y: rand(H * 0.36, H * 0.56),
+          x: rand(W * 0.38, W * 0.62),
+          y: rand(H * 0.38, H * 0.54),
           vx: rand(-0.08, 0.08), vy: rand(-0.06, 0.06),
           r: rand(1.2, 2.8), phase: rand(0, Math.PI * 2), type: 'bridge',
         })
@@ -69,10 +69,10 @@ export function useBrainCanvas(canvasRef, active = true) {
       // Periphery — 10 nodes
       for (let i = 0; i < 10; i++) {
         nodes.push({
-          x: rand(W * 0.06, W * 0.94),
-          y: rand(H * 0.08, H * 0.82),
+          x: rand(W * 0.08, W * 0.92),
+          y: rand(H * 0.10, H * 0.80),
           vx: rand(-0.12, 0.12), vy: rand(-0.08, 0.08),
-          r: rand(1.0, 2.2), phase: rand(0, Math.PI * 2), type: 'periph',
+          r: rand(0.8, 1.8), phase: rand(0, Math.PI * 2), type: 'periph',
         })
       }
 
@@ -193,52 +193,39 @@ export function useBrainCanvas(canvasRef, active = true) {
               })
           }
 
-          // Core: radiating beams (drawn before node body)
+          // Core: radiating beams (before node body)
           if (isCore) {
             const beamCount = 8
-            const beamLength = n.r * 6 + pulse * n.r * 4
-            const baseAngle = frame * 0.008
-            for (let b = 0; b < beamCount; b++) {
-              const angle = baseAngle + (b / beamCount) * Math.PI * 2
-              const x1 = n.x + Math.cos(angle) * (n.r + 2)
-              const y1 = n.y + Math.sin(angle) * (n.r + 2)
-              const x2 = n.x + Math.cos(angle) * beamLength
-              const y2 = n.y + Math.sin(angle) * beamLength
-              const beamGrad = ctx.createLinearGradient(x1, y1, x2, y2)
-              beamGrad.addColorStop(0, `rgba(201,168,76,${0.35 * pulse})`)
-              beamGrad.addColorStop(1, 'rgba(201,168,76,0)')
-              ctx.beginPath()
-              ctx.moveTo(x1, y1)
-              ctx.lineTo(x2, y2)
-              ctx.strokeStyle = beamGrad
-              ctx.lineWidth = 0.8 + pulse * 0.5
-              ctx.stroke()
-            }
-            for (let b = 0; b < beamCount; b++) {
-              const angle = baseAngle + ((b + 0.5) / beamCount) * Math.PI * 2
+            const beamLen = n.r * 5 + pulse * n.r * 3
+            const rot = frame * 0.006
+            for (let b = 0; b < beamCount * 2; b++) {
+              const isPrimary = b % 2 === 0
+              const angle = rot + (b / (beamCount * 2)) * Math.PI * 2
               const x1 = n.x + Math.cos(angle) * (n.r + 1)
               const y1 = n.y + Math.sin(angle) * (n.r + 1)
-              const x2 = n.x + Math.cos(angle) * beamLength * 0.5
-              const y2 = n.y + Math.sin(angle) * beamLength * 0.5
-              const beamGrad = ctx.createLinearGradient(x1, y1, x2, y2)
-              beamGrad.addColorStop(0, `rgba(201,168,76,${0.20 * pulse})`)
-              beamGrad.addColorStop(1, 'rgba(201,168,76,0)')
+              const len = isPrimary ? beamLen : beamLen * 0.5
+              const x2 = n.x + Math.cos(angle) * len
+              const y2 = n.y + Math.sin(angle) * len
+              const bg = ctx.createLinearGradient(x1, y1, x2, y2)
+              bg.addColorStop(0, `rgba(201,168,76,${isPrimary ? 0.4 * pulse : 0.2 * pulse})`)
+              bg.addColorStop(1, 'rgba(201,168,76,0)')
               ctx.beginPath()
               ctx.moveTo(x1, y1)
               ctx.lineTo(x2, y2)
-              ctx.strokeStyle = beamGrad
-              ctx.lineWidth = 0.5
+              ctx.strokeStyle = bg
+              ctx.lineWidth = isPrimary ? 0.8 + pulse * 0.4 : 0.4
               ctx.stroke()
             }
           }
 
           // Lobe/bridge: soft ambient glow
           if (n.type === 'lobe' || n.type === 'bridge') {
-            const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 3)
-            g.addColorStop(0, `rgba(100,160,255,${0.15 + pulse * 0.1})`)
+            const glowR = n.r * 3.5
+            const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, glowR)
+            g.addColorStop(0, `rgba(100,160,255,${0.18 + pulse * 0.12})`)
             g.addColorStop(1, 'rgba(100,160,255,0)')
             ctx.beginPath()
-            ctx.arc(n.x, n.y, n.r * 3, 0, Math.PI * 2)
+            ctx.arc(n.x, n.y, glowR, 0, Math.PI * 2)
             ctx.fillStyle = g
             ctx.fill()
           }
@@ -246,8 +233,8 @@ export function useBrainCanvas(canvasRef, active = true) {
           const fillColor = isCore
             ? `rgba(201,168,76,${0.6 + pulse * 0.4})`
             : n.type === 'bridge'
-              ? `rgba(180,220,255,${0.65 + pulse * 0.25})`
-              : `rgba(100,160,255,${0.55 + pulse * 0.30})`
+              ? `rgba(180,220,255,${0.70 + pulse * 0.25})`
+              : `rgba(110,170,255,${0.60 + pulse * 0.30})`
 
           ctx.beginPath()
           ctx.arc(n.x, n.y, n.r + (isCore ? pulse * 3 : pulse * 0.8), 0, Math.PI * 2)
