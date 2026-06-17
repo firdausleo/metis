@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { UserProvider, useUser } from './context/UserContext'
 import { useAuth } from './hooks/useAuth'
@@ -23,7 +22,6 @@ import FAQ from './pages/FAQ'
 import Simulator from './pages/Simulator'
 import MetisWizard from './pages/Metis'
 import MetisSettings from './pages/MetisSettings'
-import { startSession, endSession } from './utils/activityTracker'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { session, sessionLoading, profile, profileLoading, tier } = useUser()
@@ -47,17 +45,6 @@ function Layout({ children }) {
   const { user, signOut } = useAuth()
   const { tier } = useUser()
   const isAdmin = tier === 'admin'
-
-  useEffect(() => {
-    if (!user?.id) return
-    startSession(user.id)
-    const handleUnload = () => endSession()
-    window.addEventListener('beforeunload', handleUnload)
-    return () => {
-      endSession()
-      window.removeEventListener('beforeunload', handleUnload)
-    }
-  }, [user?.id])
 
   return (
     <ScreenLock userId={user?.id}>

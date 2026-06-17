@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { startSession, endSession } from '../utils/activityTracker'
 
 const UserContext = createContext(null)
 
@@ -30,15 +31,22 @@ export function UserProvider({ children }) {
       setSessionLoading(false)
       setProfileLoading(true)
       fetchProfile(s?.user?.id)
+      if (s?.user?.id) startSession(s.user.id)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s)
       setProfileLoading(true)
       fetchProfile(s?.user?.id)
+      if (_event === 'SIGNED_IN' && s?.user?.id) startSession(s.user.id)
+      if (_event === 'SIGNED_OUT') endSession()
     })
 
-    return () => subscription.unsubscribe()
+    window.addEventListener('beforeunload', endSession)
+    return () => {
+      subscription.unsubscribe()
+      window.removeEventListener('beforeunload', endSession)
+    }
   }, [fetchProfile])
 
   const refreshProfile = useCallback(async () => {
