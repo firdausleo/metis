@@ -13,135 +13,160 @@ export function useBrainCanvas(canvasRef, active = true) {
       const W = entry.contentRect.width
       const H = entry.contentRect.height
       if (W < 100 || H < 100) return
+
       const dpr = window.devicePixelRatio || 1
       canvas.width = W * dpr
       canvas.height = H * dpr
       const ctx = canvas.getContext('2d')
       ctx.scale(dpr, dpr)
 
-      // Oval boundary constants — all node geometry derives from these
+      // Brain oval parameters
       const cx = W * 0.50
-      const cy = H * 0.44
-      const rx = W * 0.30
-      const ry = H * 0.32
-
-      const nodes = []
-      const edges = []
-      const pulses = []
-      let frame = 0
-      let surgeRadius = 0
-      let surgeActive = false
-      let animId
+      const cy = H * 0.47
+      const rx = W * 0.28
+      const ry = H * 0.38
 
       function rand(a, b) { return a + Math.random() * (b - a) }
 
-      function randomInOval(ocx, ocy, orx, ory) {
-        const angle = rand(0, Math.PI * 2)
-        const r = Math.sqrt(Math.random())
-        return {
-          x: ocx + Math.cos(angle) * r * orx,
-          y: ocy + Math.sin(angle) * r * ory,
+      // ── NODE GENERATION — structured grid on oval ──────────────────
+      const nodes = []
+      const COLS = 14
+      const ROWS = 10
+
+      for (let row = 0; row < ROWS; row++) {
+        for (let col = 0; col < COLS; col++) {
+          const u = (col / (COLS - 1)) * 2 - 1  // -1 to 1
+          const v = (row / (ROWS - 1)) * 2 - 1  // -1 to 1
+
+          // Slight pear shape — wider top, narrower bottom
+          const vAdj = v * (1 + v * 0.15)
+          const dist = (u * u) + (vAdj * vAdj)
+          if (dist > 0.88) continue
+
+          const jitterX = (Math.random() - 0.5) * rx * 0.08
+          const jitterY = (Math.random() - 0.5) * ry * 0.08
+          const x = cx + u * rx + jitterX
+          const y = cy + vAdj * ry + jitterY
+
+          const type = Math.random() < 0.75 ? 'white' : 'gold'
+          const centreDist = Math.sqrt(u * u + v * v)
+          const r = rand(1.2, 3.5) * (1 - centreDist * 0.2)
+
+          nodes.push({
+            x, y, baseX: x, baseY: y,
+            vx: rand(-0.08, 0.08), vy: rand(-0.06, 0.06),
+            r: Math.max(r, 0.8),
+            phase: rand(0, Math.PI * 2),
+            type, u, v,
+          })
         }
       }
 
-      // Left lobe cluster — 35 nodes, denser left-centre
-      for (let i = 0; i < 35; i++) {
-        const pos = randomInOval(cx - rx * 0.35, cy, rx * 0.55, ry * 0.75)
+      // Extra nodes along centre divide (corpus callosum)
+      for (let i = 0; i < 12; i++) {
+        const v = rand(-0.85, 0.85)
+        const vAdj = v * (1 + v * 0.15)
+        if (Math.abs(vAdj) > 0.88) continue
+        const x = cx + rand(-rx * 0.04, rx * 0.04)
+        const y = cy + vAdj * ry
         nodes.push({
-          x: pos.x, y: pos.y,
-          vx: rand(-0.15, 0.15), vy: rand(-0.10, 0.10),
-          r: rand(1.5, 4.0), phase: rand(0, Math.PI * 2), type: 'lobe',
+          x, y, baseX: cx, baseY: y,
+          vx: rand(-0.04, 0.04), vy: rand(-0.06, 0.06),
+          r: rand(0.8, 1.8),
+          phase: rand(0, Math.PI * 2),
+          type: 'white', u: 0, v,
         })
       }
 
-      // Right lobe cluster — 35 nodes, mirror
-      for (let i = 0; i < 35; i++) {
-        const pos = randomInOval(cx + rx * 0.35, cy, rx * 0.55, ry * 0.75)
-        nodes.push({
-          x: pos.x, y: pos.y,
-          vx: rand(-0.15, 0.15), vy: rand(-0.10, 0.10),
-          r: rand(1.5, 4.0), phase: rand(0, Math.PI * 2), type: 'lobe',
-        })
-      }
+      // ── EDGES ─────────────────────────────────────────────────────
+      const edges = []
+      const MAX_DIST = rx * 0.28
 
-      // Bridge — tight centre band only
-      for (let i = 0; i < 14; i++) {
-        const pos = randomInOval(cx, cy, rx * 0.22, ry * 0.45)
-        nodes.push({
-          x: pos.x, y: pos.y,
-          vx: rand(-0.08, 0.08), vy: rand(-0.06, 0.06),
-          r: rand(1.0, 2.5), phase: rand(0, Math.PI * 2), type: 'bridge',
-        })
-      }
-
-      // Core nodes — fixed centre positions
-      ;[
-        { x: cx,              y: cy,              r: 9 },
-        { x: cx - rx * 0.30,  y: cy - ry * 0.10,  r: 7 },
-        { x: cx + rx * 0.30,  y: cy - ry * 0.10,  r: 7 },
-        { x: cx - rx * 0.18,  y: cy + ry * 0.18,  r: 6 },
-        { x: cx + rx * 0.18,  y: cy + ry * 0.18,  r: 6 },
-      ].forEach(c => nodes.push({
-        ...c, vx: rand(-0.04, 0.04), vy: rand(-0.03, 0.03),
-        phase: rand(0, Math.PI * 2), type: 'core',
-      }))
-
-      // Build edges
-      const MAX_DIST = 120
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[i].x - nodes[j].x
-          const dy = nodes[i].y - nodes[j].y
+          const dx = nodes[i].baseX - nodes[j].baseX
+          const dy = nodes[i].baseY - nodes[j].baseY
           const d = Math.sqrt(dx * dx + dy * dy)
-          if (d < MAX_DIST && edges.length < 200) {
-            const isBridge = nodes[i].type === 'bridge' || nodes[j].type === 'bridge'
-            edges.push({ a: i, b: j, d, isBridge })
+          if (d < MAX_DIST) {
+            const crossesCenter = nodes[i].u * nodes[j].u < -0.1
+            if (crossesCenter && d > MAX_DIST * 0.5) continue
+            edges.push({
+              a: i, b: j, d,
+              isCentre: Math.abs(nodes[i].u) < 0.15 && Math.abs(nodes[j].u) < 0.15,
+            })
           }
         }
       }
 
-      // Pulse spawner
+      // ── PULSES ────────────────────────────────────────────────────
+      const pulses = []
       const pulseTimer = setInterval(() => {
-        const pool = []
-        edges.forEach((e, idx) => {
-          pool.push(idx)
-          if (e.isBridge) pool.push(idx, idx)
-        })
-        if (!pool.length) return
-        const e = edges[pool[Math.floor(Math.random() * pool.length)]]
+        if (!edges.length) return
+        const e = edges[Math.floor(Math.random() * edges.length)]
         pulses.push({
           edge: e, t: 0,
-          speed: rand(0.005, 0.016) * (e.isBridge ? 1.7 : 1),
+          speed: rand(0.008, 0.020),
           rev: Math.random() > 0.5,
-          alpha: rand(0.55, 1.0),
+          alpha: rand(0.5, 0.9),
           trail: [],
         })
-        if (pulses.length > 35) pulses.shift()
-      }, 120)
+        if (pulses.length > 30) pulses.shift()
+      }, 160)
 
-      // Surge timer
+      // ── SURGE ─────────────────────────────────────────────────────
+      let surgeActive = false
+      let surgeRadius = 0
       const surgeTimer = setInterval(() => {
         surgeActive = true
         surgeRadius = 0
-      }, 5000)
+      }, 6000)
+
+      let frame = 0
+      let animId
 
       function draw() {
         ctx.clearRect(0, 0, W, H)
 
-        // Edges
+        // Outer brain aura — pulsing blue glow
+        const framePulse = 0.5 + 0.5 * Math.sin(frame * 0.015)
+        ;[
+          { r: rx * 1.25, a: 0.04 + framePulse * 0.02 },
+          { r: rx * 1.10, a: 0.08 + framePulse * 0.03 },
+          { r: rx * 0.98, a: 0.12 + framePulse * 0.04 },
+        ].forEach(layer => {
+          const g = ctx.createRadialGradient(cx, cy, rx * 0.3, cx, cy, layer.r)
+          g.addColorStop(0, 'rgba(80,160,255,0)')
+          g.addColorStop(0.6, `rgba(80,160,255,${layer.a * 0.3})`)
+          g.addColorStop(1, `rgba(80,160,255,${layer.a})`)
+          ctx.beginPath()
+          ctx.ellipse(cx, cy, layer.r, layer.r * (ry / rx), 0, 0, Math.PI * 2)
+          ctx.fillStyle = g
+          ctx.fill()
+        })
+
+        // Hemisphere divide line (corpus callosum — subtle)
+        ctx.beginPath()
+        ctx.moveTo(cx, cy - ry * 0.85)
+        ctx.lineTo(cx, cy + ry * 0.85)
+        ctx.strokeStyle = 'rgba(150,200,255,0.12)'
+        ctx.lineWidth = 0.8
+        ctx.stroke()
+
+        // Edges — thin white mesh lines
         for (const e of edges) {
           const na = nodes[e.a], nb = nodes[e.b]
-          const baseAlpha = (1 - e.d / MAX_DIST) * 0.30
-          const alpha = e.isBridge ? baseAlpha * 2.2 : baseAlpha
+          const baseAlpha = (1 - e.d / MAX_DIST) * 0.18
           ctx.beginPath()
           ctx.moveTo(na.x, na.y)
           ctx.lineTo(nb.x, nb.y)
-          ctx.strokeStyle = `rgba(100,160,255,${alpha})`
-          ctx.lineWidth = e.isBridge ? 0.9 : 0.6
+          ctx.strokeStyle = e.isCentre
+            ? `rgba(180,220,255,${baseAlpha * 1.8})`
+            : `rgba(180,220,255,${baseAlpha})`
+          ctx.lineWidth = 0.5
           ctx.stroke()
         }
 
-        // Pulses
+        // Pulses — gold travelling dots
         for (let i = pulses.length - 1; i >= 0; i--) {
           const p = pulses[i]
           p.t += p.speed
@@ -150,160 +175,97 @@ export function useBrainCanvas(canvasRef, active = true) {
           const t = p.rev ? 1 - p.t : p.t
           const px = na.x + (nb.x - na.x) * t
           const py = na.y + (nb.y - na.y) * t
-
           p.trail.push({ x: px, y: py })
-          if (p.trail.length > 6) p.trail.shift()
+          if (p.trail.length > 5) p.trail.shift()
           p.trail.forEach((pt, ti) => {
-            const ta = p.alpha * (ti / p.trail.length) * 0.35
+            const ta = p.alpha * (ti / p.trail.length) * 0.3
             ctx.beginPath()
-            ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2)
+            ctx.arc(pt.x, pt.y, 2, 0, Math.PI * 2)
             ctx.fillStyle = `rgba(201,168,76,${ta})`
             ctx.fill()
           })
-
-          const g = ctx.createRadialGradient(px, py, 0, px, py, 7)
+          const g = ctx.createRadialGradient(px, py, 0, px, py, 5)
           g.addColorStop(0, `rgba(201,168,76,${p.alpha})`)
           g.addColorStop(1, 'rgba(201,168,76,0)')
           ctx.beginPath()
-          ctx.arc(px, py, 7, 0, Math.PI * 2)
+          ctx.arc(px, py, 5, 0, Math.PI * 2)
           ctx.fillStyle = g
           ctx.fill()
         }
 
         // Nodes
         for (const n of nodes) {
-          const pulse = 0.5 + 0.5 * Math.sin(frame * 0.028 + n.phase)
-          const isCore = n.type === 'core'
+          const pulse = 0.5 + 0.5 * Math.sin(frame * 0.020 + n.phase)
+          const isGold = n.type === 'gold'
 
-          // Core: outer glow rings
-          if (isCore) {
-            ;[{ r: n.r + 18, a: 0.06 }, { r: n.r + 10, a: 0.14 }, { r: n.r + 5, a: 0.25 }]
-              .forEach(gl => {
-                const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, gl.r + pulse * 2)
-                g.addColorStop(0, `rgba(201,168,76,${gl.a})`)
-                g.addColorStop(1, 'rgba(201,168,76,0)')
-                ctx.beginPath()
-                ctx.arc(n.x, n.y, gl.r + pulse * 2, 0, Math.PI * 2)
-                ctx.fillStyle = g
-                ctx.fill()
-              })
+          // Node glow
+          const glowR = n.r * 3.5
+          const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, glowR + pulse * 1.5)
+          if (isGold) {
+            g.addColorStop(0, `rgba(201,168,76,${0.25 + pulse * 0.15})`)
+            g.addColorStop(1, 'rgba(201,168,76,0)')
+          } else {
+            g.addColorStop(0, `rgba(200,230,255,${0.22 + pulse * 0.13})`)
+            g.addColorStop(1, 'rgba(180,220,255,0)')
           }
-
-          // Core: radiating beams (before node body)
-          if (isCore) {
-            const beamCount = 8
-            const beamLen = n.r * 5 + pulse * n.r * 3
-            const rot = frame * 0.006
-            for (let b = 0; b < beamCount * 2; b++) {
-              const isPrimary = b % 2 === 0
-              const angle = rot + (b / (beamCount * 2)) * Math.PI * 2
-              const x1 = n.x + Math.cos(angle) * (n.r + 1)
-              const y1 = n.y + Math.sin(angle) * (n.r + 1)
-              const len = isPrimary ? beamLen : beamLen * 0.5
-              const x2 = n.x + Math.cos(angle) * len
-              const y2 = n.y + Math.sin(angle) * len
-              const bg = ctx.createLinearGradient(x1, y1, x2, y2)
-              bg.addColorStop(0, `rgba(201,168,76,${isPrimary ? 0.4 * pulse : 0.2 * pulse})`)
-              bg.addColorStop(1, 'rgba(201,168,76,0)')
-              ctx.beginPath()
-              ctx.moveTo(x1, y1)
-              ctx.lineTo(x2, y2)
-              ctx.strokeStyle = bg
-              ctx.lineWidth = isPrimary ? 0.8 + pulse * 0.4 : 0.4
-              ctx.stroke()
-            }
-          }
-
-          // Lobe/bridge: soft ambient glow
-          if (n.type === 'lobe' || n.type === 'bridge') {
-            const glowR = n.r * 3.5
-            const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, glowR)
-            g.addColorStop(0, `rgba(100,160,255,${0.18 + pulse * 0.12})`)
-            g.addColorStop(1, 'rgba(100,160,255,0)')
-            ctx.beginPath()
-            ctx.arc(n.x, n.y, glowR, 0, Math.PI * 2)
-            ctx.fillStyle = g
-            ctx.fill()
-          }
-
-          const fillColor = isCore
-            ? `rgba(201,168,76,${0.6 + pulse * 0.4})`
-            : n.type === 'bridge'
-              ? `rgba(180,220,255,${0.70 + pulse * 0.25})`
-              : `rgba(110,170,255,${0.60 + pulse * 0.30})`
-
           ctx.beginPath()
-          ctx.arc(n.x, n.y, n.r + (isCore ? pulse * 3 : pulse * 0.8), 0, Math.PI * 2)
-          ctx.fillStyle = fillColor
+          ctx.arc(n.x, n.y, glowR + pulse * 1.5, 0, Math.PI * 2)
+          ctx.fillStyle = g
           ctx.fill()
 
-          if (isCore) {
-            ctx.beginPath()
-            ctx.arc(n.x, n.y, n.r + pulse * 3 + 5, 0, Math.PI * 2)
-            ctx.strokeStyle = `rgba(201,168,76,${0.18 * (1 - pulse * 0.5)})`
-            ctx.lineWidth = 1
-            ctx.stroke()
-          }
+          // Node body
+          ctx.beginPath()
+          ctx.arc(n.x, n.y, n.r + pulse * 0.6, 0, Math.PI * 2)
+          ctx.fillStyle = isGold
+            ? `rgba(201,168,76,${0.80 + pulse * 0.18})`
+            : `rgba(220,240,255,${0.82 + pulse * 0.16})`
+          ctx.fill()
 
-          // Move node
-          n.x += n.vx; n.y += n.vy
-
-          // Oval boundary enforcement — replace rectangular bounce
-          const maxRx = n.type === 'core' ? rx * 0.25
-            : n.type === 'bridge' ? rx * 0.22
-            : rx * 0.58
-          const maxRy = n.type === 'core' ? ry * 0.25
-            : n.type === 'bridge' ? ry * 0.45
-            : ry * 0.78
-          const ddx = n.x - cx
-          const ddy = n.y - cy
-          const dist = (ddx * ddx) / (maxRx * maxRx) + (ddy * ddy) / (maxRy * maxRy)
-          if (dist > 1) {
-            n.vx *= -0.8
-            n.vy *= -0.8
-            const scale = 1 / Math.sqrt(dist)
-            n.x = cx + ddx * scale * 0.95
-            n.y = cy + ddy * scale * 0.95
-          }
+          // Drift + soft return to base
+          n.x += n.vx
+          n.y += n.vy
+          n.vx += (n.baseX - n.x) * 0.0008
+          n.vy += (n.baseY - n.y) * 0.0008
+          n.vx *= 0.98
+          n.vy *= 0.98
         }
 
         // Surge ring
         if (surgeActive) {
-          surgeRadius += 3.5
+          surgeRadius += 3
+          const a = Math.max(0, 0.15 - surgeRadius / (rx * 2) * 0.15)
           ctx.beginPath()
-          ctx.arc(cx, cy, surgeRadius, 0, Math.PI * 2)
-          const alpha = Math.max(0, 0.18 - surgeRadius / rx * 0.18)
-          ctx.strokeStyle = `rgba(201,168,76,${alpha})`
-          ctx.lineWidth = 1.2
+          ctx.ellipse(cx, cy, surgeRadius, surgeRadius * (ry / rx), 0, 0, Math.PI * 2)
+          ctx.strokeStyle = `rgba(180,220,255,${a})`
+          ctx.lineWidth = 1
           ctx.stroke()
-          if (surgeRadius > rx) surgeActive = false
+          if (surgeRadius > rx * 1.3) surgeActive = false
         }
 
-        // Region labels
-        ctx.font = '500 8px "IBM Plex Mono", monospace'
+        // Region labels — very subtle
+        ctx.font = '400 8px "IBM Plex Mono", monospace'
         ctx.textAlign = 'center'
-        ctx.fillStyle = 'rgba(201,168,76,0.13)'
+        ctx.fillStyle = 'rgba(150,200,255,0.15)'
         ;[
-          ['STATS', W * 0.16, H * 0.22],
-          ['PREDICT', W * 0.78, H * 0.22],
-          ['EDGE', W * 0.16, H * 0.72],
-          ['LEARN', W * 0.78, H * 0.72],
-        ].forEach(([label, lx, ly]) => ctx.fillText(label, lx, ly))
+          ['FRONTAL',    cx,          cy - ry * 0.78],
+          ['L TEMPORAL', cx - rx * 0.78, cy + ry * 0.10],
+          ['R TEMPORAL', cx + rx * 0.78, cy + ry * 0.10],
+          ['OCCIPITAL',  cx,          cy + ry * 0.78],
+        ].forEach(([l, lx, ly]) => ctx.fillText(l, lx, ly))
 
         frame++
         animId = requestAnimationFrame(draw)
       }
 
       animId = requestAnimationFrame(draw)
-
       cleanup = () => {
         cancelAnimationFrame(animId)
         clearInterval(pulseTimer)
         clearInterval(surgeTimer)
       }
     })
-    observer.observe(canvas)
 
+    observer.observe(canvas)
     return () => {
       observer.disconnect()
       cleanup()
@@ -349,7 +311,7 @@ export function useMiniCanvas(canvasRef, active = true) {
         ctx.beginPath()
         ctx.moveTo(nodes[a].x, nodes[a].y)
         ctx.lineTo(nodes[b].x, nodes[b].y)
-        ctx.strokeStyle = 'rgba(201,168,76,0.25)'
+        ctx.strokeStyle = 'rgba(180,220,255,0.25)'
         ctx.lineWidth = 0.6
         ctx.stroke()
       })
@@ -358,7 +320,7 @@ export function useMiniCanvas(canvasRef, active = true) {
         const p = 0.5 + 0.5 * Math.sin(frame * 0.04 + n.phase)
         ctx.beginPath()
         ctx.arc(n.x, n.y, n.r + p * 0.8, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(201,168,76,${0.5 + p * 0.4})`
+        ctx.fillStyle = `rgba(220,240,255,${0.5 + p * 0.4})`
         ctx.fill()
         n.x += n.vx; n.y += n.vy
         if (n.x < 3 || n.x > S - 3) n.vx *= -1
