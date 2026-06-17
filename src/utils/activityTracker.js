@@ -16,6 +16,7 @@ let pageCount = 0
 let actionCount = 0
 
 export async function startSession(userId) {
+  console.log("[tracker] startSession called with:", userId)
   if (!userId || userId === ADMIN_UUID) return
   try {
     sessionStart = Date.now()
@@ -34,6 +35,7 @@ export async function startSession(userId) {
       .single()
     if (error) throw error
     sessionId = data.id
+    console.log("[tracker] session created:", sessionId)
     startHeartbeat()
   } catch (e) {
     console.warn('[tracker] startSession:', e.message)
