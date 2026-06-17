@@ -133,8 +133,8 @@ export function useBrainCanvas(canvasRef, active = true) {
         // Edges
         for (const e of edges) {
           const na = nodes[e.a], nb = nodes[e.b]
-          const baseAlpha = (1 - e.d / MAX_DIST) * 0.22
-          const alpha = e.isBridge ? baseAlpha * 1.9 : baseAlpha
+          const baseAlpha = (1 - e.d / MAX_DIST) * 0.30
+          const alpha = e.isBridge ? baseAlpha * 2.5 : baseAlpha
           ctx.beginPath()
           ctx.moveTo(na.x, na.y)
           ctx.lineTo(nb.x, nb.y)
@@ -179,6 +179,7 @@ export function useBrainCanvas(canvasRef, active = true) {
           const pulse = 0.5 + 0.5 * Math.sin(frame * 0.028 + n.phase)
           const isCore = n.type === 'core'
 
+          // Core: outer glow rings
           if (isCore) {
             ;[{ r: n.r + 18, a: 0.06 }, { r: n.r + 10, a: 0.14 }, { r: n.r + 5, a: 0.25 }]
               .forEach(gl => {
@@ -192,14 +193,64 @@ export function useBrainCanvas(canvasRef, active = true) {
               })
           }
 
+          // Core: radiating beams (drawn before node body)
+          if (isCore) {
+            const beamCount = 8
+            const beamLength = n.r * 6 + pulse * n.r * 4
+            const baseAngle = frame * 0.008
+            for (let b = 0; b < beamCount; b++) {
+              const angle = baseAngle + (b / beamCount) * Math.PI * 2
+              const x1 = n.x + Math.cos(angle) * (n.r + 2)
+              const y1 = n.y + Math.sin(angle) * (n.r + 2)
+              const x2 = n.x + Math.cos(angle) * beamLength
+              const y2 = n.y + Math.sin(angle) * beamLength
+              const beamGrad = ctx.createLinearGradient(x1, y1, x2, y2)
+              beamGrad.addColorStop(0, `rgba(201,168,76,${0.35 * pulse})`)
+              beamGrad.addColorStop(1, 'rgba(201,168,76,0)')
+              ctx.beginPath()
+              ctx.moveTo(x1, y1)
+              ctx.lineTo(x2, y2)
+              ctx.strokeStyle = beamGrad
+              ctx.lineWidth = 0.8 + pulse * 0.5
+              ctx.stroke()
+            }
+            for (let b = 0; b < beamCount; b++) {
+              const angle = baseAngle + ((b + 0.5) / beamCount) * Math.PI * 2
+              const x1 = n.x + Math.cos(angle) * (n.r + 1)
+              const y1 = n.y + Math.sin(angle) * (n.r + 1)
+              const x2 = n.x + Math.cos(angle) * beamLength * 0.5
+              const y2 = n.y + Math.sin(angle) * beamLength * 0.5
+              const beamGrad = ctx.createLinearGradient(x1, y1, x2, y2)
+              beamGrad.addColorStop(0, `rgba(201,168,76,${0.20 * pulse})`)
+              beamGrad.addColorStop(1, 'rgba(201,168,76,0)')
+              ctx.beginPath()
+              ctx.moveTo(x1, y1)
+              ctx.lineTo(x2, y2)
+              ctx.strokeStyle = beamGrad
+              ctx.lineWidth = 0.5
+              ctx.stroke()
+            }
+          }
+
+          // Lobe/bridge: soft ambient glow
+          if (n.type === 'lobe' || n.type === 'bridge') {
+            const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 3)
+            g.addColorStop(0, `rgba(100,160,255,${0.15 + pulse * 0.1})`)
+            g.addColorStop(1, 'rgba(100,160,255,0)')
+            ctx.beginPath()
+            ctx.arc(n.x, n.y, n.r * 3, 0, Math.PI * 2)
+            ctx.fillStyle = g
+            ctx.fill()
+          }
+
           const fillColor = isCore
             ? `rgba(201,168,76,${0.6 + pulse * 0.4})`
             : n.type === 'bridge'
-              ? `rgba(160,200,255,${0.35 + pulse * 0.2})`
-              : `rgba(90,130,200,${0.25 + pulse * 0.15})`
+              ? `rgba(180,220,255,${0.65 + pulse * 0.25})`
+              : `rgba(100,160,255,${0.55 + pulse * 0.30})`
 
           ctx.beginPath()
-          ctx.arc(n.x, n.y, n.r + (isCore ? pulse * 2.5 : 0), 0, Math.PI * 2)
+          ctx.arc(n.x, n.y, n.r + (isCore ? pulse * 3 : pulse * 0.8), 0, Math.PI * 2)
           ctx.fillStyle = fillColor
           ctx.fill()
 
