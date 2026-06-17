@@ -294,12 +294,29 @@ export default function Dashboard() {
       </div>
 
       {/* ═══ SECTION 3: MODEL PERFORMANCE ═══ */}
-      <SH
-        label={lang === 'zh' ? '模型表现' : 'MODEL PERFORMANCE'}
-        sub={modelPerf.total > 0
-          ? `${modelPerf.total} matches analyzed · Benchmarks: Random 33% · Bookmakers ~54%`
-          : lang === 'zh' ? '需要有V3预测的已完成比赛' : 'Requires finished matches with V3 predictions'}
-      />
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10, marginTop: 28 }}>
+        <div>
+          <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500,
+            letterSpacing: '0.10em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+            {lang === 'zh' ? '模型表现' : 'MODEL PERFORMANCE'}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2 }}>
+            {modelPerf.total > 0
+              ? `${modelPerf.total} matches analyzed · Benchmarks: Random 33% · Bookmakers ~54%`
+              : lang === 'zh' ? '需要有V3预测的已完成比赛' : 'Requires finished matches with V3 predictions'}
+          </div>
+        </div>
+        <button
+          onClick={() => navigate('/model-performance')}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+            fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-blue)',
+            padding: 0, letterSpacing: '0.04em', flexShrink: 0, marginLeft: 12,
+          }}
+        >
+          {lang === 'zh' ? '完整报告 →' : 'Full report →'}
+        </button>
+      </div>
 
       {modelPerf.total === 0 ? (
         <div style={{ padding: '16px', border: '0.5px solid var(--color-border)',
