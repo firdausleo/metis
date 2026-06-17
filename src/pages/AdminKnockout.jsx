@@ -161,16 +161,6 @@ export default function AdminKnockout() {
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 800, color: '#fff', margin: 0 }}>
           {lang === 'en' ? 'Knockout Stage Manager' : '淘汰赛管理'}
         </h1>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          {[['en','EN'],['zh','中文']].map(([code, label], i) => (
-            <span key={code} style={{ display: 'flex', alignItems: 'center' }}>
-              {i > 0 && <span style={{ color: 'rgba(255,255,255,0.30)', fontSize: 13, margin: '0 4px' }}>|</span>}
-              <button onClick={() => setLanguage(code)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px', fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-ui)', color: lang === code ? 'var(--color-accent)' : 'rgba(255,255,255,0.40)' }}>
-                {label}
-              </button>
-            </span>
-          ))}
-        </div>
       </div>
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 16px' }}>

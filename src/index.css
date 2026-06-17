@@ -133,6 +133,7 @@
   --touch-target:       44px;
   --nav-height-top:     56px;
   --nav-height-bottom:  64px;
+  --metis-h:            calc(100vh - 104px); /* mobile: 44px top + 60px bottom */
 }
 
 * {
@@ -151,24 +152,22 @@ body {
   min-height: 100vh;
 }
 
-/* NavBar responsive visibility */
-.navbar-desktop { display: none !important; }
-.navbar-mobile  { display: flex !important; }
-
+/* Desktop: full height for METIS (no top/bottom nav) */
 @media (min-width: 768px) {
-  .navbar-desktop { display: flex !important; }
-  .navbar-mobile  { display: none !important; }
+  :root { --metis-h: 100vh; }
 }
 
-/* App content padding to avoid nav overlap */
+/* App content offset — mobile: top strip + bottom bar; desktop: left sidebar */
 .app-content {
-  padding-bottom: 80px;
+  padding-top: 44px;
+  padding-bottom: 60px;
 }
 
 @media (min-width: 768px) {
   .app-content {
+    padding-top: 0;
     padding-bottom: 0;
-    padding-top: 56px;
+    margin-left: 64px;
   }
 }
 
@@ -234,8 +233,8 @@ body {
     align-items: start;
     padding: 24px 32px;
   }
-  .analysis-side  { position: sticky; top: calc(var(--nav-height-top) + 24px); }
-  .analysis-right { position: sticky; top: calc(var(--nav-height-top) + 24px); }
+  .analysis-side  { position: sticky; top: 24px; }
+  .analysis-right { position: sticky; top: 24px; }
 }
 .analysis-side, .analysis-right { display: none; }
 @media (min-width: 1024px) { .analysis-side, .analysis-right { display: block; } }
@@ -250,8 +249,8 @@ body {
   .matches-sidebar {
     display: block;
     position: sticky;
-    top: calc(var(--nav-height-top) + 16px);
-    max-height: calc(100vh - var(--nav-height-top) - 32px);
+    top: 16px;
+    max-height: calc(100vh - 32px);
     overflow-y: auto;
   }
 }
@@ -268,7 +267,7 @@ body {
 
 @media (min-width: 768px) {
   .matches-sticky-header {
-    top: var(--nav-height-top);
+    top: 0;
   }
 }
 

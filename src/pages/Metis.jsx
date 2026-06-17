@@ -317,7 +317,7 @@ FORMAT YOUR RESPONSES
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      height: 'calc(100vh - 56px)',
+      height: 'calc(var(--metis-h, 100vh))',
       background: '#080c14',
       overflow: 'hidden',
     }}>

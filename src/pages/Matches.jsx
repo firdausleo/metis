@@ -7,6 +7,7 @@ import MatchCard from '../components/MatchCard'
 import { getFlag } from '../lib/teamFlags'
 import { syncAllStats } from '../lib/statsApi'
 import { supabase } from '../lib/supabase'
+import Simulator from './Simulator'
 
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
@@ -711,10 +712,11 @@ export default function Matches() {
   }
 
   const filterButtons = [
-    { key: 'all',      label: t('matches.filter.all') },
-    { key: 'upcoming', label: t('matches.filter.upcoming') },
-    { key: 'group',    label: t('matches.filter.group') },
-    { key: 'knockout', label: t('matches.filter.knockout') },
+    { key: 'all',       label: t('matches.filter.all') },
+    { key: 'upcoming',  label: t('matches.filter.upcoming') },
+    { key: 'group',     label: t('matches.filter.group') },
+    { key: 'knockout',  label: t('matches.filter.knockout') },
+    { key: 'simulator', label: lang === 'zh' ? '🎮 模拟器' : '🎮 Simulator' },
   ]
 
   return (
@@ -966,6 +968,13 @@ export default function Matches() {
               statsMap={statsMap}
               predMap={predMap}
             />
+          </div>
+        )}
+
+        {/* ── SIMULATOR ── */}
+        {filter === 'simulator' && (
+          <div style={{ marginTop: 8 }}>
+            <Simulator />
           </div>
         )}
       </div>

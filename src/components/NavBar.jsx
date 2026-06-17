@@ -1,328 +1,283 @@
-import { useNavigate, useLocation } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
-import { useUser } from '../context/UserContext'
+import React, { useState, useRef, useEffect } from 'react'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation, setLanguage } from '../lib/i18n'
 
-// METIS is first and styled distinctly; FAQ replaces Settings in main nav
 const NAV_ITEMS = [
-  { key: 'nav.metis',      icon: '⚡', path: '/metis',           metis: true },
-  { key: 'nav.dashboard',  icon: '📊', path: '/dashboard' },
-  { key: 'nav.matches',    icon: '⚽', path: '/matches' },
-  { key: 'nav.simulator',  icon: '🎲', path: '/simulator' },
-  { key: 'nav.myBets',    icon: '🎯', path: '/my-bets' },
-  { key: 'nav.picks',     icon: '💡', path: '/recommendations' },
-  { key: 'nav.faq',       icon: '❓', path: '/faq' },
+  { path: '/metis',   icon: '⚡', labelEn: 'METIS',   labelZh: 'METIS',  gold: true },
+  { path: '/matches', icon: '📅', labelEn: 'Matches',  labelZh: '比赛' },
+  { path: '/my-bets', icon: '💰', labelEn: 'My Bets',  labelZh: '投注' },
+  { path: '/faq',     icon: '❓', labelEn: 'FAQ',       labelZh: '帮助' },
 ]
 
-function isActive(path, pathname) {
-  if (path === '/') return pathname === '/'
-  return pathname.startsWith(path)
-}
-
-function LanguageToggle({ lang, mobile = false }) {
-  const langs = [['en', 'EN'], ['zh', '中文']]
+function DropdownPanel({ open, userName, isAdmin, lang, navigate, onLogout, setOpen, posStyle }) {
+  if (!open) return null
+  const itemStyle = (gold) => ({
+    display: 'block', width: '100%',
+    padding: '10px 14px', textAlign: 'left',
+    background: 'transparent', border: 'none',
+    borderBottom: '0.5px solid #e5e7eb',
+    fontSize: 13, cursor: 'pointer',
+    fontFamily: "'Space Grotesk', sans-serif",
+    color: gold ? '#C9A84C' : '#111',
+    fontWeight: gold ? 500 : 400,
+  })
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 4 : 0 }}>
-      {langs.map(([code, label], i) => (
-        <span key={code} style={{ display: 'flex', alignItems: 'center' }}>
-          {!mobile && i > 0 && (
-            <span style={{ color: 'rgba(255,255,255,0.30)', fontSize: 13, margin: '0 4px', userSelect: 'none' }}>|</span>
-          )}
-          <button
-            onClick={() => setLanguage(code)}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: mobile ? '4px 6px' : '4px 6px',
-              fontSize: mobile ? 11 : 13, fontWeight: 700,
-              fontFamily: 'var(--font-ui)',
-              color: lang === code ? 'var(--color-accent)' : 'rgba(255,255,255,0.40)',
-              transition: 'color 0.15s',
-            }}
-          >
-            {label}
+    <div style={{
+      position: 'absolute', ...posStyle,
+      width: 200, background: 'white',
+      border: '0.5px solid #e5e7eb',
+      borderRadius: 10,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+      overflow: 'hidden', zIndex: 400,
+    }}>
+      <div style={{
+        padding: '12px 14px', borderBottom: '0.5px solid #e5e7eb',
+        background: '#f9fafb',
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: '#111', fontFamily: "'Space Grotesk', sans-serif" }}>
+          {userName}
+        </div>
+        <div style={{ fontSize: 10, color: '#999', fontFamily: "'IBM Plex Mono', monospace", marginTop: 2 }}>
+          {isAdmin ? 'ADMIN' : 'MEMBER'}
+        </div>
+      </div>
+
+      <button onClick={() => { navigate('/settings'); setOpen(false) }} style={itemStyle()}>
+        {lang === 'zh' ? '设置' : 'Settings'}
+      </button>
+
+      {isAdmin && (
+        <>
+          <div style={{
+            padding: '6px 14px 4px', fontSize: 9,
+            fontFamily: "'IBM Plex Mono', monospace",
+            letterSpacing: '0.08em', color: '#999',
+            textTransform: 'uppercase',
+          }}>Admin</div>
+          <button onClick={() => { navigate('/settings/metis'); setOpen(false) }} style={itemStyle(true)}>
+            ⚡ METIS Settings
           </button>
-        </span>
-      ))}
+          <button onClick={() => { navigate('/admin/users'); setOpen(false) }} style={itemStyle()}>
+            👥 User Management
+          </button>
+          <button onClick={() => { navigate('/admin/knockout'); setOpen(false) }} style={itemStyle()}>
+            🏆 Knockout Admin
+          </button>
+        </>
+      )}
+
+      <button
+        onClick={() => { onLogout(); setOpen(false) }}
+        style={{ ...itemStyle(), borderBottom: 'none', color: '#791F1F' }}
+      >
+        {lang === 'zh' ? '退出登录' : 'Logout'}
+      </button>
     </div>
   )
 }
 
-function CreditPill({ credits, navigate, t }) {
-  let bg = '#EAF3DE', color = '#27500A'
-  if (credits < 5)       { bg = '#FCEBEB'; color = '#791F1F' }
-  else if (credits <= 10) { bg = '#FAEEDA'; color = '#633806' }
-
-  return (
-    <button
-      onClick={() => navigate('/faq')}
-      title={t('credits.tooltip')}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 4,
-        padding: '3px 10px', borderRadius: 99,
-        background: bg, border: 'none',
-        color, cursor: 'pointer',
-        fontFamily: 'var(--font-ui)', fontSize: 12, fontWeight: 500,
-        whiteSpace: 'nowrap', minHeight: 44,
-      }}
-    >
-      ⚡ {credits}
-    </button>
-  )
-}
-
-export default function NavBar() {
-  const { user, signOut } = useAuth()
-  const { tier, credits } = useUser()
-  const { t, lang } = useTranslation()
-  const navigate = useNavigate()
+export default function NavBar({ user, isAdmin, onLogout }) {
+  const { lang } = useTranslation()
   const location = useLocation()
+  const navigate = useNavigate()
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const menuRef = useRef(null)
 
-  const showCreditPill = tier === 'power' || tier === 'standard'
-  const isAdmin = tier === 'admin'
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
 
-  async function handleSignOut() {
-    await signOut()
-    navigate('/auth')
+  useEffect(() => {
+    function handleClick(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setUserMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const userInitial = user?.email?.[0]?.toUpperCase() || 'U'
+  const userName = (user?.email || '').split('@')[0]
+
+  function isActive(path) {
+    if (path === '/metis') return location.pathname === '/metis'
+    return location.pathname.startsWith(path)
   }
 
-  return (
-    <>
-      {/* Desktop top nav */}
-      <nav className="navbar-desktop" style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        height: 56,
-        background: 'var(--color-blue)',
-        borderBottom: '1px solid var(--color-accent-border)',
-        display: 'flex', alignItems: 'center', padding: '0 24px', gap: 8,
-      }}>
-        <span style={{
-          fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 20,
-          color: 'var(--color-accent)', letterSpacing: '0.08em', marginRight: 16,
+  // ── MOBILE ──────────────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <>
+        {/* Top brand strip */}
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, height: 44,
+          background: '#1A3A6C', display: 'flex',
+          alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 16px', zIndex: 300,
+          borderBottom: '0.5px solid rgba(255,255,255,0.08)',
         }}>
-          METIS
-        </span>
+          <div style={{
+            fontSize: 13, fontFamily: "'IBM Plex Mono', monospace",
+            fontWeight: 600, letterSpacing: '0.2em', color: '#C9A84C',
+          }}>METIS</div>
 
-        <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-          {NAV_ITEMS.map(item => {
-            const active = isActive(item.path, location.pathname)
-            if (item.metis) {
-              return (
-                <button
-                  key={item.path}
-                  onClick={() => navigate(item.path)}
-                  style={{
-                    border: 'none', cursor: 'pointer', padding: '6px 14px',
-                    borderRadius: 'var(--radius-sm)', fontFamily: "'IBM Plex Mono', monospace",
-                    fontSize: 13, fontWeight: 600, minHeight: 'var(--touch-target)',
-                    letterSpacing: '0.15em',
-                    color: '#C9A84C',
-                    background: active ? 'rgba(201,168,76,0.18)' : 'rgba(201,168,76,0.08)',
-                    transition: 'background 0.15s',
-                    marginRight: 4,
-                  }}
-                >
-                  ⚡ METIS
-                </button>
-              )
-            }
-            return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              onClick={() => setLanguage(lang === 'zh' ? 'en' : 'zh')}
+              style={{
+                background: 'transparent', border: 'none',
+                color: 'rgba(255,255,255,0.6)', fontSize: 11,
+                fontFamily: "'IBM Plex Mono', monospace",
+                cursor: 'pointer', padding: '4px 8px', minHeight: 'auto',
+              }}
+            >{lang === 'zh' ? 'EN' : '中文'}</button>
+
+            <div ref={menuRef} style={{ position: 'relative' }}>
               <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
+                onClick={() => setUserMenuOpen(prev => !prev)}
                 style={{
-                  border: 'none', cursor: 'pointer', padding: '6px 12px',
-                  borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-ui)',
-                  fontSize: 13, fontWeight: 500, minHeight: 'var(--touch-target)',
-                  color: active ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
-                  background: active ? 'var(--color-accent-dim)' : 'transparent',
-                  transition: 'color 0.15s, background 0.15s',
+                  width: 28, height: 28, borderRadius: '50%', minHeight: 'auto',
+                  background: isAdmin ? '#C9A84C' : 'rgba(255,255,255,0.2)',
+                  border: 'none', fontSize: 11, fontWeight: 600,
+                  color: isAdmin ? '#1A3A6C' : 'white',
+                  cursor: 'pointer', fontFamily: "'IBM Plex Mono', monospace",
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
-              >
-                {item.icon} {t(item.key)}
-              </button>
+              >{userInitial}</button>
+              <DropdownPanel
+                open={userMenuOpen} userName={userName} isAdmin={isAdmin}
+                lang={lang} navigate={navigate} onLogout={onLogout}
+                setOpen={setUserMenuOpen}
+                posStyle={{ top: 36, right: 0 }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom nav */}
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, height: 60,
+          background: '#1A3A6C', display: 'flex',
+          alignItems: 'center', justifyContent: 'space-around',
+          zIndex: 300, borderTop: '0.5px solid rgba(255,255,255,0.08)',
+        }}>
+          {NAV_ITEMS.map(item => {
+            const active = isActive(item.path)
+            return (
+              <NavLink key={item.path} to={item.path} style={{
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                flex: 1, height: '100%', textDecoration: 'none',
+                borderTop: active ? '2px solid #C9A84C' : '2px solid transparent',
+              }}>
+                <span style={{ fontSize: 20 }}>{item.icon}</span>
+                <span style={{
+                  fontSize: 9, fontFamily: "'IBM Plex Mono', monospace",
+                  color: active ? '#C9A84C' : 'rgba(255,255,255,0.5)',
+                  marginTop: 2, letterSpacing: '0.04em',
+                }}>
+                  {lang === 'zh' ? item.labelZh : item.labelEn}
+                </span>
+              </NavLink>
             )
           })}
         </div>
+      </>
+    )
+  }
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <LanguageToggle lang={lang} />
-
-          {/* Credit pill — power/standard only */}
-          {showCreditPill && (
-            <CreditPill credits={credits} navigate={navigate} t={t} />
-          )}
-
-          {/* Settings gear */}
-          <button
-            onClick={() => navigate('/settings')}
-            style={{
-              background: isActive('/settings', location.pathname) ? 'var(--color-accent-dim)' : 'none',
-              border: 'none', cursor: 'pointer', padding: '6px 10px',
-              borderRadius: 'var(--radius-sm)', fontSize: 16,
-              minHeight: 'var(--touch-target)',
-              color: isActive('/settings', location.pathname) ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
-            }}
-            title={t('nav.settings')}
-          >
-            ⚙️
-          </button>
-
-          {/* Admin links — admin tier only */}
-          {isAdmin && (
-            <>
-              <button
-                onClick={() => navigate('/admin/users')}
-                style={{
-                  border: 'none', cursor: 'pointer', padding: '5px 12px',
-                  borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-ui)',
-                  fontSize: 13, fontWeight: 700, minHeight: 'var(--touch-target)',
-                  color: location.pathname === '/admin/users' ? '#000' : 'var(--color-accent)',
-                  background: location.pathname === '/admin/users' ? 'var(--color-accent)' : 'var(--color-accent-dim)',
-                  transition: 'background 0.15s, color 0.15s',
-                }}
-              >
-                {t('nav.admin')}
-              </button>
-              <button
-                onClick={() => navigate('/admin/knockout')}
-                style={{
-                  border: 'none', cursor: 'pointer', padding: '5px 12px',
-                  borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-ui)',
-                  fontSize: 13, fontWeight: 700, minHeight: 'var(--touch-target)',
-                  color: location.pathname === '/admin/knockout' ? '#000' : 'var(--color-accent)',
-                  background: location.pathname === '/admin/knockout' ? 'var(--color-accent)' : 'var(--color-accent-dim)',
-                  transition: 'background 0.15s, color 0.15s',
-                }}
-              >
-                Knockout
-              </button>
-            </>
-          )}
-
-          {user && (
-            <span style={{
-              fontSize: 12, color: 'rgba(255,255,255,0.55)',
-              maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {user.email}
-            </span>
-          )}
-          <button
-            onClick={handleSignOut}
-            style={{
-              background: 'none', border: '0.5px solid var(--color-accent-border)',
-              cursor: 'pointer', padding: '5px 12px', borderRadius: 'var(--radius-sm)',
-              fontFamily: 'var(--font-ui)', fontSize: 13, color: 'rgba(255,255,255,0.80)',
-            }}
-          >
-            {t('nav.logout')}
-          </button>
-        </div>
-      </nav>
-
-      {/* Mobile bottom nav */}
-      <nav className="navbar-mobile" style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
-        background: 'var(--color-blue)',
-        borderTop: '1px solid var(--color-accent-border)',
-        paddingBottom: 'env(safe-area-inset-bottom)',
-        display: 'flex',
+  // ── DESKTOP SIDEBAR ──────────────────────────────────────────────────────
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, bottom: 0, width: 64,
+      background: '#1A3A6C', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', paddingTop: 8, paddingBottom: 8,
+      zIndex: 300, borderRight: '0.5px solid rgba(255,255,255,0.08)',
+    }}>
+      {/* Brand */}
+      <div style={{
+        fontSize: 9, fontFamily: "'IBM Plex Mono', monospace",
+        fontWeight: 600, letterSpacing: '0.15em',
+        color: '#C9A84C', marginBottom: 16, marginTop: 8, textAlign: 'center',
       }}>
-        {NAV_ITEMS.map(item => {
-          const active = isActive(item.path, location.pathname)
-          if (item.metis) {
-            return (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                style={{
-                  flex: 1, display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center',
-                  gap: 2, padding: '10px 0',
-                  background: active ? 'rgba(201,168,76,0.12)' : 'none',
-                  border: 'none', cursor: 'pointer',
-                  color: '#C9A84C',
-                  minHeight: 'var(--touch-target)',
-                }}
-              >
-                <span style={{ fontSize: 20, lineHeight: 1 }}>⚡</span>
-                <span style={{
-                  fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
-                  fontWeight: 700, letterSpacing: '0.05em',
-                }}>METIS</span>
-              </button>
-            )
-          }
-          return (
-            <button
-              key={item.path}
-              onClick={() => navigate(item.path)}
-              style={{
-                flex: 1, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                gap: 3, padding: '10px 0',
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: active ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
-                minHeight: 'var(--touch-target)',
-              }}
-            >
-              <span style={{ fontSize: 20, lineHeight: 1 }}>{item.icon}</span>
-              <span style={{ fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: active ? 600 : 400 }}>
-                {t(item.key)}
-              </span>
-            </button>
-          )
-        })}
+        M<br />E<br />T<br />I<br />S
+      </div>
+      <div style={{ width: 32, height: '0.5px', background: 'rgba(255,255,255,0.12)', marginBottom: 12 }} />
 
-        {/* Admin tab — mobile, admin only */}
-        {isAdmin && (
-          <button
-            onClick={() => navigate('/admin/users')}
-            style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              gap: 3, padding: '10px 0',
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: location.pathname === '/admin/users' ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
-              minHeight: 'var(--touch-target)',
-            }}
-          >
-            <span style={{ fontSize: 20, lineHeight: 1 }}>🔧</span>
-            <span style={{ fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: location.pathname === '/admin/users' ? 600 : 400 }}>
-              {t('nav.admin')}
+      {/* Nav items */}
+      {NAV_ITEMS.map(item => {
+        const active = isActive(item.path)
+        return (
+          <NavLink key={item.path} to={item.path} style={{
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            width: 52, height: 52, borderRadius: 10, marginBottom: 4,
+            textDecoration: 'none',
+            background: active ? 'rgba(201,168,76,0.15)' : 'transparent',
+            border: active ? '0.5px solid rgba(201,168,76,0.3)' : '0.5px solid transparent',
+            transition: 'all 0.15s',
+          }}>
+            <span style={{ fontSize: 18 }}>{item.icon}</span>
+            <span style={{
+              fontSize: 8, fontFamily: "'IBM Plex Mono', monospace",
+              letterSpacing: '0.05em',
+              color: active ? '#C9A84C' : 'rgba(255,255,255,0.55)',
+              marginTop: 2, textAlign: 'center', fontWeight: active ? 600 : 400,
+            }}>
+              {lang === 'zh' ? item.labelZh : item.labelEn}
             </span>
-          </button>
-        )}
-        {/* Knockout tab — mobile, admin only */}
-        {isAdmin && (
-          <button
-            onClick={() => navigate('/admin/knockout')}
-            style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              gap: 3, padding: '10px 0',
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: location.pathname === '/admin/knockout' ? 'var(--color-accent)' : 'rgba(255,255,255,0.80)',
-              minHeight: 'var(--touch-target)',
-            }}
-          >
-            <span style={{ fontSize: 20, lineHeight: 1 }}>🏆</span>
-            <span style={{ fontSize: 11, fontFamily: 'var(--font-ui)', fontWeight: location.pathname === '/admin/knockout' ? 600 : 400 }}>
-              淘汰赛
-            </span>
-          </button>
-        )}
+          </NavLink>
+        )
+      })}
 
-        {/* Language toggle */}
+      <div style={{ flex: 1 }} />
+      <div style={{ width: 32, height: '0.5px', background: 'rgba(255,255,255,0.12)', marginBottom: 12 }} />
+
+      {/* Language toggle */}
+      <button
+        onClick={() => setLanguage(lang === 'zh' ? 'en' : 'zh')}
+        style={{
+          width: 52, height: 28, borderRadius: 6, minHeight: 'auto',
+          background: 'rgba(255,255,255,0.08)',
+          border: '0.5px solid rgba(255,255,255,0.15)',
+          color: 'rgba(255,255,255,0.6)',
+          fontSize: 9, fontFamily: "'IBM Plex Mono', monospace",
+          letterSpacing: '0.05em', cursor: 'pointer', marginBottom: 8,
+        }}
+      >{lang === 'zh' ? 'EN' : '中文'}</button>
+
+      {/* User icon + dropdown */}
+      <div ref={menuRef} style={{ position: 'relative' }}>
+        <button
+          onClick={() => setUserMenuOpen(prev => !prev)}
+          style={{
+            width: 36, height: 36, borderRadius: '50%', minHeight: 'auto',
+            background: isAdmin ? '#C9A84C' : 'rgba(255,255,255,0.15)',
+            border: 'none', cursor: 'pointer', fontSize: 13,
+            fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600,
+            color: isAdmin ? '#1A3A6C' : 'white',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginBottom: 2,
+          }}
+        >{userInitial}</button>
         <div style={{
-          flex: 1, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          gap: 3, padding: '10px 0', minHeight: 'var(--touch-target)',
-        }}>
-          <span style={{ fontSize: 20, lineHeight: 1 }}>🌐</span>
-          <LanguageToggle lang={lang} mobile />
-        </div>
-      </nav>
-    </>
+          fontSize: 7, color: 'rgba(255,255,255,0.4)',
+          fontFamily: "'IBM Plex Mono', monospace",
+          textAlign: 'center', marginBottom: 4,
+          maxWidth: 52, overflow: 'hidden',
+          textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{userName.slice(0, 7)}</div>
+        <DropdownPanel
+          open={userMenuOpen} userName={userName} isAdmin={isAdmin}
+          lang={lang} navigate={navigate} onLogout={onLogout}
+          setOpen={setUserMenuOpen}
+          posStyle={{ bottom: 48, left: 60 }}
+        />
+      </div>
+    </div>
   )
 }

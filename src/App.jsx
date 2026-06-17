@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { UserProvider, useUser } from './context/UserContext'
+import { useAuth } from './hooks/useAuth'
 import NavBar from './components/NavBar'
 import LoadingScreen from './components/LoadingScreen'
 import Dashboard from './pages/Dashboard'
@@ -39,10 +40,13 @@ function ProtectedRoute({ children, adminOnly = false }) {
 function Layout({ children }) {
   const location = useLocation()
   const showNav = location.pathname !== '/auth' && location.pathname !== '/pending'
+  const { user, signOut } = useAuth()
+  const { tier } = useUser()
+  const isAdmin = tier === 'admin'
 
   return (
     <>
-      {showNav && <NavBar />}
+      {showNav && <NavBar user={user} isAdmin={isAdmin} onLogout={signOut} />}
       <div className={showNav ? 'app-content' : undefined}>
         {children}
       </div>
