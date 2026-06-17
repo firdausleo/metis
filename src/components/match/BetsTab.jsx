@@ -159,7 +159,7 @@ function OddsInput({ value, onChange, placeholder = '—', style }) {
         width: 70, fontSize: 16, minHeight: 44, textAlign: 'center',
         padding: '0 6px', borderRadius: 'var(--radius-sm)',
         background: 'var(--color-bg)', color: 'var(--color-text-primary)',
-        border: '0.5px solid var(--color-border-active)', fontFamily: 'monospace',
+        border: '0.5px solid var(--color-border-active)', fontFamily: "'IBM Plex Mono', monospace",
         ...style,
       }}
     />
@@ -283,7 +283,7 @@ function Market1X2({ model, match, odds, setOdds, bankroll }) {
     } catch { setPlaced(p => ({ ...p, [key]: 'error' })) }
   }
 
-  const inp = { width: 80, fontSize: 16, minHeight: 44, textAlign: 'center', padding: '0 6px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)', fontFamily: 'monospace' }
+  const inp = { width: 80, fontSize: 16, minHeight: 44, textAlign: 'center', padding: '0 6px', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)', fontFamily: "'IBM Plex Mono', monospace" }
 
   return (
     <div>
@@ -535,7 +535,7 @@ function MarketChineseHandicap({ model, match, lang, line, setLine, oddsH, setOd
                 return (
                   <tr key={row.label}>
                     <td style={{ ...tdS, textAlign: 'left' }}>{row.label}</td>
-                    <td style={{ ...tdS, fontFamily: 'monospace' }}>{(row.p * 100).toFixed(1)}%</td>
+                    <td style={{ ...tdS, fontFamily: "'IBM Plex Mono', monospace" }}>{(row.p * 100).toFixed(1)}%</td>
                     <td style={tdS}>
                       <OddsInput value={row.odds} onChange={row.set} />
                     </td>
@@ -582,7 +582,7 @@ function MarketIndonesia({ model, match, lang, onParsed }) {
         onChange={e => setRawText(e.target.value)}
         rows={5}
         placeholder={placeholder}
-        style={{ width: '100%', fontSize: 13, fontFamily: 'monospace', borderRadius: 'var(--radius-md)', padding: '10px 12px', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border)', resize: 'vertical', boxSizing: 'border-box', display: 'block', lineHeight: 1.5 }}
+        style={{ width: '100%', fontSize: 13, fontFamily: "'IBM Plex Mono', monospace", borderRadius: 'var(--radius-md)', padding: '10px 12px', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border)', resize: 'vertical', boxSizing: 'border-box', display: 'block', lineHeight: 1.5 }}
       />
       <button
         onClick={handleParse}
@@ -810,7 +810,7 @@ function BestBetsSummary({ bets, bankroll, lang }) {
               <span style={{ fontSize: 11 }}>{isGood ? '✅' : isFair ? '〰' : '❌'}</span>
               <span style={{ flex: 1, minWidth: 100, fontSize: 12, fontWeight: 500 }}>{b.label}</span>
               {(() => { const bs = marketBadgeStyle(b.market); return <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 99, background: bs.background, color: bs.color, flexShrink: 0 }}>{b.market}</span> })()}
-              <span style={{ fontSize: 11, fontFamily: 'monospace', flexShrink: 0 }}>@{b.odds.toFixed(2)}</span>
+              <span style={{ fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", flexShrink: 0 }}>@{b.odds.toFixed(2)}</span>
               <span style={{ fontSize: 12, fontWeight: 700, color: col, flexShrink: 0 }}>{b.edge >= 0 ? '+' : ''}{(b.edge * 100).toFixed(1)}%</span>
               {stakeAmt != null && stakeAmt > 0 && (
                 <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-accent)', flexShrink: 0 }}>¥{stakeAmt.toLocaleString()}</span>
@@ -1356,7 +1356,7 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
                     {roleLabel}
                   </span>
                   <span style={{ flex: 1, fontSize: 12, color: 'var(--color-text-primary)' }}>{bet.label}</span>
-                  <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--color-text-secondary)', flexShrink: 0 }}>@{bet.odds.toFixed(2)}</span>
+                  <span style={{ fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-text-secondary)', flexShrink: 0 }}>@{bet.odds.toFixed(2)}</span>
                   <span style={{ fontSize: 11, fontWeight: 600, color: bet.edge > 0.05 ? 'var(--color-edge-green)' : bet.edge > 0 ? 'var(--color-edge-amber)' : 'var(--color-edge-red)', flexShrink: 0, minWidth: 48, textAlign: 'right' }}>
                     {bet.edge > 0 ? '+' : ''}{(bet.edge * 100).toFixed(1)}%
                   </span>
@@ -1510,7 +1510,7 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
             placeholder={lang === 'zh'
               ? `粘贴印尼盘赔率...\n\n示例：\n+20 ${match?.home_team || 'Prancis'} -${match?.away_team || 'Senegal'}\nB.2.1/2+20`
               : `Paste Indonesia odds here...\n\nExample:\n+20 ${match?.home_team || 'Prancis'} -${match?.away_team || 'Senegal'}\nB.2.1/2+20`}
-            style={{ width: '100%', fontSize: 13, fontFamily: 'monospace', borderRadius: 'var(--radius-md)', padding: '8px 10px', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border)', resize: 'vertical', boxSizing: 'border-box', display: 'block', lineHeight: 1.5, marginBottom: 8 }}
+            style={{ width: '100%', fontSize: 13, fontFamily: "'IBM Plex Mono', monospace", borderRadius: 'var(--radius-md)', padding: '8px 10px', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border)', resize: 'vertical', boxSizing: 'border-box', display: 'block', lineHeight: 1.5, marginBottom: 8 }}
           />
           <button
             onClick={handleParseIndo}

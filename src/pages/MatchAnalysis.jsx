@@ -1994,7 +1994,7 @@ function ChineseHandicapSection({ model, homeTeam, awayTeam }) {
 
   const cardStyle = { background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
   const SH = { fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-accent)', textTransform: 'uppercase', borderBottom: '1px solid var(--color-accent)', paddingBottom: 6, marginBottom: 14, display: 'block' }
-  const inp = { textAlign: 'center', padding: '4px 6px', fontSize: 16, minHeight: 44, border: '0.5px solid var(--color-border)', borderRadius: 4, background: 'var(--color-bg)', color: 'var(--color-text-primary)', fontFamily: 'monospace' }
+  const inp = { textAlign: 'center', padding: '4px 6px', fontSize: 16, minHeight: 44, border: '0.5px solid var(--color-border)', borderRadius: 4, background: 'var(--color-bg)', color: 'var(--color-text-primary)', fontFamily: "'IBM Plex Mono', monospace" }
 
   const matrix = model?.v2?.matrix
   let probs = null
@@ -2059,7 +2059,7 @@ function ChineseHandicapSection({ model, homeTeam, awayTeam }) {
               ].map(row => (
                 <tr key={row.label}>
                   <td style={tdS}>{row.label}</td>
-                  <td style={{ ...tdS, textAlign: 'center', fontFamily: 'monospace' }}>{(row.p * 100).toFixed(1)}%</td>
+                  <td style={{ ...tdS, textAlign: 'center', fontFamily: "'IBM Plex Mono', monospace" }}>{(row.p * 100).toFixed(1)}%</td>
                   <td style={{ ...tdS, textAlign: 'center' }}>
                     <input type="number" step="0.01" min="1" max="99" value={row.odds} onChange={e => row.set(e.target.value)} placeholder="—"
                       style={{ ...inp, width: 70 }} />
@@ -2086,7 +2086,7 @@ function ChineseCorrectScoreSection({ model, homeTeam, awayTeam }) {
 
   const cardStyle = { background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }
   const SH = { fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-accent)', textTransform: 'uppercase', borderBottom: '1px solid var(--color-accent)', paddingBottom: 6, marginBottom: 14, display: 'block' }
-  const inp = { textAlign: 'center', padding: '4px 6px', fontSize: 16, minHeight: 44, border: '0.5px solid var(--color-border)', borderRadius: 4, background: 'var(--color-bg)', color: 'var(--color-text-primary)', fontFamily: 'monospace' }
+  const inp = { textAlign: 'center', padding: '4px 6px', fontSize: 16, minHeight: 44, border: '0.5px solid var(--color-border)', borderRadius: 4, background: 'var(--color-bg)', color: 'var(--color-text-primary)', fontFamily: "'IBM Plex Mono', monospace" }
 
   const matrix = model?.v2?.matrix
   const top12 = matrix ? topScorelines(matrix, 12) : []
@@ -2141,10 +2141,10 @@ function ChineseCorrectScoreSection({ model, homeTeam, awayTeam }) {
               const e = edge(s.p, odds)
               return (
                 <tr key={key} style={{ background: e != null && e >= 5 ? '#EAF3DE22' : undefined }}>
-                  <td style={{ ...tdS, fontFamily: 'monospace', fontWeight: e != null && e >= 5 ? 700 : 400 }}>
+                  <td style={{ ...tdS, fontFamily: "'IBM Plex Mono', monospace", fontWeight: e != null && e >= 5 ? 700 : 400 }}>
                     {homeTeam.slice(0, 3)} {s.h}:{s.a} {awayTeam.slice(0, 3)}
                   </td>
-                  <td style={{ ...tdS, textAlign: 'center', fontFamily: 'monospace' }}>{(s.p * 100).toFixed(2)}%</td>
+                  <td style={{ ...tdS, textAlign: 'center', fontFamily: "'IBM Plex Mono', monospace" }}>{(s.p * 100).toFixed(2)}%</td>
                   <td style={{ ...tdS, textAlign: 'center' }}>
                     <input type="number" step="1" min="1" value={odds} onChange={ev => setUserOdds(p => ({ ...p, [key]: ev.target.value }))} placeholder="—"
                       style={{ ...inp, width: 70 }} />

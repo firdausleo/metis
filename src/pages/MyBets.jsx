@@ -73,7 +73,7 @@ export default function MyBets() {
           ].map((card, i) => (
             <div key={i} style={{ border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '10px 12px', background: 'var(--color-bg-card)', textAlign: 'center' }}>
               <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>{card.label}</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: card.colour, fontFamily: 'monospace' }}>{card.value}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: card.colour, fontFamily: "'IBM Plex Mono', monospace" }}>{card.value}</div>
               {card.sub && <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2 }}>{card.sub}</div>}
             </div>
           ))}
@@ -123,7 +123,7 @@ export default function MyBets() {
                 <div key={bet.id} style={{ padding: '10px 14px', borderBottom: '0.5px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 99, background: sc.bg, color: sc.colour, flexShrink: 0 }}>{sc.label}</span>
                   <span style={{ flex: 1, fontSize: 12, color: 'var(--color-text-primary)', minWidth: 120 }}>{bet.selection}</span>
-                  <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--color-text-secondary)', flexShrink: 0 }}>@{parseFloat(bet.odds).toFixed(2)}</span>
+                  <span style={{ fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-text-secondary)', flexShrink: 0 }}>@{parseFloat(bet.odds).toFixed(2)}</span>
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', flexShrink: 0 }}>¥{Number(bet.stake).toLocaleString()}</span>
                   {pnlAmt !== null && (
                     <span style={{ fontSize: 12, fontWeight: 700, color: pnlAmt >= 0 ? 'var(--color-edge-green)' : 'var(--color-edge-red)', flexShrink: 0 }}>

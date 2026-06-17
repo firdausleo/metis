@@ -314,7 +314,7 @@ export default function FAQ() {
                       fontSize: 14,
                       color: 'rgba(201,168,76,0.5)',
                       flexShrink: 0,
-                      fontFamily: 'monospace',
+                      fontFamily: "'IBM Plex Mono', monospace",
                     }}>
                       {isOpen ? '▾' : '▸'}
                     </span>

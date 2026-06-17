@@ -124,7 +124,7 @@ function MatchRow({ match, onAnalyze }) {
     : (match.stage || '').toUpperCase()
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--color-border-light)' }}>
-      <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--color-text-muted)', minWidth: 36, flexShrink: 0 }}>
+      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--color-text-muted)', minWidth: 36, flexShrink: 0 }}>
         {toBeijingTime(match.match_date, 'time')}
       </span>
       <span style={{ fontSize: 10, color: 'var(--color-text-muted)', background: 'var(--color-accent-dim)', borderRadius: 4, padding: '2px 5px', flexShrink: 0 }}>
@@ -154,9 +154,9 @@ function BetRow({ bet }) {
     <tr>
       <td style={TD}>{matchName}</td>
       <td style={{ ...TD, textTransform: 'capitalize' }}>{selLabel}</td>
-      <td style={{ ...TD, fontFamily: 'monospace' }}>{Number(bet.odds).toFixed(2)}</td>
-      <td style={{ ...TD, fontFamily: 'monospace' }}>¥{Number(bet.stake).toFixed(0)}</td>
-      <td style={{ ...TD, fontFamily: 'monospace' }}>¥{potReturn}</td>
+      <td style={{ ...TD, fontFamily: "'IBM Plex Mono', monospace" }}>{Number(bet.odds).toFixed(2)}</td>
+      <td style={{ ...TD, fontFamily: "'IBM Plex Mono', monospace" }}>¥{Number(bet.stake).toFixed(0)}</td>
+      <td style={{ ...TD, fontFamily: "'IBM Plex Mono', monospace" }}>¥{potReturn}</td>
       <td style={{ ...TD, color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{bet.status}</td>
     </tr>
   )
@@ -175,7 +175,7 @@ function ValuePickRow({ pick, onAnalyze }) {
       <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: 12, flexShrink: 0 }}>
         +{pick.edgePct.toFixed(1)}%
       </span>
-      <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--color-text-muted)', flexShrink: 0 }}>
+      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--color-text-muted)', flexShrink: 0 }}>
         {Number(pick.odds).toFixed(2)}
       </span>
       <button onClick={() => onAnalyze(pick.matchId)} style={GOLD_LINK}>Analyze →</button>
@@ -200,7 +200,7 @@ function GroupSnapshot({ groupName, rows }) {
           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {r.team}
           </span>
-          <span style={{ fontFamily: 'monospace', fontSize: 10, flexShrink: 0 }}>{r.pts}pts</span>
+          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, flexShrink: 0 }}>{r.pts}pts</span>
         </div>
       ))}
     </div>
@@ -438,7 +438,7 @@ export default function Dashboard() {
                 <div key={r.team} style={{ display: 'flex', gap: 6, fontSize: 12, padding: '3px 0', color: i < 2 ? 'var(--color-success)' : 'var(--color-text-muted)', fontWeight: i < 2 ? 600 : 400 }}>
                   <span>{getFlag(r.team)}</span>
                   <span style={{ flex: 1 }}>{r.team}</span>
-                  <span style={{ fontFamily: 'monospace' }}>{r.pts}pts</span>
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{r.pts}pts</span>
                 </div>
               ))}
             </div>

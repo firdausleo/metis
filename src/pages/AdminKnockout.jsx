@@ -192,8 +192,8 @@ export default function AdminKnockout() {
                       <span style={{ width: 14, flexShrink: 0 }}>{i + 1}.</span>
                       <span>{getFlag(r.team)}</span>
                       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.team}</span>
-                      <span style={{ fontFamily: 'monospace', fontSize: 11, flexShrink: 0 }}>{r.pts}pts</span>
-                      <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--color-text-muted)', flexShrink: 0, minWidth: 36 }}>
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, flexShrink: 0 }}>{r.pts}pts</span>
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: 'var(--color-text-muted)', flexShrink: 0, minWidth: 36 }}>
                         {r.gd >= 0 ? '+' : ''}{r.gd}
                       </span>
                     </div>
@@ -230,9 +230,9 @@ export default function AdminKnockout() {
                       <td style={tdS}>{i + 1}</td>
                       <td style={tdS}>{getFlag(r.team)} {r.team}</td>
                       <td style={tdS}>{r.group}</td>
-                      <td style={{ ...tdS, textAlign: 'center', fontFamily: 'monospace' }}>{r.pts}</td>
-                      <td style={{ ...tdS, textAlign: 'center', fontFamily: 'monospace', color: r.gd >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{r.gd >= 0 ? '+' : ''}{r.gd}</td>
-                      <td style={{ ...tdS, textAlign: 'center', fontFamily: 'monospace' }}>{r.gf}</td>
+                      <td style={{ ...tdS, textAlign: 'center', fontFamily: "'IBM Plex Mono', monospace" }}>{r.pts}</td>
+                      <td style={{ ...tdS, textAlign: 'center', fontFamily: "'IBM Plex Mono', monospace", color: r.gd >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{r.gd >= 0 ? '+' : ''}{r.gd}</td>
+                      <td style={{ ...tdS, textAlign: 'center', fontFamily: "'IBM Plex Mono', monospace" }}>{r.gf}</td>
                       <td style={tdS}>
                         <span style={{
                           fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--radius-sm)',

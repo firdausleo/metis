@@ -136,7 +136,7 @@ function BenchmarkBars({ v1Rate, v2Rate, v3Rate, lang }) {
           </div>
           <span style={{
             width: 56, fontSize: 12, fontWeight: bar.bold ? 700 : 500,
-            textAlign: 'right', fontFamily: 'monospace', flexShrink: 0,
+            textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace", flexShrink: 0,
             color: bar.bold ? '#C9A84C' : 'var(--color-text-muted)',
           }}>
             {bar.range ? `${bar.range[0]}–${bar.range[1]}%`
@@ -217,7 +217,7 @@ function ImprovementLog() {
               {item.text}
             </span>
             {item.date && (
-              <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginLeft: 8, fontFamily: 'monospace' }}>
+              <span style={{ fontSize: 10, color: 'var(--color-text-muted)', marginLeft: 8, fontFamily: "'IBM Plex Mono', monospace" }}>
                 {item.date}
               </span>
             )}
@@ -478,13 +478,13 @@ export default function ModelPerformance() {
                         const anchorHit = anchorLine != null && totalGoals != null ? totalGoals > anchorLine : null
                         return (
                           <tr key={row.id}>
-                            <td style={{ ...TD, whiteSpace: 'nowrap', fontSize: 11, fontFamily: 'monospace', color: 'var(--color-text-muted)' }}>
+                            <td style={{ ...TD, whiteSpace: 'nowrap', fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-text-muted)' }}>
                               {fmtDate(row.settled_at || m?.match_date)}
                             </td>
                             <td style={{ ...TD, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {m ? `${m.home_team} vs ${m.away_team}` : '—'}
                             </td>
-                            <td style={{ ...TD, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
+                            <td style={{ ...TD, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, whiteSpace: 'nowrap' }}>
                               <span style={{ fontWeight: 700 }}>{outcomeLabel}</span>
                               {scoreStr && <span style={{ color: 'var(--color-text-muted)', fontSize: 11, marginLeft: 4 }}>({scoreStr})</span>}
                             </td>
@@ -495,10 +495,10 @@ export default function ModelPerformance() {
                                   : <span style={{ color: c ? 'var(--color-success)' : 'var(--color-danger)' }}>{c ? '✓' : '✗'}</span>}
                               </td>
                             ))}
-                            <td style={{ ...TD, textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: 'var(--color-text-muted)' }}>
+                            <td style={{ ...TD, textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--color-text-muted)' }}>
                               {row.brier_score != null ? Number(row.brier_score).toFixed(3) : '—'}
                             </td>
-                            <td style={{ ...TD, fontFamily: 'monospace', fontSize: 12 }}>
+                            <td style={{ ...TD, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 }}>
                               {topScore
                                 ? <span style={{ color: topMatched ? '#C9A84C' : 'var(--color-text-muted)', fontWeight: topMatched ? 700 : 400 }}>{topScore}</span>
                                 : '—'}
@@ -591,7 +591,7 @@ export default function ModelPerformance() {
                               </span>
                             )}
                           </td>
-                          <td style={{ ...TD, textAlign: 'right', fontFamily: 'monospace' }}>
+                          <td style={{ ...TD, textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace" }}>
                             {rs.total || '—'}
                           </td>
                           <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: hitColor(rs.hitRate) }}>
