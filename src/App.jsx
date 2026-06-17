@@ -1,7 +1,9 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { UserProvider, useUser } from './context/UserContext'
 import { useAuth } from './hooks/useAuth'
 import NavBar from './components/NavBar'
+import ScreenLock from './components/ScreenLock'
 import LoadingScreen from './components/LoadingScreen'
 import Dashboard from './pages/Dashboard'
 import Matches from './pages/Matches'
@@ -16,10 +18,12 @@ import ModelPerformance from './pages/ModelPerformance'
 import Pending from './pages/Pending'
 import AdminUsers from './pages/AdminUsers'
 import AdminKnockout from './pages/AdminKnockout'
+import AdminActivity from './pages/AdminActivity'
 import FAQ from './pages/FAQ'
 import Simulator from './pages/Simulator'
 import MetisWizard from './pages/Metis'
 import MetisSettings from './pages/MetisSettings'
+import { startSession, endSession } from './utils/activityTracker'
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { session, sessionLoading, profile, profileLoading, tier } = useUser()
@@ -44,13 +48,24 @@ function Layout({ children }) {
   const { tier } = useUser()
   const isAdmin = tier === 'admin'
 
+  useEffect(() => {
+    if (!user?.id) return
+    startSession(user.id)
+    const handleUnload = () => endSession()
+    window.addEventListener('beforeunload', handleUnload)
+    return () => {
+      endSession()
+      window.removeEventListener('beforeunload', handleUnload)
+    }
+  }, [user?.id])
+
   return (
-    <>
+    <ScreenLock userId={user?.id}>
       {showNav && <NavBar user={user} isAdmin={isAdmin} onLogout={signOut} />}
       <div className={showNav ? 'app-content' : undefined}>
         {children}
       </div>
-    </>
+    </ScreenLock>
   )
 }
 
@@ -79,6 +94,7 @@ export default function App() {
             <Route path="/simulator" element={<ProtectedRoute><Simulator /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute adminOnly><AdminUsers /></ProtectedRoute>} />
             <Route path="/admin/knockout" element={<ProtectedRoute adminOnly><AdminKnockout /></ProtectedRoute>} />
+            <Route path="/admin/activity" element={<ProtectedRoute adminOnly><AdminActivity /></ProtectedRoute>} />
             <Route path="/settings/metis" element={<ProtectedRoute adminOnly><MetisSettings /></ProtectedRoute>} />
           </Routes>
         </Layout>

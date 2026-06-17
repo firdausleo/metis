@@ -2,10 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
+import { useUser } from '../context/UserContext'
 
 export default function Dashboard() {
   const { lang } = useTranslation()
   const navigate = useNavigate()
+  const { session } = useUser()
   const [matches, setMatches] = useState([])
   const [predictions, setPredictions] = useState([])
   const [bets, setBets] = useState([])
@@ -189,16 +191,33 @@ export default function Dashboard() {
             {modelPerf.total > 0 && ` ${lang === 'zh' ? '准确率' : 'acc'}`}
           </div>
         </div>
-        <div style={{
-          fontSize: 10,
-          fontFamily: "'IBM Plex Mono', monospace",
-          color: 'var(--color-text-muted)',
-        }}>
-          {new Date().toLocaleString('zh-CN', {
-            timeZone: 'Asia/Shanghai',
-            month: 'numeric', day: 'numeric',
-            hour: '2-digit', minute: '2-digit',
-          })} BJ
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            fontSize: 10,
+            fontFamily: "'IBM Plex Mono', monospace",
+            color: 'var(--color-text-muted)',
+          }}>
+            {new Date().toLocaleString('zh-CN', {
+              timeZone: 'Asia/Shanghai',
+              month: 'numeric', day: 'numeric',
+              hour: '2-digit', minute: '2-digit',
+            })} BJ
+          </div>
+          {session?.user?.id === '4a6e1f29-e18b-4fd3-9a7e-cec54501db54' && (
+            <button
+              onClick={() => navigate('/admin/activity')}
+              style={{
+                background: 'none',
+                border: '0.5px solid var(--color-border)',
+                borderRadius: 6, padding: '4px 10px',
+                cursor: 'pointer', fontSize: 10,
+                fontFamily: "'IBM Plex Mono', monospace",
+                color: 'var(--color-text-muted)',
+              }}
+            >
+              ⚙ Admin
+            </button>
+          )}
         </div>
       </div>
 
