@@ -132,13 +132,11 @@ export function useBrainCanvas(canvasRef, active = true) {
         for (const e of edges) {
           const na = nodes[e.a], nb = nodes[e.b]
           const baseAlpha = (1 - e.d / MAX_DIST) * 0.30
-          const alpha = e.isBridge ? baseAlpha * 2.5 : baseAlpha
+          const alpha = e.isBridge ? baseAlpha * 2.2 : baseAlpha
           ctx.beginPath()
           ctx.moveTo(na.x, na.y)
           ctx.lineTo(nb.x, nb.y)
-          ctx.strokeStyle = e.isBridge
-            ? `rgba(201,168,76,${alpha})`
-            : `rgba(100,140,220,${alpha})`
+          ctx.strokeStyle = `rgba(100,160,255,${alpha})`
           ctx.lineWidth = e.isBridge ? 0.9 : 0.6
           ctx.stroke()
         }

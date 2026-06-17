@@ -66,6 +66,7 @@ export default function MetisWizard() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [context, setContext] = useState(null)
+  const [focused, setFocused] = useState(false)
 
   const scrollRef  = useRef(null)
   const inputRef   = useRef(null)
@@ -363,7 +364,7 @@ FORMAT YOUR RESPONSES
 
       {/* ── WELCOME / BRAIN STATE ── */}
       {!chatActive && (
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
 
           {/* ── TITLE SECTION ── */}
           <div style={{ textAlign: 'center', padding: '28px 16px 16px', flexShrink: 0 }}>
@@ -423,7 +424,7 @@ FORMAT YOUR RESPONSES
             position: 'relative',
             width: '100vw',
             marginLeft: 'calc(-50vw + 50%)',
-            height: 'clamp(220px, 38vh, 380px)',
+            height: 'clamp(180px, 36vh, 320px)',
             flexShrink: 0,
             overflow: 'hidden',
           }}>
@@ -441,13 +442,14 @@ FORMAT YOUR RESPONSES
 
           {/* ── SUGGESTION CHIPS ── */}
           <div style={{
-            padding: '16px 24px 8px',
+            padding: '10px 16px 6px',
             display: 'flex',
-            flexDirection: 'column',
-            gap: 7,
-            maxWidth: 500,
+            flexWrap: 'wrap',
+            gap: 6,
+            maxWidth: 560,
             margin: '0 auto',
             width: '100%',
+            justifyContent: 'center',
             flexShrink: 0,
           }}>
             {chips.map((chip, i) => (
@@ -457,18 +459,17 @@ FORMAT YOUR RESPONSES
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 10,
-                  padding: '9px 14px',
+                  gap: 6,
+                  padding: '6px 12px',
                   background: 'rgba(201,168,76,0.05)',
                   border: '0.5px solid rgba(201,168,76,0.18)',
                   borderRadius: 6,
                   cursor: 'pointer',
-                  textAlign: 'left',
-                  fontSize: 12,
+                  fontSize: 11,
                   fontFamily: "'IBM Plex Mono', monospace",
-                  color: 'rgba(232,234,240,0.75)',
-                  minHeight: 40,
-                  width: '100%',
+                  color: 'rgba(232,234,240,0.70)',
+                  minHeight: 30,
+                  whiteSpace: 'nowrap',
                   transition: 'all 0.15s',
                 }}
                 onMouseEnter={e => {
@@ -479,10 +480,10 @@ FORMAT YOUR RESPONSES
                 onMouseLeave={e => {
                   e.currentTarget.style.background = 'rgba(201,168,76,0.05)'
                   e.currentTarget.style.borderColor = 'rgba(201,168,76,0.18)'
-                  e.currentTarget.style.color = 'rgba(232,234,240,0.75)'
+                  e.currentTarget.style.color = 'rgba(232,234,240,0.70)'
                 }}
               >
-                <span style={{ color: '#C9A84C', fontWeight: 600, fontSize: 14, flexShrink: 0 }}>›</span>
+                <span style={{ color: '#C9A84C', fontWeight: 600 }}>›</span>
                 {chip}
               </button>
             ))}
@@ -491,102 +492,105 @@ FORMAT YOUR RESPONSES
       )}
 
       {/* ── MESSAGES AREA ── */}
-      <div
-        ref={scrollRef}
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: chatActive ? '20px 16px 8px' : '8px 16px 8px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-          maxWidth: 760,
-          width: '100%',
-          margin: '0 auto',
-          boxSizing: 'border-box',
-        }}
-      >
-
-        {/* Chat messages */}
-        {messages.map((msg, i) => (
-          <div key={i} style={{
+      {chatActive && (
+        <div
+          ref={scrollRef}
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '20px 16px 8px',
             display: 'flex',
+            flexDirection: 'column',
             gap: 10,
-            alignItems: 'flex-start',
-            justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-          }}>
-            {msg.role === 'assistant' && <MiniAvatar />}
-
-            <div style={{
-              maxWidth: '80%',
-              padding: '10px 14px',
-              borderRadius: msg.role === 'user' ? '12px 2px 12px 12px' : '2px 12px 12px 12px',
-              background: msg.role === 'user'
-                ? 'rgba(26,58,108,0.85)'
-                : 'rgba(17,24,39,0.92)',
-              border: msg.role === 'user'
-                ? '1px solid rgba(100,140,220,0.25)'
-                : '1px solid rgba(201,168,76,0.14)',
-              borderLeft: msg.role === 'assistant' ? '2px solid rgba(201,168,76,0.45)' : undefined,
-              color: msg.role === 'user' ? 'rgba(220,235,255,0.92)' : 'rgba(220,230,255,0.88)',
-              fontSize: 13,
-              lineHeight: 1.7,
+            maxWidth: 760,
+            width: '100%',
+            margin: '0 auto',
+            boxSizing: 'border-box',
+          }}
+        >
+          {messages.map((msg, i) => (
+            <div key={i} style={{
+              display: 'flex',
+              gap: 10,
+              alignItems: 'flex-start',
+              justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
             }}>
-              {msg.loading
-                ? (
-                  <span style={{
-                    color: 'rgba(201,168,76,0.7)',
-                    fontFamily: "'IBM Plex Mono', monospace",
-                    fontSize: 12,
-                  }}>
-                    {lang === 'zh' ? '分析中' : 'Analyzing'} <span style={{ animation: 'none' }}>▋</span>
-                  </span>
-                )
-                : msg.role === 'assistant'
-                  ? <MetisMessage content={msg.content} />
-                  : <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13 }}>{msg.content}</span>
-              }
-            </div>
+              {msg.role === 'assistant' && <MiniAvatar />}
 
-            {msg.role === 'user' && (
               <div style={{
-                width: 32, height: 32, borderRadius: '50%',
-                background: 'rgba(26,58,108,0.8)',
-                border: '1px solid rgba(100,140,220,0.3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 14, flexShrink: 0,
-                color: 'rgba(160,190,255,0.8)',
+                maxWidth: '80%',
+                padding: '10px 14px',
+                borderRadius: msg.role === 'user' ? '12px 2px 12px 12px' : '2px 12px 12px 12px',
+                background: msg.role === 'user'
+                  ? 'rgba(26,58,108,0.85)'
+                  : 'rgba(17,24,39,0.92)',
+                border: msg.role === 'user'
+                  ? '1px solid rgba(100,140,220,0.25)'
+                  : '1px solid rgba(201,168,76,0.14)',
+                borderLeft: msg.role === 'assistant' ? '2px solid rgba(201,168,76,0.45)' : undefined,
+                color: msg.role === 'user' ? 'rgba(220,235,255,0.92)' : 'rgba(220,230,255,0.88)',
+                fontSize: 13,
+                lineHeight: 1.7,
               }}>
-                ›
+                {msg.loading
+                  ? (
+                    <span style={{
+                      color: 'rgba(201,168,76,0.7)',
+                      fontFamily: "'IBM Plex Mono', monospace",
+                      fontSize: 12,
+                    }}>
+                      {lang === 'zh' ? '分析中' : 'Analyzing'} <span style={{ animation: 'none' }}>▋</span>
+                    </span>
+                  )
+                  : msg.role === 'assistant'
+                    ? <MetisMessage content={msg.content} />
+                    : <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13 }}>{msg.content}</span>
+                }
               </div>
-            )}
-          </div>
-        ))}
-      </div>
 
-      {/* ── INPUT AREA ── */}
+              {msg.role === 'user' && (
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: 'rgba(26,58,108,0.8)',
+                  border: '1px solid rgba(100,140,220,0.3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 14, flexShrink: 0,
+                  color: 'rgba(160,190,255,0.8)',
+                }}>
+                  ›
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── INPUT AREA — always visible ── */}
       <div style={{
-        padding: '12px 16px 16px',
-        background: 'rgba(8,12,20,0.97)',
-        borderTop: '1px solid rgba(201,168,76,0.12)',
         flexShrink: 0,
-        maxWidth: 760,
-        width: '100%',
-        margin: '0 auto',
-        boxSizing: 'border-box',
+        padding: '10px 16px 16px',
+        borderTop: '0.5px solid rgba(201,168,76,0.10)',
+        background: '#080c14',
       }}>
         <div style={{
           display: 'flex',
-          gap: 0,
-          alignItems: 'stretch',
-          background: 'rgba(17,24,39,0.9)',
-          border: '1px solid rgba(201,168,76,0.22)',
-          borderRadius: 4,
-          overflow: 'hidden',
+          alignItems: 'flex-end',
+          gap: 8,
+          background: '#0d1420',
+          border: focused
+            ? '0.5px solid rgba(201,168,76,0.7)'
+            : '0.5px solid rgba(201,168,76,0.22)',
+          borderRadius: 10,
+          padding: '10px 10px 10px 16px',
+          transition: 'border-color 0.2s',
+          maxWidth: 720,
+          margin: '0 auto',
         }}>
           <textarea
             ref={inputRef}
             value={input}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -595,67 +599,55 @@ FORMAT YOUR RESPONSES
               }
             }}
             placeholder={lang === 'zh'
-              ? '问 METIS... (Enter发送, Shift+Enter换行)'
-              : 'Ask METIS... (Enter to send, Shift+Enter for newline)'}
+              ? '› 问 METIS 任何问题...'
+              : '› Ask METIS anything about WC2026...'}
             rows={1}
             style={{
               flex: 1,
               fontSize: 13,
+              fontFamily: "'IBM Plex Mono', monospace",
               border: 'none',
               outline: 'none',
               background: 'transparent',
-              color: 'rgba(220,230,255,0.92)',
+              color: '#e8eaf0',
               resize: 'none',
-              minHeight: 20,
+              minHeight: 24,
               maxHeight: 100,
-              fontFamily: "'IBM Plex Mono', monospace",
-              lineHeight: 1.55,
-              padding: '12px 14px',
+              lineHeight: 1.5,
+              padding: 0,
               caretColor: '#C9A84C',
-              letterSpacing: '0.02em',
             }}
           />
           <button
             onClick={sendMessage}
             disabled={!input.trim() || loading}
             style={{
-              width: 48,
+              width: 34, height: 34,
+              borderRadius: 7,
               background: input.trim() && !loading
-                ? 'rgba(201,168,76,0.18)'
-                : 'transparent',
+                ? '#C9A84C'
+                : 'rgba(201,168,76,0.08)',
               border: 'none',
-              borderLeft: '1px solid rgba(201,168,76,0.15)',
-              cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
+              cursor: input.trim() && !loading ? 'pointer' : 'default',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              fontSize: 15,
               flexShrink: 0,
-              transition: 'background 0.15s',
-              color: input.trim() && !loading ? '#C9A84C' : 'rgba(201,168,76,0.25)',
-              fontSize: 18,
-              fontFamily: "'IBM Plex Mono', monospace",
+              color: input.trim() && !loading ? '#080c14' : 'rgba(201,168,76,0.25)',
+              transition: 'background 0.15s, color 0.15s',
             }}
-            onMouseEnter={e => {
-              if (input.trim() && !loading) e.currentTarget.style.background = 'rgba(201,168,76,0.28)'
-            }}
-            onMouseLeave={e => {
-              if (input.trim() && !loading) e.currentTarget.style.background = 'rgba(201,168,76,0.18)'
-            }}
-          >
-            ⚡
-          </button>
+          >⚡</button>
         </div>
         <div style={{
           fontSize: 9,
-          color: 'rgba(201,168,76,0.22)',
+          fontFamily: "'IBM Plex Mono', monospace",
+          color: 'rgba(201,168,76,0.40)',
           textAlign: 'center',
           marginTop: 7,
-          fontFamily: "'IBM Plex Mono', monospace",
-          letterSpacing: '0.1em',
+          letterSpacing: '0.06em',
         }}>
-          {lang === 'zh'
-            ? 'METIS基于统计模型 · 预测存在不确定性 · 理性投注'
-            : 'STATISTICAL MODEL · PREDICTIONS CARRY UNCERTAINTY · BET RESPONSIBLY'}
+          METIS · STATISTICAL MODELS · PREDICTIONS CARRY UNCERTAINTY
         </div>
       </div>
     </div>
