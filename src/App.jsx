@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { UserProvider, useUser } from './context/UserContext'
-import { useAuth } from './hooks/useAuth'
+import { supabase } from './lib/supabase'
 import NavBar from './components/NavBar'
 import ScreenLock from './components/ScreenLock'
 import LoadingScreen from './components/LoadingScreen'
@@ -26,9 +26,11 @@ import MetisSettings from './pages/MetisSettings'
 function ProtectedRoute({ children, adminOnly = false }) {
   const { session, sessionLoading, profile, profileLoading, tier } = useUser()
 
-  if (sessionLoading || profileLoading) return <LoadingScreen />
+  if (sessionLoading) return <LoadingScreen />
 
   if (!session) return <Navigate to="/auth" replace />
+
+  if (profileLoading) return <LoadingScreen />
 
   if (!profile || profile.status === 'pending') return <Navigate to="/pending" replace />
 
@@ -42,9 +44,9 @@ function ProtectedRoute({ children, adminOnly = false }) {
 function Layout({ children }) {
   const location = useLocation()
   const showNav = location.pathname !== '/auth' && location.pathname !== '/pending'
-  const { user, signOut } = useAuth()
-  const { tier } = useUser()
+  const { user, tier } = useUser()
   const isAdmin = tier === 'admin'
+  const signOut = () => supabase.auth.signOut()
 
   return (
     <ScreenLock userId={user?.id}>

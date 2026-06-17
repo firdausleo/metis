@@ -56,6 +56,7 @@ export function UserProvider({ children }) {
 
   return (
     <UserContext.Provider value={{
+      user: session?.user ?? null,
       session,
       profile,
       tier: profile?.tier ?? 'standard',
