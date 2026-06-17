@@ -2,6 +2,23 @@ import { supabase } from '../lib/supabase'
 
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
+async function getGeoInfo() {
+  try {
+    const res = await fetch('https://ipapi.co/json/', {
+      signal: AbortSignal.timeout(3000)
+    })
+    if (!res.ok) return {}
+    const d = await res.json()
+    return {
+      ip_address: d.ip || null,
+      country: d.country_name || null,
+      city: d.city || null,
+    }
+  } catch {
+    return {}
+  }
+}
+
 function detectDevice() {
   const ua = navigator.userAgent
   if (/mobile/i.test(ua)) return 'mobile'
@@ -22,6 +39,7 @@ export async function startSession(userId) {
     sessionStart = Date.now()
     pageCount = 0
     actionCount = 0
+    const geo = await getGeoInfo()
     const { data, error } = await supabase
       .from('user_sessions')
       .insert({
@@ -30,6 +48,9 @@ export async function startSession(userId) {
         device_type: detectDevice(),
         started_at: new Date().toISOString(),
         last_seen_at: new Date().toISOString(),
+        ip_address: geo.ip_address || null,
+        country: geo.country || null,
+        city: geo.city || null,
       })
       .select('id')
       .single()

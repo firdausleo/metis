@@ -67,11 +67,11 @@ export default function AdminActivity() {
   async function load() {
     setLoading(true)
     const [s, a] = await Promise.all([
-      supabase.from('user_sessions')
+      supabase.from('user_sessions_with_email')
         .select('*')
         .order('started_at', { ascending: false })
         .limit(300),
-      supabase.from('user_activity_log')
+      supabase.from('user_activity_with_email')
         .select('*')
         .order('ts', { ascending: false })
         .limit(500),
@@ -87,18 +87,25 @@ export default function AdminActivity() {
     sessions.reduce((acc, s) => {
       const uid = s.user_id
       if (!acc[uid]) acc[uid] = {
-        user_id: uid, sessions: 0,
+        user_id: uid,
+        email: s.email || null,
+        country: s.country || null,
+        sessions: 0,
         total_duration: 0, total_actions: 0,
         last_seen: null,
       }
       acc[uid].sessions++
       acc[uid].total_duration += s.duration_secs || 0
       acc[uid].total_actions  += s.action_count  || 0
-      if (!acc[uid].last_seen || s.started_at > acc[uid].last_seen)
+      if (!acc[uid].last_seen || s.started_at > acc[uid].last_seen) {
         acc[uid].last_seen = s.started_at
+        acc[uid].country = s.country || acc[uid].country
+      }
       return acc
     }, {})
   ).sort((a, b) => (b.last_seen || '') > (a.last_seen || '') ? 1 : -1)
+
+  const userEmailMap = Object.fromEntries(userStats.map(u => [u.user_id, u.email || null]))
 
   const shownSessions = selUser ? sessions.filter(s => s.user_id === selUser) : sessions
   const shownActivity = selUser ? activity.filter(a => a.user_id === selUser) : activity
@@ -143,7 +150,7 @@ export default function AdminActivity() {
                 fontFamily: "'IBM Plex Mono', monospace",
                 color: '#C9A84C',
               }}>
-                {selUser.slice(0, 8)}… ✕
+                {userEmailMap[selUser] || selUser.slice(0, 8) + '…'} ✕
               </button>
             )}
           </div>
@@ -200,7 +207,17 @@ export default function AdminActivity() {
               fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
               color: 'var(--color-text-muted)', marginBottom: 8,
             }}>
-              {u.user_id.slice(0, 8)}…
+              {u.email || u.user_id.slice(0, 8) + '…'}
+              {u.country && (
+                <div style={{
+                  fontSize: 10,
+                  color: 'var(--color-text-tertiary)',
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  marginTop: 2,
+                }}>
+                  {u.country}
+                </div>
+              )}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {[
@@ -269,7 +286,7 @@ export default function AdminActivity() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
               <thead>
                 <tr>
-                  {['User','Started (BJ)','Last seen','Duration','Pages','Actions','Device','Status'].map(h => (
+                  {['User','Started (BJ)','Last seen','Duration','Pages','Actions','Device','IP','Country','Status'].map(h => (
                     <th key={h} style={TH}>{h}</th>
                   ))}
                 </tr>
@@ -283,7 +300,7 @@ export default function AdminActivity() {
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg-secondary)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    <td style={TD}>{s.user_id.slice(0, 8)}…</td>
+                    <td style={TD}>{s.email || s.user_id.slice(0, 8) + '…'}</td>
                     <td style={TD}>{toBJ(s.started_at)}</td>
                     <td style={TD}>{toBJ(s.last_seen_at)}</td>
                     <td style={{ ...TD, fontWeight: 500, color: 'var(--color-text-primary)' }}>
@@ -292,6 +309,8 @@ export default function AdminActivity() {
                     <td style={TD}>{s.page_count  || 0}</td>
                     <td style={TD}>{s.action_count || 0}</td>
                     <td style={{ ...TD, fontSize: 10 }}>{s.device_type || '—'}</td>
+                    <td style={TD}>{s.ip_address || '—'}</td>
+                    <td style={TD}>{s.country || '—'}</td>
                     <td style={TD}>
                       {s.ended_at ? (
                         <span style={{ color: 'var(--color-text-muted)' }}>ended</span>
@@ -340,7 +359,7 @@ export default function AdminActivity() {
                 {shownActivity.slice(0, 100).map(a => (
                   <tr key={a.id}>
                     <td style={{ ...TD, whiteSpace: 'nowrap', fontSize: 10 }}>{toBJ(a.ts)}</td>
-                    <td style={{ ...TD, fontSize: 10 }}>{a.user_id.slice(0, 8)}…</td>
+                    <td style={{ ...TD, fontSize: 10 }}>{a.email || a.user_id.slice(0, 8) + '…'}</td>
                     <td style={TD}>
                       <span style={{
                         fontSize: 9, padding: '1px 6px', borderRadius: 3,
