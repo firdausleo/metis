@@ -19,6 +19,12 @@ export function useBrainCanvas(canvasRef, active = true) {
       const ctx = canvas.getContext('2d')
       ctx.scale(dpr, dpr)
 
+      // Oval boundary constants — all node geometry derives from these
+      const cx = W * 0.50
+      const cy = H * 0.44
+      const rx = W * 0.30
+      const ry = H * 0.32
+
       const nodes = []
       const edges = []
       const pulses = []
@@ -28,68 +34,60 @@ export function useBrainCanvas(canvasRef, active = true) {
       let animId
 
       function rand(a, b) { return a + Math.random() * (b - a) }
-      function gauss() {
-        return (Math.random() + Math.random() + Math.random() + Math.random() - 2) / 2
+
+      function randomInOval(ocx, ocy, orx, ory) {
+        const angle = rand(0, Math.PI * 2)
+        const r = Math.sqrt(Math.random())
+        return {
+          x: ocx + Math.cos(angle) * r * orx,
+          y: ocy + Math.sin(angle) * r * ory,
+        }
       }
 
-      // Left lobe — 32 nodes, sqrt distribution for denser centre
-      for (let i = 0; i < 32; i++) {
-        const a = rand(0, Math.PI * 2)
-        const r = Math.sqrt(Math.random()) * W * 0.18
+      // Left lobe cluster — 35 nodes, denser left-centre
+      for (let i = 0; i < 35; i++) {
+        const pos = randomInOval(cx - rx * 0.35, cy, rx * 0.55, ry * 0.75)
         nodes.push({
-          x: W * 0.30 + Math.cos(a) * r + gauss() * 10,
-          y: H * 0.46 + Math.sin(a) * r * 0.78 + gauss() * 8,
+          x: pos.x, y: pos.y,
           vx: rand(-0.15, 0.15), vy: rand(-0.10, 0.10),
-          r: rand(1.5, 4.5), phase: rand(0, Math.PI * 2), type: 'lobe',
+          r: rand(1.5, 4.0), phase: rand(0, Math.PI * 2), type: 'lobe',
         })
       }
 
-      // Right lobe — 32 nodes, sqrt distribution for denser centre
-      for (let i = 0; i < 32; i++) {
-        const a = rand(0, Math.PI * 2)
-        const r = Math.sqrt(Math.random()) * W * 0.18
+      // Right lobe cluster — 35 nodes, mirror
+      for (let i = 0; i < 35; i++) {
+        const pos = randomInOval(cx + rx * 0.35, cy, rx * 0.55, ry * 0.75)
         nodes.push({
-          x: W * 0.70 + Math.cos(a) * r + gauss() * 10,
-          y: H * 0.46 + Math.sin(a) * r * 0.78 + gauss() * 8,
+          x: pos.x, y: pos.y,
           vx: rand(-0.15, 0.15), vy: rand(-0.10, 0.10),
-          r: rand(1.5, 4.5), phase: rand(0, Math.PI * 2), type: 'lobe',
+          r: rand(1.5, 4.0), phase: rand(0, Math.PI * 2), type: 'lobe',
         })
       }
 
-      // Corpus callosum bridge — 14 nodes
+      // Bridge — tight centre band only
       for (let i = 0; i < 14; i++) {
+        const pos = randomInOval(cx, cy, rx * 0.22, ry * 0.45)
         nodes.push({
-          x: rand(W * 0.38, W * 0.62),
-          y: rand(H * 0.38, H * 0.54),
+          x: pos.x, y: pos.y,
           vx: rand(-0.08, 0.08), vy: rand(-0.06, 0.06),
-          r: rand(1.2, 2.8), phase: rand(0, Math.PI * 2), type: 'bridge',
+          r: rand(1.0, 2.5), phase: rand(0, Math.PI * 2), type: 'bridge',
         })
       }
 
-      // Periphery — 10 nodes
-      for (let i = 0; i < 10; i++) {
-        nodes.push({
-          x: rand(W * 0.08, W * 0.92),
-          y: rand(H * 0.10, H * 0.80),
-          vx: rand(-0.12, 0.12), vy: rand(-0.08, 0.08),
-          r: rand(0.8, 1.8), phase: rand(0, Math.PI * 2), type: 'periph',
-        })
-      }
-
-      // Core nodes
+      // Core nodes — fixed centre positions
       ;[
-        { x: W * 0.50, y: H * 0.44, r: 9 },
-        { x: W * 0.41, y: H * 0.39, r: 7 },
-        { x: W * 0.59, y: H * 0.39, r: 7 },
-        { x: W * 0.45, y: H * 0.51, r: 6 },
-        { x: W * 0.55, y: H * 0.51, r: 6 },
+        { x: cx,              y: cy,              r: 9 },
+        { x: cx - rx * 0.30,  y: cy - ry * 0.10,  r: 7 },
+        { x: cx + rx * 0.30,  y: cy - ry * 0.10,  r: 7 },
+        { x: cx - rx * 0.18,  y: cy + ry * 0.18,  r: 6 },
+        { x: cx + rx * 0.18,  y: cy + ry * 0.18,  r: 6 },
       ].forEach(c => nodes.push({
         ...c, vx: rand(-0.04, 0.04), vy: rand(-0.03, 0.03),
         phase: rand(0, Math.PI * 2), type: 'core',
       }))
 
       // Build edges
-      const MAX_DIST = 145
+      const MAX_DIST = 120
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const dx = nodes[i].x - nodes[j].x
@@ -249,22 +247,38 @@ export function useBrainCanvas(canvasRef, active = true) {
             ctx.stroke()
           }
 
+          // Move node
           n.x += n.vx; n.y += n.vy
-          const pad = 20
-          if (n.x < pad || n.x > W - pad) n.vx *= -1
-          if (n.y < pad || n.y > H - pad) n.vy *= -1
+
+          // Oval boundary enforcement — replace rectangular bounce
+          const maxRx = n.type === 'core' ? rx * 0.25
+            : n.type === 'bridge' ? rx * 0.22
+            : rx * 0.58
+          const maxRy = n.type === 'core' ? ry * 0.25
+            : n.type === 'bridge' ? ry * 0.45
+            : ry * 0.78
+          const ddx = n.x - cx
+          const ddy = n.y - cy
+          const dist = (ddx * ddx) / (maxRx * maxRx) + (ddy * ddy) / (maxRy * maxRy)
+          if (dist > 1) {
+            n.vx *= -0.8
+            n.vy *= -0.8
+            const scale = 1 / Math.sqrt(dist)
+            n.x = cx + ddx * scale * 0.95
+            n.y = cy + ddy * scale * 0.95
+          }
         }
 
         // Surge ring
         if (surgeActive) {
           surgeRadius += 3.5
           ctx.beginPath()
-          ctx.arc(W * 0.5, H * 0.44, surgeRadius, 0, Math.PI * 2)
-          const alpha = Math.max(0, 0.18 - surgeRadius / (W * 0.6) * 0.18)
+          ctx.arc(cx, cy, surgeRadius, 0, Math.PI * 2)
+          const alpha = Math.max(0, 0.18 - surgeRadius / rx * 0.18)
           ctx.strokeStyle = `rgba(201,168,76,${alpha})`
           ctx.lineWidth = 1.2
           ctx.stroke()
-          if (surgeRadius > W * 0.6) surgeActive = false
+          if (surgeRadius > rx) surgeActive = false
         }
 
         // Region labels
@@ -278,17 +292,17 @@ export function useBrainCanvas(canvasRef, active = true) {
           ['LEARN', W * 0.78, H * 0.72],
         ].forEach(([label, lx, ly]) => ctx.fillText(label, lx, ly))
 
-        // METIS wordmark
+        // METIS wordmark — moved up
         ctx.font = '600 20px "IBM Plex Mono", monospace'
         ctx.fillStyle = 'rgba(201,168,76,0.82)'
         ctx.textAlign = 'center'
         ctx.letterSpacing = '0.3em'
-        ctx.fillText('METIS', W * 0.5, H * 0.88)
+        ctx.fillText('METIS', W * 0.5, H * 0.82)
         ctx.letterSpacing = '0'
 
         ctx.font = '400 9px "Space Grotesk", sans-serif'
         ctx.fillStyle = 'rgba(201,168,76,0.38)'
-        ctx.fillText('WC2026 INTELLIGENCE', W * 0.5, H * 0.93)
+        ctx.fillText('WC2026 INTELLIGENCE', W * 0.5, H * 0.88)
 
         frame++
         animId = requestAnimationFrame(draw)
