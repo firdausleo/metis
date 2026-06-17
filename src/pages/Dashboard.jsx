@@ -1,613 +1,431 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
-import { fetchMyBets, calcPnl } from '../lib/bets'
-import { isToday, toBeijingTime } from '../lib/dateUtils'
-import { getFlag } from '../lib/teamFlags'
-import { runModels, getVenueAdvantage } from '../lib/poisson'
-import { analyse1X2 } from '../lib/evEngine'
-
-// ── Constants ─────────────────────────────────────────────────────────────
-
-const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L']
-
-const SH = {
-  fontSize: 11, fontWeight: 700, letterSpacing: '0.08em',
-  color: 'var(--color-accent)', textTransform: 'uppercase',
-  borderBottom: '1px solid var(--color-accent)',
-  paddingBottom: 6, marginBottom: 12, display: 'block',
-}
-
-const TH = {
-  fontSize: 11, fontWeight: 700, letterSpacing: '0.05em',
-  color: 'var(--color-text-muted)', padding: '0 10px 8px 0',
-  textAlign: 'left', whiteSpace: 'nowrap',
-}
-
-const TD = {
-  fontSize: 14, padding: '8px 10px 8px 0',
-  borderBottom: '1px solid var(--color-border-light)',
-  color: 'var(--color-text-secondary)', whiteSpace: 'nowrap',
-}
-
-const GOLD_LINK = {
-  background: 'none', border: 'none', cursor: 'pointer',
-  color: 'var(--color-accent)', fontSize: 12, fontWeight: 600,
-  padding: '4px 0', display: 'inline-block', fontFamily: 'inherit',
-}
-
-const GOLD_BTN = {
-  background: 'none', border: '1px solid var(--color-accent)',
-  borderRadius: 6, cursor: 'pointer', color: 'var(--color-accent)',
-  fontSize: 13, fontWeight: 600, padding: '7px 16px', fontFamily: 'inherit',
-}
-
-// ── Pure helpers ───────────────────────────────────────────────────────────
-
-function getWcDay() {
-  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' })
-  const todayStr = fmt.format(new Date())
-  const [ty, tm, td] = todayStr.split('-').map(Number)
-  const todayMs = Date.UTC(ty, tm - 1, td)
-  const startMs = Date.UTC(2026, 5, 11) // June 11 2026
-  return Math.max(1, Math.floor((todayMs - startMs) / 86400000) + 1)
-}
-
-function getGreeting() {
-  const h = parseInt(
-    new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', hour12: false }).format(new Date()),
-    10
-  )
-  if (h >= 5 && h < 12) return 'Good morning'
-  if (h >= 12 && h < 18) return 'Good afternoon'
-  return 'Good evening'
-}
-
-function getBeijingDateLabel() {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai', weekday: 'long', month: 'long', day: 'numeric',
-  }).format(new Date())
-}
-
-function calcStandings(matches) {
-  const allTeams = [...new Set(matches.flatMap(m => [m.home_team, m.away_team]))].filter(n => n !== 'TBD')
-  const table = {}
-  for (const t of allTeams) table[t] = { mp: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }
-  for (const m of matches) {
-    if (m.status !== 'finished' || m.home_score == null || m.away_score == null) continue
-    const h = m.home_score, a = m.away_score
-    const ht = table[m.home_team], at = table[m.away_team]
-    if (!ht || !at) continue
-    ht.mp++; ht.gf += h; ht.ga += a
-    if (h > a)      { ht.w++; ht.pts += 3 }
-    else if (h === a){ ht.d++; ht.pts += 1 }
-    else              ht.l++
-    at.mp++; at.gf += a; at.ga += h
-    if (a > h)      { at.w++; at.pts += 3 }
-    else if (a === h){ at.d++; at.pts += 1 }
-    else              at.l++
-  }
-  return Object.entries(table)
-    .map(([team, s]) => ({ team, ...s, gd: s.gf - s.ga }))
-    .sort((a, b) => b.pts - a.pts || (b.gd - a.gd) || (b.gf - a.gf))
-}
-
-// ── Sub-components ─────────────────────────────────────────────────────────
-
-function SkeletonRow({ height = 36 }) {
-  return <div className="skeleton" style={{ height, borderRadius: 4, marginBottom: 8 }} />
-}
-
-function StatusBadge({ match }) {
-  if (match.status === 'live') {
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--color-success)', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-success)', display: 'inline-block' }} />
-        LIVE
-      </span>
-    )
-  }
-  if (match.status === 'finished' && match.home_score != null) {
-    return (
-      <span style={{ fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 500, flexShrink: 0 }}>
-        FT {match.home_score}–{match.away_score}
-      </span>
-    )
-  }
-  return <span style={{ fontSize: 11, color: 'var(--color-text-muted)', flexShrink: 0 }}>Upcoming</span>
-}
-
-function MatchRow({ match, onAnalyze }) {
-  const stageLabel = match.stage === 'group'
-    ? `Grp ${match.group_name}`
-    : (match.stage || '').toUpperCase()
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--color-border-light)' }}>
-      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--color-text-muted)', minWidth: 36, flexShrink: 0 }}>
-        {toBeijingTime(match.match_date, 'time')}
-      </span>
-      <span style={{ fontSize: 10, color: 'var(--color-text-muted)', background: 'var(--color-accent-dim)', borderRadius: 4, padding: '2px 5px', flexShrink: 0 }}>
-        {stageLabel}
-      </span>
-      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {getFlag(match.home_team)} {match.home_team}{' '}
-        <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>vs</span>{' '}
-        {getFlag(match.away_team)} {match.away_team}
-      </span>
-      <StatusBadge match={match} />
-      <button onClick={() => onAnalyze(match.id)} style={GOLD_LINK}>Analyze →</button>
-    </div>
-  )
-}
-
-function BetRow({ bet }) {
-  const match = bet.match
-  const matchName = match ? `${match.home_team} vs ${match.away_team}` : '—'
-  const potReturn = (Number(bet.stake) * Number(bet.odds)).toFixed(0)
-  const selLabel = bet.selection === 'home'
-    ? (match?.home_team || 'Home')
-    : bet.selection === 'away'
-    ? (match?.away_team || 'Away')
-    : 'Draw'
-  return (
-    <tr>
-      <td style={TD}>{matchName}</td>
-      <td style={{ ...TD, textTransform: 'capitalize' }}>{selLabel}</td>
-      <td style={{ ...TD, fontFamily: "'IBM Plex Mono', monospace" }}>{Number(bet.odds).toFixed(2)}</td>
-      <td style={{ ...TD, fontFamily: "'IBM Plex Mono', monospace" }}>¥{Number(bet.stake).toFixed(0)}</td>
-      <td style={{ ...TD, fontFamily: "'IBM Plex Mono', monospace" }}>¥{potReturn}</td>
-      <td style={{ ...TD, color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>{bet.status}</td>
-    </tr>
-  )
-}
-
-function ValuePickRow({ pick, onAnalyze }) {
-  const star = pick.edgePct >= 10 ? '★' : '✦'
-  const starColor = pick.edgePct >= 10 ? 'var(--color-accent)' : '#D4860A'
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: '1px solid var(--color-border-light)' }}>
-      <span style={{ color: starColor, fontSize: 14, flexShrink: 0 }}>{star}</span>
-      <span style={{ flex: 1, fontSize: 13, fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {pick.home} vs {pick.away}
-        <span style={{ fontWeight: 400, color: 'var(--color-text-muted)' }}> · {pick.label}</span>
-      </span>
-      <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: 12, flexShrink: 0 }}>
-        +{pick.edgePct.toFixed(1)}%
-      </span>
-      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--color-text-muted)', flexShrink: 0 }}>
-        {Number(pick.odds).toFixed(2)}
-      </span>
-      <button onClick={() => onAnalyze(pick.matchId)} style={GOLD_LINK}>Analyze →</button>
-    </div>
-  )
-}
-
-function GroupSnapshot({ groupName, rows }) {
-  return (
-    <div style={{ marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid var(--color-border-light)' }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-accent)', letterSpacing: '0.08em', marginBottom: 5 }}>
-        GROUP {groupName}
-      </div>
-      {rows.slice(0, 4).map((r, i) => (
-        <div key={r.team} style={{
-          display: 'flex', alignItems: 'center', gap: 5, fontSize: 11,
-          padding: '2px 0',
-          color: i < 2 ? 'var(--color-success)' : 'var(--color-text-muted)',
-          fontWeight: i < 2 ? 600 : 400,
-        }}>
-          <span style={{ flexShrink: 0 }}>{getFlag(r.team)}</span>
-          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {r.team}
-          </span>
-          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, flexShrink: 0 }}>{r.pts}pts</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function StatPill({ label, value, valueColor, small }) {
-  return (
-    <div style={{
-      flex: 1, background: 'var(--color-bg-card)',
-      border: '1px solid var(--color-border)', borderRadius: 8,
-      padding: small ? '10px 14px' : '12px 24px',
-    }}>
-      <span style={{
-        fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
-        color: 'var(--color-text-muted)', textTransform: 'uppercase',
-        display: 'block', marginBottom: small ? 3 : 5,
-      }}>
-        {label}
-      </span>
-      <span style={{
-        fontSize: small ? 18 : 22, fontWeight: 700,
-        color: valueColor || 'var(--color-text-primary)', display: 'block',
-      }}>
-        {value}
-      </span>
-    </div>
-  )
-}
-
-// ── Main component ─────────────────────────────────────────────────────────
+import { useTranslation } from '../lib/i18n'
 
 export default function Dashboard() {
-  const { user } = useAuth()
+  const { lang } = useTranslation()
   const navigate = useNavigate()
-  const [wide, setWide] = useState(() => window.innerWidth >= 1024)
-
+  const [matches, setMatches] = useState([])
+  const [predictions, setPredictions] = useState([])
+  const [bets, setBets] = useState([])
   const [loading, setLoading] = useState(true)
-  const [todayMatches, setTodayMatches] = useState([])
-  const [pendingBets, setPendingBets] = useState([])
-  const [settledStats, setSettledStats] = useState({ pnl: 0, staked: 0, roi: 0 })
-  const [accuracy, setAccuracy] = useState([])
-  const [valuePicks, setValuePicks] = useState(null)
-  const [hasAnyOdds, setHasAnyOdds] = useState(false)
-  const [noOddsMatches, setNoOddsMatches] = useState([])
-  const [groupStandings, setGroupStandings] = useState({})
-  const [standingsOpen, setStandingsOpen] = useState(false)
-
-  useEffect(() => {
-    const handler = () => setWide(window.innerWidth >= 1024)
-    window.addEventListener('resize', handler)
-    return () => window.removeEventListener('resize', handler)
-  }, [])
 
   useEffect(() => {
     async function load() {
-      const [matchesRes, betsArr, accuracyRes, oddsRes] = await Promise.all([
-        supabase.from('matches').select('*').order('match_date', { ascending: true }),
-        fetchMyBets().catch(() => []),
-        supabase.from('role_accuracy').select('*'),
-        supabase
-          .from('matches')
-          .select('*')
-          .neq('status', 'finished')
-          .not('odds_home', 'is', null)
-          .not('odds_draw', 'is', null)
-          .not('odds_away', 'is', null)
-          .order('match_date', { ascending: true }),
+      const [{ data: m }, { data: p }, { data: b }] = await Promise.all([
+        supabase.from('matches').select('*').order('match_date'),
+        supabase.from('model_predictions').select('*'),
+        supabase.from('user_bets').select('*').order('placed_at', { ascending: false }),
       ])
-
-      const allM = matchesRes.data || []
-      setTodayMatches(allM.filter(m => isToday(m.match_date)))
-
-      const byGroup = {}
-      for (const m of allM) {
-        if (m.stage !== 'group' || !m.group_name) continue
-        if (!byGroup[m.group_name]) byGroup[m.group_name] = []
-        byGroup[m.group_name].push(m)
-      }
-      const standings = {}
-      for (const [g, gM] of Object.entries(byGroup)) standings[g] = calcStandings(gM)
-      setGroupStandings(standings)
-
-      const settled = betsArr.filter(b => b.status === 'won' || b.status === 'lost')
-      const staked = settled.reduce((s, b) => s + Number(b.stake), 0)
-      const pnl = settled.reduce((s, b) => s + (b.pnl != null ? Number(b.pnl) : calcPnl(b)), 0)
-      setPendingBets(betsArr.filter(b => b.status === 'pending'))
-      setSettledStats({ pnl, staked, roi: staked ? (pnl / staked) * 100 : 0 })
-
-      setAccuracy(accuracyRes.data || [])
-
-      const oddsMatches = oddsRes.data || []
-      setHasAnyOdds(oddsMatches.length > 0)
-      setNoOddsMatches(
-        allM.filter(m => m.status !== 'finished' && !m.odds_home && m.home_team !== 'TBD' && m.away_team !== 'TBD').slice(0, 8)
-      )
-
-      if (oddsMatches.length) {
-        const ids = oddsMatches.map(m => m.id)
-        const { data: statsData } = await supabase.from('team_stats').select('*').in('match_id', ids)
-        const idx = {}
-        for (const s of (statsData || [])) idx[`${s.match_id}:${s.team_code}`] = s
-
-        const picks = []
-        for (const m of oddsMatches) {
-          const hs = idx[`${m.id}:${m.home_team_code}`]
-          const aws = idx[`${m.id}:${m.away_team_code}`]
-          if (!hs || !aws) continue
-          let model
-          try { model = runModels(hs, aws, { venue: m.venue, city: m.city, homeTeam: m.home_team, awayTeam: m.away_team }) } catch { continue }
-          const ev = analyse1X2(model.v2.probs, { home: m.odds_home, draw: m.odds_draw, away: m.odds_away })
-          if (!ev?.outcomes) continue
-          for (const key of ['home', 'draw', 'away']) {
-            const oc = ev.outcomes[key]
-            if (!oc?.ev?.recommend) continue
-            picks.push({
-              matchId: m.id,
-              home: m.home_team, away: m.away_team,
-              label: key === 'home' ? `${m.home_team} Win` : key === 'away' ? `${m.away_team} Win` : 'Draw',
-              edgePct: oc.ev.edgePct,
-              odds: oc.odds,
-            })
-          }
-        }
-        picks.sort((a, b) => b.edgePct - a.edgePct)
-        setValuePicks(picks.slice(0, 5))
-      } else {
-        setValuePicks([])
-      }
-
+      setMatches(m || [])
+      setPredictions(p || [])
+      setBets(b || [])
       setLoading(false)
     }
-    load().catch(console.error)
+    load()
   }, [])
 
-  // Computed
-  const hits = accuracy.filter(r => Number(r.accuracy_score) >= 1).length
-  const hitRate = accuracy.length ? Math.round((hits / accuracy.length) * 100) : null
-  const total = accuracy.length
-  const wrong = total - hits
+  const predMap = useMemo(() => {
+    const pm = {}
+    predictions.forEach(p => { pm[p.match_id] = p })
+    return pm
+  }, [predictions])
 
-  const byRole = {}
-  for (const r of accuracy) {
-    if (!r.role_name) continue
-    if (!byRole[r.role_name]) byRole[r.role_name] = { correct: 0, total: 0 }
-    byRole[r.role_name].total++
-    if (Number(r.accuracy_score) >= 1) byRole[r.role_name].correct++
-  }
-  const roleEntries = Object.entries(byRole).map(([name, s]) => ({ name, rate: s.total ? s.correct / s.total : 0 }))
-  const bestRole = roleEntries.length ? roleEntries.reduce((a, b) => b.rate > a.rate ? b : a) : null
-  const worstRole = roleEntries.length ? roleEntries.reduce((a, b) => b.rate < a.rate ? b : a) : null
+  const modelPerf = useMemo(() => {
+    const finished = matches.filter(m => m.status === 'finished' && m.home_score !== null)
 
-  const greeting = getGreeting()
-  const dateLabel = getBeijingDateLabel()
-  const wcDay = getWcDay()
-  const pnlColor = settledStats.pnl >= 0 ? 'var(--color-success)' : 'var(--color-danger)'
-  const pnlLabel = `${settledStats.pnl >= 0 ? '+' : ''}¥${settledStats.pnl.toFixed(0)}`
+    let v3Correct = 0, v3Total = 0
 
-  const onAnalyze = id => navigate(`/matches/${id}`)
+    const details = finished.map(m => {
+      const pred = predMap[m.id]
+      if (!pred) return null
 
-  // ── MOBILE ──────────────────────────────────────────────────────────────
+      const actual = m.home_score > m.away_score ? 'home'
+        : m.home_score < m.away_score ? 'away' : 'draw'
 
-  if (!wide) {
+      const v3Pred = !pred.v3_home_win ? null
+        : pred.v3_home_win > pred.v3_draw && pred.v3_home_win > pred.v3_away_win ? 'home'
+        : pred.v3_away_win > pred.v3_draw ? 'away' : 'draw'
+
+      const v3Hit = v3Pred ? v3Pred === actual : false
+
+      if (pred.v3_home_win) { v3Total++; if (v3Hit) v3Correct++ }
+
+      const predProb = actual === 'home' ? pred.v3_home_win
+        : actual === 'away' ? pred.v3_away_win : pred.v3_draw
+
+      return { match: m, actual, v3Pred, v3Hit, predProb,
+        anchorTotal: pred.anchor_total, topScore: pred.v3_top_score }
+    }).filter(Boolean)
+
+    const accuracy = v3Total > 0 ? (v3Correct / v3Total * 100).toFixed(1) : null
+
+    const highProb = details.filter(d => d.predProb > 0.50)
+    const calibration = highProb.length > 0
+      ? (highProb.filter(d => d.v3Hit).length / highProb.length * 100).toFixed(1) : null
+
+    const anchorDetails = details.filter(d => d.anchorTotal !== null)
+    const anchorHit = anchorDetails.filter(d =>
+      d.match.home_score + d.match.away_score === d.anchorTotal)
+    const anchorAcc = anchorDetails.length > 0
+      ? (anchorHit.length / anchorDetails.length * 100).toFixed(1) : null
+
+    return { details, v3Correct, v3Total, accuracy, calibration,
+      anchorAcc, anchorTotal: anchorDetails.length, anchorHit: anchorHit.length }
+  }, [matches, predMap])
+
+  const trackerSummary = useMemo(() => {
+    const settled = bets.filter(b => b.status !== 'pending')
+    const pending = bets.filter(b => b.status === 'pending')
+    const staked = settled.reduce((s, b) => s + b.stake, 0)
+    const returned = settled.reduce((s, b) => s + (b.actual_return || 0), 0)
+    const pnl = returned - staked
+    const roi = staked > 0 ? (pnl / staked * 100).toFixed(1) : null
+    const wins = settled.filter(b => b.status === 'won' || b.status === 'half_won').length
+    const pendingStake = pending.reduce((s, b) => s + b.stake, 0)
+    return { settled: settled.length, pending: pending.length, staked, returned, pnl, roi, wins, pendingStake }
+  }, [bets])
+
+  if (loading) return (
+    <div style={{ padding: 24, color: 'var(--color-text-muted)',
+      fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 }}>
+      Loading dashboard...
+    </div>
+  )
+
+  function SH({ label }) {
     return (
-      <div style={{ padding: '16px', maxWidth: 640, margin: '0 auto' }}>
-        <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 16 }}>
-          {greeting}, Leo · WC2026 Day {wcDay}
-        </p>
-
-        {/* 2×2 pills */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
-          <StatPill small label="🏟 Matches Today" value={String(todayMatches.length)} />
-          <StatPill small label="🎯 Active Bets" value={String(pendingBets.length)} />
-          <StatPill small label="💰 Total P&L" value={pnlLabel} valueColor={pnlColor} />
-          <StatPill small label="📊 Hit Rate" value={hitRate == null ? '—' : `${hitRate}%`} valueColor="var(--color-accent)" />
-        </div>
-
-        {/* Today's matches */}
-        <div style={{ marginBottom: 20 }}>
-          <span style={SH}>Today's Matches</span>
-          {loading
-            ? [1,2,3].map(i => <SkeletonRow key={i} />)
-            : todayMatches.length === 0
-            ? <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>No matches today</p>
-            : todayMatches.slice(0, 5).map(m => <MatchRow key={m.id} match={m} onAnalyze={onAnalyze} />)
-          }
-          {!loading && todayMatches.length > 5 && (
-            <button onClick={() => navigate('/matches')} style={{ ...GOLD_LINK, marginTop: 8 }}>View all →</button>
-          )}
-        </div>
-
-        {/* Active bets summary */}
-        <div style={{ marginBottom: 20 }}>
-          <span style={SH}>Active Bets</span>
-          <div style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '12px 14px' }}>
-            {pendingBets.length === 0
-              ? <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 8 }}>No active bets</p>
-              : <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
-                  {pendingBets.length} active · Staked ¥{pendingBets.reduce((s, b) => s + Number(b.stake), 0).toFixed(0)} · P&L{' '}
-                  <span style={{ color: pnlColor, fontWeight: 600 }}>{pnlLabel}</span>
-                </p>
-            }
-            <button onClick={() => navigate('/my-bets')} style={GOLD_LINK}>View My Bets →</button>
-          </div>
-        </div>
-
-        {/* Top value picks */}
-        <div style={{ marginBottom: 20 }}>
-          <span style={SH}>💡 Top Value Picks</span>
-          {valuePicks === null
-            ? <SkeletonRow />
-            : valuePicks.length === 0
-            ? <p style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-                {hasAnyOdds
-                  ? 'No value bets today — all current odds are below the 5% edge threshold'
-                  : 'Enter bookmaker odds in the Value tab to see value picks'}
-              </p>
-            : valuePicks.slice(0, 3).map((p, i) => <ValuePickRow key={i} pick={p} onAnalyze={onAnalyze} />)
-          }
-        </div>
-
-        {/* Group standings — collapsible */}
-        <div style={{ marginBottom: 20 }}>
-          <button
-            onClick={() => setStandingsOpen(o => !o)}
-            style={{ ...GOLD_LINK, fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left', borderBottom: '1px solid var(--color-accent)', paddingBottom: 6, marginBottom: standingsOpen ? 12 : 0 }}
-          >
-            <span>📊 Group Standings</span>
-            <span style={{ marginLeft: 'auto' }}>{standingsOpen ? '▲' : '▼'}</span>
-          </button>
-          {standingsOpen && GROUPS.filter(g => groupStandings[g]).map(g => (
-            <div key={g} style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-accent)', letterSpacing: '0.08em', marginBottom: 4 }}>GROUP {g}</div>
-              {groupStandings[g].slice(0, 4).map((r, i) => (
-                <div key={r.team} style={{ display: 'flex', gap: 6, fontSize: 12, padding: '3px 0', color: i < 2 ? 'var(--color-success)' : 'var(--color-text-muted)', fontWeight: i < 2 ? 600 : 400 }}>
-                  <span>{getFlag(r.team)}</span>
-                  <span style={{ flex: 1 }}>{r.team}</span>
-                  <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{r.pts}pts</span>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-
-        {/* Model performance */}
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <span style={{ ...SH, marginBottom: 0, borderBottom: 'none', paddingBottom: 0 }}>Model Performance</span>
-            <button onClick={() => navigate('/model-performance')} style={{ ...GOLD_LINK, fontSize: 11 }}>Details →</button>
-          </div>
-          <div style={{ borderBottom: '1px solid var(--color-accent)', marginBottom: 12 }} />
-          <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-            {hitRate == null
-              ? 'Performance tracked after first match settlement'
-              : `Hit rate: ${hitRate}% · ${hits}/${total} correct`}
-          </p>
-        </div>
-      </div>
+      <div style={{
+        fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+        fontWeight: 500, letterSpacing: '0.10em', textTransform: 'uppercase',
+        color: 'var(--color-text-muted)', marginBottom: 10, marginTop: 24,
+      }}>{label}</div>
     )
   }
 
-  // ── DESKTOP ──────────────────────────────────────────────────────────────
+  const upcoming = matches
+    .filter(m => m.status === 'upcoming' && m.home_team !== 'TBD')
+    .sort((a, b) => new Date(a.match_date) - new Date(b.match_date))
+    .slice(0, 5)
+
+  const recentResults = matches
+    .filter(m => m.status === 'finished')
+    .sort((a, b) => new Date(b.match_date) - new Date(a.match_date))
+    .slice(0, 5)
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 1400 }}>
+    <div style={{ maxWidth: 800, margin: '0 auto', padding: '16px 16px 40px' }}>
 
-      {/* Greeting */}
-      <p style={{ fontSize: 15, color: 'var(--color-text-muted)', marginBottom: 20 }}>
-        {greeting}, Leo · {dateLabel} · WC2026 Day {wcDay}
-      </p>
-
-      {/* ── ROW 1: Stat pills ── */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 28 }}>
-        <StatPill label="🏟 Matches Today" value={String(todayMatches.length)} />
-        <StatPill label="🎯 Active Bets" value={String(pendingBets.length)} />
-        <StatPill label="💰 Total P&L" value={pnlLabel} valueColor={pnlColor} />
-        <StatPill label="📊 Model Hit Rate" value={hitRate == null ? '—' : `${hitRate}%`} valueColor="var(--color-accent)" />
+      {/* Page title */}
+      <div style={{
+        fontSize: 18, fontFamily: "'IBM Plex Mono', monospace",
+        fontWeight: 600, letterSpacing: '0.10em',
+        color: 'var(--color-text-primary)', marginBottom: 2,
+      }}>
+        {lang === 'zh' ? '总览' : 'DASHBOARD'}
+      </div>
+      <div style={{
+        fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+        color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 4,
+      }}>
+        WC2026 · {matches.filter(m => m.status === 'finished').length} RESULTS
+        {' · '}{matches.filter(m => m.status === 'upcoming').length} UPCOMING
       </div>
 
-      {/* ── ROW 2: Today's Matches | Active Bets ── */}
-      <div style={{ display: 'flex', gap: 24, marginBottom: 28 }}>
+      {/* ── SECTION 1: UPCOMING MATCHES ── */}
+      <SH label={lang === 'zh' ? '即将开赛' : 'UPCOMING MATCHES'} />
 
-        {/* Left: Today's matches (420px fixed) */}
-        <div style={{ width: 420, flexShrink: 0 }}>
-          <span style={SH}>Today's Matches</span>
-          {loading
-            ? [1,2,3,4].map(i => <SkeletonRow key={i} />)
-            : todayMatches.length === 0
-            ? <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 12 }}>No matches today</p>
-            : todayMatches.slice(0, 8).map(m => <MatchRow key={m.id} match={m} onAnalyze={onAnalyze} />)
-          }
-          <button onClick={() => navigate('/matches')} style={{ ...GOLD_LINK, marginTop: 8 }}>View all matches →</button>
+      {upcoming.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: '12px 0' }}>
+          {lang === 'zh' ? '暂无即将到来的比赛' : 'No upcoming matches'}
         </div>
-
-        {/* Right: Active bets */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <span style={SH}>Active Bets</span>
-          {pendingBets.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '32px 0' }}>
-              <p style={{ fontSize: 14, color: 'var(--color-text-muted)', marginBottom: 6 }}>No active bets</p>
-              <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 16 }}>
-                Place bets from the Value tab in any match analysis
-              </p>
-              <button onClick={() => navigate('/matches')} style={GOLD_BTN}>→ View Matches</button>
-            </div>
-          ) : (
-            <>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr>
-                      {['Match','Selection','Odds','Stake ¥','Return ¥','Status'].map(h => (
-                        <th key={h} style={TH}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pendingBets.map(b => <BetRow key={b.id} bet={b} />)}
-                  </tbody>
-                </table>
+      ) : upcoming.map(m => {
+        const pred = predMap[m.id]
+        const bj = new Date(m.match_date).toLocaleString('zh-CN', {
+          timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+        })
+        return (
+          <div
+            key={m.id}
+            onClick={() => navigate(`/matches/${m.id}`)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 14px',
+              border: '0.5px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: 8, background: 'var(--color-bg-card)',
+              cursor: 'pointer', transition: 'border-color 0.15s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-accent)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--color-border)'}
+          >
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)',
+                marginBottom: pred?.v3_home_win ? 3 : 0 }}>
+                {m.home_team} vs {m.away_team}
               </div>
-              <div style={{ marginTop: 12, fontSize: 14, color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
-                {`Total staked: ¥${pendingBets.reduce((s,b) => s + Number(b.stake), 0).toFixed(0)}`}
-                {` · Potential return: ¥${pendingBets.reduce((s,b) => s + Number(b.stake) * Number(b.odds), 0).toFixed(0)}`}
-                {' · All-time P&L: '}
-                <span style={{ color: pnlColor, fontWeight: 600 }}>{pnlLabel}</span>
-                {' · ROI: '}
-                <span style={{ color: settledStats.roi >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                  {settledStats.roi >= 0 ? '+' : ''}{settledStats.roi.toFixed(1)}%
-                </span>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── ROW 3: Top Value Picks | Group Standings ── */}
-      <div style={{ display: 'flex', gap: 24, marginBottom: 28 }}>
-
-        {/* Left: Top value picks */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <span style={SH}>💡 Top Value Picks</span>
-          {valuePicks === null ? (
-            [1,2,3].map(i => <SkeletonRow key={i} />)
-          ) : valuePicks.length > 0 ? (
-            <>
-              {valuePicks.map((p, i) => <ValuePickRow key={i} pick={p} onAnalyze={onAnalyze} />)}
-              <button onClick={() => navigate('/recommendations')} style={{ ...GOLD_LINK, marginTop: 8 }}>View all tips →</button>
-            </>
-          ) : hasAnyOdds ? (
-            <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-              No value bets found today. All current odds are below the 5% edge threshold.
-            </p>
-          ) : (
-            <div>
-              <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 12 }}>
-                Enter bookmaker odds in the Value tab to see value picks
-              </p>
-              {noOddsMatches.slice(0, 5).map(m => (
-                <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 13 }}>
-                  <span>{getFlag(m.home_team)} {m.home_team} vs {getFlag(m.away_team)} {m.away_team}</span>
-                  <button onClick={() => onAnalyze(m.id)} style={GOLD_LINK}>Add odds →</button>
+              {pred?.v3_home_win && (
+                <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+                  color: 'var(--color-text-muted)' }}>
+                  {m.home_team}{' '}
+                  <strong style={{ color: 'var(--color-blue)' }}>
+                    {(pred.v3_home_win * 100).toFixed(0)}%
+                  </strong>
+                  {' · D '}{(pred.v3_draw * 100).toFixed(0)}%
+                  {' · '}{m.away_team}{' '}{(pred.v3_away_win * 100).toFixed(0)}%
+                  {pred.anchor_total && (
+                    <span style={{ marginLeft: 8, color: 'var(--color-accent)' }}>
+                      ⚓{pred.anchor_total}g
+                    </span>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
+            <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+              color: 'var(--color-text-muted)', flexShrink: 0, marginLeft: 12, textAlign: 'right' }}>
+              {bj}
+            </div>
+          </div>
+        )
+      })}
 
-        {/* Right: Group standings snapshot */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <span style={SH}>Group Standings Snapshot</span>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
-            {GROUPS.filter(g => groupStandings[g]).map(g => (
-              <GroupSnapshot key={g} groupName={g} rows={groupStandings[g]} />
+      {/* ── SECTION 2: RECENT RESULTS ── */}
+      <SH label={lang === 'zh' ? '最近结果' : 'RECENT RESULTS'} />
+
+      <div style={{ border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+        {recentResults.map((m, i) => {
+          const pred = predMap[m.id]
+          const actual = m.home_score > m.away_score ? 'home'
+            : m.home_score < m.away_score ? 'away' : 'draw'
+          const v3Pred = pred?.v3_home_win
+            ? pred.v3_home_win > pred.v3_draw && pred.v3_home_win > pred.v3_away_win ? 'home'
+            : pred.v3_away_win > pred.v3_draw ? 'away' : 'draw'
+            : null
+          const hit = v3Pred ? v3Pred === actual : null
+
+          return (
+            <div key={m.id} style={{
+              display: 'flex', alignItems: 'center',
+              padding: '10px 14px',
+              borderBottom: i < recentResults.length - 1 ? '0.5px solid var(--color-border-light)' : 'none',
+              background: 'var(--color-bg-card)',
+            }}>
+              <span style={{ flex: 1, fontSize: 13, color: 'var(--color-text-primary)' }}>
+                {m.home_team} vs {m.away_team}
+              </span>
+              <span style={{ fontSize: 14, fontWeight: 600,
+                fontFamily: "'IBM Plex Mono', monospace",
+                color: 'var(--color-text-primary)', marginRight: 12 }}>
+                {m.home_score} – {m.away_score}
+              </span>
+              {hit !== null && (
+                <span style={{
+                  fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+                  padding: '2px 6px', borderRadius: 4,
+                  background: hit ? 'rgba(45,122,79,0.12)' : 'rgba(192,57,43,0.10)',
+                  color: hit ? 'var(--color-success)' : 'var(--color-danger)',
+                  fontWeight: 500,
+                }}>
+                  {hit ? '✓ V3' : '✗ V3'}
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── SECTION 3: MODEL PERFORMANCE ── */}
+      <SH label={lang === 'zh' ? '模型表现' : 'MODEL PERFORMANCE'} />
+
+      {modelPerf.v3Total === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: '12px 0' }}>
+          {lang === 'zh' ? '需要更多比赛数据才能统计模型表现' : 'Need more finished matches to show model performance'}
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginBottom: 16 }}>
+            {[
+              {
+                label: lang === 'zh' ? 'V3 方向准确率' : 'V3 Direction',
+                value: modelPerf.accuracy ? `${modelPerf.accuracy}%` : '—',
+                sub: `${modelPerf.v3Correct}/${modelPerf.v3Total} correct`,
+                color: parseFloat(modelPerf.accuracy) >= 55 ? 'var(--color-success)' : 'var(--color-warning)',
+              },
+              {
+                label: lang === 'zh' ? '高概率准确率' : 'High Prob (>50%)',
+                value: modelPerf.calibration ? `${modelPerf.calibration}%` : '—',
+                sub: 'when model confident',
+                color: parseFloat(modelPerf.calibration) >= 65 ? 'var(--color-success)' : 'var(--color-warning)',
+              },
+              {
+                label: lang === 'zh' ? '锚定进球准确率' : 'Anchor Total',
+                value: modelPerf.anchorAcc ? `${modelPerf.anchorAcc}%` : '—',
+                sub: `${modelPerf.anchorHit}/${modelPerf.anchorTotal} exact`,
+                color: parseFloat(modelPerf.anchorAcc) >= 20 ? 'var(--color-success)' : 'var(--color-warning)',
+              },
+              {
+                label: lang === 'zh' ? '已分析场次' : 'Matches Analyzed',
+                value: modelPerf.v3Total,
+                sub: 'with V3 predictions',
+                color: 'var(--color-text-primary)',
+              },
+            ].map((card, i) => (
+              <div key={i} style={{
+                border: '0.5px solid var(--color-border)',
+                borderRadius: 'var(--radius-lg)', padding: '12px 14px',
+                background: 'var(--color-bg-card)',
+              }}>
+                <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+                  color: 'var(--color-text-muted)', letterSpacing: '0.06em',
+                  textTransform: 'uppercase', marginBottom: 6 }}>{card.label}</div>
+                <div style={{ fontSize: 22, fontWeight: 600,
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  color: card.color, lineHeight: 1, marginBottom: 4 }}>{card.value}</div>
+                <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{card.sub}</div>
+              </div>
             ))}
           </div>
-          <button onClick={() => navigate('/matches')} style={{ ...GOLD_LINK, marginTop: 8 }}>View full standings →</button>
-        </div>
-      </div>
 
-      {/* ── BOTTOM ROW: Model Performance ── */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <span style={{ ...SH, marginBottom: 0, borderBottom: 'none', paddingBottom: 0 }}>Model Performance</span>
-          <button onClick={() => navigate('/model-performance')} style={{ ...GOLD_LINK, fontSize: 11 }}>Details →</button>
+          {/* Match-by-match breakdown */}
+          <div style={{ border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 80px 80px 60px 70px',
+              padding: '8px 14px', background: 'var(--color-bg-secondary)',
+              borderBottom: '0.5px solid var(--color-border)',
+              fontSize: 9, fontFamily: "'IBM Plex Mono', monospace",
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              color: 'var(--color-text-muted)', gap: 8,
+            }}>
+              <span>{lang === 'zh' ? '比赛' : 'Match'}</span>
+              <span style={{ textAlign: 'center' }}>{lang === 'zh' ? '结果' : 'Result'}</span>
+              <span style={{ textAlign: 'center' }}>{lang === 'zh' ? 'V3预测' : 'V3 Pred'}</span>
+              <span style={{ textAlign: 'center' }}>{lang === 'zh' ? '概率' : 'Prob'}</span>
+              <span style={{ textAlign: 'center' }}>{lang === 'zh' ? '判断' : 'Verdict'}</span>
+            </div>
+
+            {modelPerf.details.map((d, i) => {
+              const actualLabel = d.actual === 'home' ? d.match.home_team.slice(0, 8)
+                : d.actual === 'away' ? d.match.away_team.slice(0, 8)
+                : lang === 'zh' ? '平' : 'Draw'
+              const predLabel = d.v3Pred === 'home' ? d.match.home_team.slice(0, 8)
+                : d.v3Pred === 'away' ? d.match.away_team.slice(0, 8)
+                : lang === 'zh' ? '平' : 'Draw'
+
+              return (
+                <div key={d.match.id} style={{
+                  display: 'grid', gridTemplateColumns: '1fr 80px 80px 60px 70px',
+                  padding: '9px 14px',
+                  borderBottom: i < modelPerf.details.length - 1 ? '0.5px solid var(--color-border-light)' : 'none',
+                  background: d.v3Hit ? 'rgba(45,122,79,0.03)' : 'transparent',
+                  gap: 8, alignItems: 'center',
+                }}>
+                  <span style={{ fontSize: 12, color: 'var(--color-text-primary)' }}>
+                    {d.match.home_team.slice(0, 8)} vs {d.match.away_team.slice(0, 8)}
+                    <span style={{ marginLeft: 6, fontSize: 11,
+                      fontFamily: "'IBM Plex Mono', monospace",
+                      color: 'var(--color-text-muted)' }}>
+                      {d.match.home_score}–{d.match.away_score}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 11, fontFamily: "'IBM Plex Mono', monospace",
+                    color: 'var(--color-text-secondary)', textAlign: 'center' }}>
+                    {actualLabel}
+                  </span>
+                  <span style={{ fontSize: 11, fontFamily: "'IBM Plex Mono', monospace",
+                    color: 'var(--color-text-secondary)', textAlign: 'center' }}>
+                    {predLabel}
+                  </span>
+                  <span style={{ fontSize: 11, fontFamily: "'IBM Plex Mono', monospace",
+                    color: 'var(--color-accent)', textAlign: 'center' }}>
+                    {d.predProb ? `${(d.predProb * 100).toFixed(0)}%` : '—'}
+                  </span>
+                  <span style={{
+                    fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+                    padding: '2px 6px', borderRadius: 4,
+                    background: d.v3Hit ? 'rgba(45,122,79,0.12)' : 'rgba(192,57,43,0.10)',
+                    color: d.v3Hit ? 'var(--color-success)' : 'var(--color-danger)',
+                    fontWeight: 500, textAlign: 'center',
+                  }}>
+                    {d.v3Hit ? (lang === 'zh' ? '✓ 正确' : '✓ HIT') : (lang === 'zh' ? '✗ 错误' : '✗ MISS')}
+                  </span>
+                </div>
+              )
+            })}
+
+            <div style={{
+              padding: '10px 14px', background: 'var(--color-bg-secondary)',
+              borderTop: '0.5px solid var(--color-border)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span style={{ fontSize: 11, fontFamily: "'IBM Plex Mono', monospace",
+                color: 'var(--color-text-muted)' }}>
+                {lang === 'zh' ? '总计' : 'Total'} {modelPerf.v3Total} {lang === 'zh' ? '场' : 'matches'}
+              </span>
+              <span style={{ fontSize: 12, fontFamily: "'IBM Plex Mono', monospace",
+                fontWeight: 600,
+                color: parseFloat(modelPerf.accuracy) >= 55 ? 'var(--color-success)' : 'var(--color-warning)' }}>
+                {modelPerf.accuracy}% {lang === 'zh' ? '方向准确率' : 'accuracy'}
+              </span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── SECTION 4: TRACKER SUMMARY ── */}
+      <SH label={lang === 'zh' ? '追踪摘要' : 'TRACKER SUMMARY'} />
+
+      {trackerSummary.settled === 0 && trackerSummary.pending === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', padding: '12px 0' }}>
+          {lang === 'zh' ? '暂无追踪记录' : 'No tracked predictions yet'}
         </div>
-        <div style={{ borderBottom: '1px solid var(--color-accent)', marginBottom: 12 }} />
-        {accuracy.length === 0 ? (
-          <p style={{ fontSize: 14, color: 'var(--color-text-muted)' }}>
-            Performance tracked after first match settlement
-          </p>
-        ) : (
-          <p style={{ fontSize: 14, color: 'var(--color-text-muted)', lineHeight: 1.8 }}>
-            {'Predictions: '}<span style={{ color: 'var(--color-text-primary)' }}>{total}</span>
-            {' · Correct: '}<span style={{ color: 'var(--color-success)', fontWeight: 600 }}>{hits}</span>
-            {' · Wrong: '}<span style={{ color: 'var(--color-danger)', fontWeight: 600 }}>{wrong}</span>
-            {' · Pending: 0'}
-            {' · Hit Rate: '}<span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>{hitRate}%</span>
-            {bestRole && (
-              <>{' · Best role: '}<span style={{ color: 'var(--color-success)' }}>{bestRole.name} ({Math.round(bestRole.rate * 100)}%)</span></>
-            )}
-            {worstRole && bestRole && worstRole.name !== bestRole.name && (
-              <>{' · Needs work: '}<span style={{ color: 'var(--color-danger)' }}>{worstRole.name} ({Math.round(worstRole.rate * 100)}%)</span></>
-            )}
-          </p>
-        )}
-      </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+          {[
+            {
+              label: lang === 'zh' ? '已结算' : 'Settled',
+              value: trackerSummary.settled,
+              sub: `${trackerSummary.wins} won`,
+              color: 'var(--color-text-primary)',
+            },
+            {
+              label: lang === 'zh' ? '待结算' : 'Pending',
+              value: trackerSummary.pending,
+              sub: `¥${trackerSummary.pendingStake} at risk`,
+              color: trackerSummary.pending > 0 ? 'var(--color-warning)' : 'var(--color-text-primary)',
+            },
+            {
+              label: 'P&L',
+              value: trackerSummary.pnl !== undefined
+                ? `${trackerSummary.pnl >= 0 ? '+' : ''}¥${trackerSummary.pnl}` : '—',
+              sub: `on ¥${trackerSummary.staked} staked`,
+              color: trackerSummary.pnl >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+            },
+            {
+              label: 'ROI',
+              value: trackerSummary.roi ? `${trackerSummary.roi}%` : '—',
+              sub: 'settled bets only',
+              color: parseFloat(trackerSummary.roi) >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+            },
+          ].map((card, i) => (
+            <div key={i} onClick={() => navigate('/my-bets')} style={{
+              border: '0.5px solid var(--color-border)',
+              borderRadius: 'var(--radius-lg)', padding: '12px 14px',
+              background: 'var(--color-bg-card)', cursor: 'pointer',
+            }}>
+              <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+                color: 'var(--color-text-muted)', letterSpacing: '0.06em',
+                textTransform: 'uppercase', marginBottom: 6 }}>{card.label}</div>
+              <div style={{ fontSize: 20, fontWeight: 600,
+                fontFamily: "'IBM Plex Mono', monospace",
+                color: card.color, lineHeight: 1, marginBottom: 4 }}>{card.value}</div>
+              <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{card.sub}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
     </div>
   )
 }

@@ -3,10 +3,11 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation, setLanguage } from '../lib/i18n'
 
 const NAV_ITEMS = [
-  { path: '/metis',   icon: 'ti-bolt',           labelEn: 'METIS',   labelZh: 'METIS',  gold: true },
-  { path: '/matches', icon: 'ti-calendar-event', labelEn: 'Matches', labelZh: '比赛' },
-  { path: '/my-bets', icon: 'ti-coins',          labelEn: 'My Bets', labelZh: '投注' },
-  { path: '/faq',     icon: 'ti-help-circle',    labelEn: 'FAQ',     labelZh: '帮助' },
+  { path: '/metis',     icon: 'ti-bolt',              labelEn: 'METIS',     labelZh: 'METIS',  gold: true },
+  { path: '/dashboard', icon: 'ti-layout-dashboard',  labelEn: 'Dashboard', labelZh: '总览' },
+  { path: '/matches',   icon: 'ti-calendar-event',    labelEn: 'Matches',   labelZh: '比赛' },
+  { path: '/my-bets',   icon: 'ti-coins',             labelEn: 'My Tracker',labelZh: '追踪' },
+  { path: '/faq',       icon: 'ti-help-circle',       labelEn: 'FAQ',       labelZh: '帮助' },
 ]
 
 function DropdownPanel({ open, userName, isAdmin, lang, navigate, onLogout, setOpen, posStyle }) {
