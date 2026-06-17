@@ -211,6 +211,22 @@ export default function AdminUsers() {
         }}>
           {lang === 'en' ? 'User Management' : '用户管理'}
         </h1>
+        <button
+          onClick={() => navigate('/admin/activity')}
+          style={{
+            background: 'none',
+            border: '0.5px solid rgba(255,255,255,0.3)',
+            borderRadius: 6,
+            padding: '6px 14px',
+            cursor: 'pointer',
+            fontSize: 11,
+            fontFamily: "'IBM Plex Mono', monospace",
+            color: 'rgba(255,255,255,0.75)',
+            minHeight: 44,
+          }}
+        >
+          User Activity Log →
+        </button>
       </div>
 
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 16px' }}>

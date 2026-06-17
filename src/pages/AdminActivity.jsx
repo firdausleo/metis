@@ -157,12 +157,12 @@ export default function AdminActivity() {
             fontFamily: "'IBM Plex Mono', monospace",
             color: 'var(--color-text-muted)',
           }}>↻ Refresh</button>
-          <button onClick={() => navigate('/dashboard')} style={{
+          <button onClick={() => navigate('/admin/users')} style={{
             background: 'none', border: 'none',
             cursor: 'pointer', fontSize: 11,
             fontFamily: "'IBM Plex Mono', monospace",
             color: 'var(--color-text-muted)', padding: 0,
-          }}>← Dashboard</button>
+          }}>← User Management</button>
         </div>
       </div>
 
