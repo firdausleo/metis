@@ -475,7 +475,7 @@ export default function Matches() {
   const { t, lang } = useTranslation()
   const { matchesByGroup, matches, loading, error, refetch } = useMatchesByGroup()
   // Restore tab when navigating back from TeamProfile (state.from === 'group')
-  const [filter, setFilter] = useState(location.state?.from === 'group' ? 'group' : 'all')
+  const [filter, setFilter] = useState(location.state?.from === 'group' ? 'group' : 'overview')
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [refreshMsg, setRefreshMsg] = useState('')
   const [statsMap, setStatsMap] = useState({})
@@ -712,6 +712,7 @@ export default function Matches() {
   }
 
   const filterButtons = [
+    { key: 'overview',  label: lang === 'zh' ? '总览' : 'Overview' },
     { key: 'all',       label: t('matches.filter.all') },
     { key: 'upcoming',  label: t('matches.filter.upcoming') },
     { key: 'group',     label: t('matches.filter.group') },
@@ -922,6 +923,94 @@ export default function Matches() {
             </div>
           )}
         </div>
+
+        {/* ── OVERVIEW: today's matches + recent results ── */}
+        {filter === 'overview' && (
+          <div style={{ padding: '8px 0' }}>
+            <div style={{
+              fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+              letterSpacing: '0.08em', color: 'var(--color-text-muted)',
+              textTransform: 'uppercase', marginBottom: 10,
+            }}>
+              {lang === 'zh' ? '今日赛事' : "Today's Matches"}
+            </div>
+            {(() => {
+              const beijingNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }))
+              const todayMatches = matches
+                .filter(m => {
+                  const bj = new Date(new Date(m.match_date).toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }))
+                  return bj.toDateString() === beijingNow.toDateString()
+                })
+                .slice(0, 6)
+              const upcoming6 = todayMatches.length > 0 ? todayMatches : matches
+                .filter(m => m.status === 'upcoming' && m.home_team !== 'TBD')
+                .sort((a, b) => new Date(a.match_date) - new Date(b.match_date))
+                .slice(0, 6)
+              return upcoming6.length === 0
+                ? <div style={{ fontSize: 13, color: 'var(--color-text-muted)', padding: '8px 0' }}>
+                    {lang === 'zh' ? '今日无赛事' : 'No matches today'}
+                  </div>
+                : upcoming6.map(m => (
+                  <div key={m.id} style={{
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    border: '0.5px solid var(--color-border)',
+                    borderRadius: 'var(--radius-md)',
+                    marginBottom: 8,
+                    background: 'var(--color-bg-card)',
+                  }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)' }}>
+                      {m.home_team} vs {m.away_team}
+                    </span>
+                    <span style={{
+                      fontSize: 11, fontFamily: "'IBM Plex Mono', monospace",
+                      color: 'var(--color-text-muted)',
+                    }}>
+                      {m.status === 'finished'
+                        ? `${m.home_score}-${m.away_score}`
+                        : new Date(m.match_date).toLocaleString('zh-CN', {
+                            timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit',
+                          })
+                      }
+                    </span>
+                  </div>
+                ))
+            })()}
+
+            <div style={{
+              fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+              letterSpacing: '0.08em', color: 'var(--color-text-muted)',
+              textTransform: 'uppercase', marginBottom: 10, marginTop: 20,
+            }}>
+              {lang === 'zh' ? '最近结果' : 'Recent Results'}
+            </div>
+            {matches
+              .filter(m => m.status === 'finished')
+              .slice(-5)
+              .reverse()
+              .map(m => (
+                <div key={m.id} style={{
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 14px',
+                  borderBottom: '0.5px solid var(--color-border-light)',
+                }}>
+                  <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                    {m.home_team} vs {m.away_team}
+                  </span>
+                  <span style={{
+                    fontSize: 13, fontWeight: 500,
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    color: 'var(--color-text-primary)',
+                  }}>
+                    {m.home_score} - {m.away_score}
+                  </span>
+                </div>
+              ))
+            }
+          </div>
+        )}
 
         {/* ── ALL: flat list sorted date ASC ── */}
         {filter === 'all' && (

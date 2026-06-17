@@ -29,22 +29,25 @@ export function useBrainCanvas(canvasRef, active = true) {
       function lerp(a, b, t) { return a + (b - a) * t }
 
       function fiberColor(distRatio, alpha) {
-        if (distRatio < 0.25) {
-          // orange core
-          return `rgba(220,90,30,${alpha})`
-        } else if (distRatio < 0.55) {
-          // orange → teal transition
-          const tl = (distRatio - 0.25) / 0.30
-          const r = Math.round(lerp(220, 40, tl))
-          const g = Math.round(lerp(90, 190, tl))
-          const b = Math.round(lerp(30, 180, tl))
+        if (distRatio < 0.20) {
+          return `rgba(255,245,220,${alpha})`
+        } else if (distRatio < 0.40) {
+          const t = (distRatio - 0.20) / 0.20
+          const r = Math.floor(lerp(255, 40, t))
+          const g = Math.floor(lerp(200, 190, t))
+          const b = Math.floor(lerp(100, 180, t))
+          return `rgba(${r},${g},${b},${alpha})`
+        } else if (distRatio < 0.65) {
+          const t = (distRatio - 0.40) / 0.25
+          const r = Math.floor(lerp(40, 20, t))
+          const g = Math.floor(lerp(190, 160, t))
+          const b = Math.floor(lerp(180, 255, t))
           return `rgba(${r},${g},${b},${alpha})`
         } else {
-          // teal → blue transition
-          const tl = Math.min((distRatio - 0.55) / 0.45, 1)
-          const r = Math.round(lerp(40, 20, tl))
-          const g = Math.round(lerp(190, 120, tl))
-          const b = Math.round(lerp(180, 255, tl))
+          const t = Math.min((distRatio - 0.65) / 0.35, 1)
+          const r = Math.floor(lerp(20, 180, t))
+          const g = Math.floor(lerp(120, 220, t))
+          const b = Math.floor(lerp(255, 255, t))
           return `rgba(${r},${g},${b},${alpha})`
         }
       }
@@ -75,10 +78,11 @@ export function useBrainCanvas(canvasRef, active = true) {
           const maxLen = this.thin ? baseR * lerp(0.45, 0.75, Math.random()) : baseR * lerp(0.7, 1.05, Math.random())
 
           this.length = maxLen
-          this.speed = lerp(0.006, 0.014, Math.random()) * (this.thin ? 1.3 : 1.0)
+          this.speed = lerp(0.003, 0.007, Math.random()) * (this.thin ? 1.3 : 1.0)
           this.curvature = (Math.random() - 0.5) * 1.8  // bend direction
-          this.noiseAmt = lerp(0.3, 0.9, Math.random())
+          this.noiseAmt = lerp(0.15, 0.45, Math.random())
           this.noiseSeed = Math.random() * 100
+          this.phase = Math.random() * Math.PI * 2
 
           this.t = 0
           this.done = false
@@ -89,7 +93,7 @@ export function useBrainCanvas(canvasRef, active = true) {
           // Pulse dot
           this.hasPulse = !this.thin && Math.random() < 0.4
           this.pulseT = Math.random()  // position along tract [0,1]
-          this.pulseSpeed = lerp(0.008, 0.018, Math.random())
+          this.pulseSpeed = lerp(0.004, 0.010, Math.random())
         }
 
         _pos(tNorm) {
@@ -132,7 +136,7 @@ export function useBrainCanvas(canvasRef, active = true) {
           }
         }
 
-        draw() {
+        draw(frame) {
           if (this.t <= 0) return
           const STEPS = 22
           const drawnT = this.t  // only draw up to current head
@@ -146,7 +150,8 @@ export function useBrainCanvas(canvasRef, active = true) {
           // Color by midpoint distRatio
           const mid = this._pos(drawnT * 0.5)
           const distRatio = this._distRatio(mid)
-          const baseAlpha = this.alpha * (this.thin ? 0.28 : 0.52)
+          const breathe = 0.5 + 0.5 * Math.sin(frame * 0.012 + this.phase)
+          const baseAlpha = this.alpha * (this.thin ? 0.28 : 0.52) * (0.55 + breathe * 0.45)
           ctx.strokeStyle = fiberColor(distRatio, baseAlpha)
           ctx.lineWidth = this.lineWidth
           ctx.lineCap = 'round'
@@ -176,7 +181,7 @@ export function useBrainCanvas(canvasRef, active = true) {
       // Surge
       let surgeActive = false
       let surgeRadius = 0
-      const surgeTimer = setInterval(() => { surgeActive = true; surgeRadius = 0 }, 6000)
+      const surgeTimer = setInterval(() => { surgeActive = true; surgeRadius = 0 }, 8000)
 
       let frame = 0
       let animId
@@ -234,13 +239,13 @@ export function useBrainCanvas(canvasRef, active = true) {
         // ── Fiber tracts ──
         for (const t of tracts) {
           t.update()
-          t.draw()
-          if (t.done && Math.random() < 0.004) t.init()
+          t.draw(frame)
+          if (t.done && Math.random() < 0.002) t.init()
         }
 
         // ── Surge ring ──
         if (surgeActive) {
-          surgeRadius += 2.5
+          surgeRadius += 1.5
           const sa = Math.max(0, 0.18 - surgeRadius / (rx * 2.2) * 0.18)
           ctx.beginPath()
           ctx.ellipse(cx, cy, surgeRadius, surgeRadius * (ry / rx), 0, 0, Math.PI * 2)

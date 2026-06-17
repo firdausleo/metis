@@ -364,10 +364,10 @@ FORMAT YOUR RESPONSES
 
       {/* ── WELCOME / BRAIN STATE ── */}
       {!chatActive && (
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', paddingBottom: 4 }}>
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingBottom: 4, maxHeight: 'calc(100vh - 180px)' }}>
 
           {/* ── TITLE SECTION ── */}
-          <div style={{ textAlign: 'center', padding: '28px 16px 16px', flexShrink: 0 }}>
+          <div style={{ textAlign: 'center', padding: '12px 16px 8px', flexShrink: 0 }}>
             <div style={{
               fontSize: 'clamp(32px, 6vw, 56px)',
               fontFamily: "'IBM Plex Mono', monospace",
@@ -383,7 +383,7 @@ FORMAT YOUR RESPONSES
               fontSize: 11,
               fontFamily: "'IBM Plex Mono', monospace",
               letterSpacing: '0.15em',
-              color: 'rgba(201,168,76,0.45)',
+              color: 'rgba(201,168,76,0.75)',
               textTransform: 'uppercase',
               marginBottom: 4,
             }}>
@@ -398,7 +398,7 @@ FORMAT YOUR RESPONSES
               alignItems: 'center',
               justifyContent: 'center',
               gap: 10,
-              marginTop: 6,
+              marginTop: 4,
             }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{
@@ -451,6 +451,7 @@ FORMAT YOUR RESPONSES
             width: '100%',
             justifyContent: 'center',
             flexShrink: 0,
+            marginBottom: 6,
           }}>
             {chips.map((chip, i) => (
               <button
@@ -568,7 +569,7 @@ FORMAT YOUR RESPONSES
       {/* ── INPUT AREA — always visible ── */}
       <div style={{
         flexShrink: 0,
-        padding: '8px 16px 16px',
+        padding: '6px 16px 16px',
         borderTop: '0.5px solid rgba(201,168,76,0.10)',
         background: '#080c14',
       }}>
