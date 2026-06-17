@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
 import { useBrainCanvas, useMiniCanvas } from '../hooks/useBrainCanvas'
@@ -288,9 +288,29 @@ FORMAT YOUR RESPONSES
   const finished = context?.matches.filter(m => m.status === 'finished') ?? []
   const upcoming = context?.matches.filter(m => m.status === 'upcoming') ?? []
 
-  const CHIPS = lang === 'zh'
-    ? ['› 今晚最佳投注？', '› 法国胜率多少？', '› 分析我的投注历史', '› 今晚哪场最有价值？']
-    : ['› Best bets tonight?', '› France win probability?', '› Analyze my bet history', '› Best value match tonight?']
+  const chips = useMemo(() => {
+    const base = []
+    if (context?.matches) {
+      const upcomingSorted = context.matches
+        .filter(m => m.status === 'upcoming')
+        .sort((a, b) => new Date(a.match_date) - new Date(b.match_date))
+      if (upcomingSorted[0]) {
+        base.push(lang === 'zh'
+          ? `${upcomingSorted[0].home_team} vs ${upcomingSorted[0].away_team} 分析`
+          : `Analyze ${upcomingSorted[0].home_team} vs ${upcomingSorted[0].away_team}`
+        )
+      }
+      if (upcomingSorted[1]) {
+        base.push(lang === 'zh'
+          ? `${upcomingSorted[1].home_team} 胜率多少？`
+          : `${upcomingSorted[1].home_team} win probability?`
+        )
+      }
+    }
+    base.push(lang === 'zh' ? '今晚最有价值的比赛？' : 'Best value match tonight?')
+    base.push(lang === 'zh' ? '分析我的投注历史' : 'Analyze my bet history')
+    return base.slice(0, 4)
+  }, [context, lang])
 
   return (
     <div style={{
@@ -343,20 +363,67 @@ FORMAT YOUR RESPONSES
 
       {/* ── WELCOME / BRAIN STATE ── */}
       {!chatActive && (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'flex-start',
-          flexShrink: 0,
-          paddingTop: 8,
-        }}>
-          {/* Full-bleed brain canvas wrapper */}
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+
+          {/* ── TITLE SECTION ── */}
+          <div style={{ textAlign: 'center', padding: '28px 16px 16px', flexShrink: 0 }}>
+            <div style={{
+              fontSize: 'clamp(32px, 6vw, 56px)',
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontWeight: 600,
+              letterSpacing: '0.25em',
+              color: '#C9A84C',
+              lineHeight: 1,
+              marginBottom: 8,
+            }}>
+              METIS
+            </div>
+            <div style={{
+              fontSize: 11,
+              fontFamily: "'IBM Plex Mono', monospace",
+              letterSpacing: '0.15em',
+              color: 'rgba(201,168,76,0.45)',
+              textTransform: 'uppercase',
+              marginBottom: 4,
+            }}>
+              WC2026 Intelligence
+            </div>
+            <div style={{
+              fontSize: 10,
+              fontFamily: "'IBM Plex Mono', monospace",
+              letterSpacing: '0.06em',
+              color: 'rgba(201,168,76,0.30)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              marginTop: 6,
+            }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{
+                  width: 5, height: 5, borderRadius: '50%',
+                  background: context ? '#2D7A4F' : '#555',
+                  display: 'inline-block',
+                }} />
+                {context ? 'ONLINE' : 'LOADING'}
+              </span>
+              {context && (<>
+                <span>·</span>
+                <span>{context.matches.filter(m => m.status === 'finished').length} RESULTS</span>
+                <span>·</span>
+                <span>{context.matches.filter(m => m.status === 'upcoming').length} UPCOMING</span>
+                <span>·</span>
+                <span>V3 ACTIVE</span>
+              </>)}
+            </div>
+          </div>
+
+          {/* ── BRAIN CANVAS ── */}
           <div style={{
             position: 'relative',
             width: '100vw',
             marginLeft: 'calc(-50vw + 50%)',
-            height: '52vh',
+            height: 'clamp(220px, 38vh, 380px)',
             flexShrink: 0,
             overflow: 'hidden',
           }}>
@@ -372,18 +439,53 @@ FORMAT YOUR RESPONSES
             />
           </div>
 
-          {/* Context bar */}
+          {/* ── SUGGESTION CHIPS ── */}
           <div style={{
-            fontFamily: "'IBM Plex Mono', monospace",
-            fontSize: 9,
-            color: 'rgba(201,168,76,0.38)',
-            letterSpacing: '0.15em',
-            marginTop: 4,
-            marginBottom: 2,
+            padding: '16px 24px 8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 7,
+            maxWidth: 500,
+            margin: '0 auto',
+            width: '100%',
+            flexShrink: 0,
           }}>
-            {context
-              ? `${finished.length} MATCHES PLAYED · ${upcoming.length} UPCOMING · V3 ENSEMBLE ACTIVE`
-              : 'LOADING MATCH DATA...'}
+            {chips.map((chip, i) => (
+              <button
+                key={i}
+                onClick={() => { setInput(chip); inputRef.current?.focus() }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '9px 14px',
+                  background: 'rgba(201,168,76,0.05)',
+                  border: '0.5px solid rgba(201,168,76,0.18)',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  fontSize: 12,
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  color: 'rgba(232,234,240,0.75)',
+                  minHeight: 40,
+                  width: '100%',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(201,168,76,0.11)'
+                  e.currentTarget.style.borderColor = 'rgba(201,168,76,0.45)'
+                  e.currentTarget.style.color = '#e8eaf0'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(201,168,76,0.05)'
+                  e.currentTarget.style.borderColor = 'rgba(201,168,76,0.18)'
+                  e.currentTarget.style.color = 'rgba(232,234,240,0.75)'
+                }}
+              >
+                <span style={{ color: '#C9A84C', fontWeight: 600, fontSize: 14, flexShrink: 0 }}>›</span>
+                {chip}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -404,73 +506,6 @@ FORMAT YOUR RESPONSES
           boxSizing: 'border-box',
         }}
       >
-        {/* Welcome message */}
-        {messages.length === 0 && (
-          <>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <MiniAvatar />
-              <div style={{
-                background: 'rgba(17,24,39,0.92)',
-                border: '1px solid rgba(201,168,76,0.18)',
-                borderLeft: '2px solid rgba(201,168,76,0.6)',
-                borderRadius: '2px 12px 12px 12px',
-                padding: '12px 16px',
-                maxWidth: '82%',
-                fontSize: 13,
-                color: 'rgba(220,230,255,0.88)',
-                lineHeight: 1.7,
-              }}>
-                {lang === 'zh' ? (
-                  <>
-                    <span style={{ color: '#C9A84C', fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600 }}>METIS / </span>
-                    <span style={{ color: 'rgba(201,168,76,0.55)', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11 }}>WC2026 INTELLIGENCE</span>
-                    <br /><br />
-                    我掌握所有比赛数据、V1/V2/V3预测模型、赔率分析和你的投注历史。直接问我。
-                  </>
-                ) : (
-                  <>
-                    <span style={{ color: '#C9A84C', fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600 }}>METIS / </span>
-                    <span style={{ color: 'rgba(201,168,76,0.55)', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11 }}>WC2026 INTELLIGENCE</span>
-                    <br /><br />
-                    Full access to match data, V3 predictions, PASP edge calculations, and your betting history. Ask directly.
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Suggestion chips */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 46 }}>
-              {CHIPS.map(chip => (
-                <button
-                  key={chip}
-                  onClick={() => { setInput(chip.replace(/^›\s/, '')); inputRef.current?.focus() }}
-                  style={{
-                    padding: '7px 14px',
-                    borderRadius: 4,
-                    border: '1px solid rgba(201,168,76,0.22)',
-                    background: 'rgba(201,168,76,0.04)',
-                    color: 'rgba(201,168,76,0.75)',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                    fontFamily: "'IBM Plex Mono', monospace",
-                    letterSpacing: '0.03em',
-                    transition: 'border-color 0.15s, background 0.15s',
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.borderColor = 'rgba(201,168,76,0.6)'
-                    e.currentTarget.style.background = 'rgba(201,168,76,0.09)'
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.borderColor = 'rgba(201,168,76,0.22)'
-                    e.currentTarget.style.background = 'rgba(201,168,76,0.04)'
-                  }}
-                >
-                  {chip}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
 
         {/* Chat messages */}
         {messages.map((msg, i) => (

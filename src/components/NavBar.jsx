@@ -196,19 +196,6 @@ export default function NavBar() {
               >
                 Knockout
               </button>
-              <button
-                onClick={() => navigate('/settings/metis')}
-                style={{
-                  border: 'none', cursor: 'pointer', padding: '5px 12px',
-                  borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-ui)',
-                  fontSize: 13, fontWeight: 700, minHeight: 'var(--touch-target)',
-                  color: location.pathname === '/settings/metis' ? '#000' : 'var(--color-accent)',
-                  background: location.pathname === '/settings/metis' ? 'var(--color-accent)' : 'var(--color-accent-dim)',
-                  transition: 'background 0.15s, color 0.15s',
-                }}
-              >
-                ⚡ METIS
-              </button>
             </>
           )}
 

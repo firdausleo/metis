@@ -292,18 +292,6 @@ export function useBrainCanvas(canvasRef, active = true) {
           ['LEARN', W * 0.78, H * 0.72],
         ].forEach(([label, lx, ly]) => ctx.fillText(label, lx, ly))
 
-        // METIS wordmark — moved up
-        ctx.font = '600 20px "IBM Plex Mono", monospace'
-        ctx.fillStyle = 'rgba(201,168,76,0.82)'
-        ctx.textAlign = 'center'
-        ctx.letterSpacing = '0.3em'
-        ctx.fillText('METIS', W * 0.5, H * 0.82)
-        ctx.letterSpacing = '0'
-
-        ctx.font = '400 9px "Space Grotesk", sans-serif'
-        ctx.fillStyle = 'rgba(201,168,76,0.38)'
-        ctx.fillText('WC2026 INTELLIGENCE', W * 0.5, H * 0.88)
-
         frame++
         animId = requestAnimationFrame(draw)
       }
