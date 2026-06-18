@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
 import { getFlag } from '../lib/teamFlags'
 import { dcLambdas, dcScoreMatrix, isWC2026Host } from '../utils/dcRatings.js'
+import { useUser } from '../context/UserContext'
+import { logPageView } from '../utils/activityTracker'
 
 // ─── simulation core (pure functions) ────────────────────────────────────────
 
@@ -366,6 +368,7 @@ function RoundTab({ matches }) {
 
 export default function Simulator() {
   const { t, lang } = useTranslation()
+  const { user } = useUser()
   const [fixtures, setFixtures] = useState([])
   const [actualResults, setActualResults] = useState({})
   const [loading, setLoading] = useState(true)
@@ -380,6 +383,7 @@ export default function Simulator() {
   const mcRafRef = useRef(null)
 
   useEffect(() => {
+    logPageView(user?.id, 'simulator')
     fetchData()
     return () => { if (mcRafRef.current) cancelAnimationFrame(mcRafRef.current) }
   }, [])

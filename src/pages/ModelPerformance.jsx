@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
 import InfoTooltip from '../components/InfoTooltip'
+import { useUser } from '../context/UserContext'
+import { logPageView } from '../utils/activityTracker'
 
 // ── Style constants ─────────────────────────────────────────────────────────
 const TH = {
@@ -238,6 +240,7 @@ function ImprovementLog() {
 export default function ModelPerformance() {
   const navigate = useNavigate()
   const { t, lang } = useTranslation()
+  const { user } = useUser()
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState([])
   const [accRows, setAccRows] = useState([])
@@ -246,6 +249,7 @@ export default function ModelPerformance() {
   const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
+    logPageView(user?.id, 'model_performance')
     async function load() {
       const [predsRes, accRes, rolesRes] = await Promise.all([
         supabase

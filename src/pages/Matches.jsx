@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTranslation } from '../lib/i18n'
+import { logPageView } from '../utils/activityTracker'
 import { useMatchesByGroup } from '../hooks/useMatches'
 import MatchCard from '../components/MatchCard'
 import { getFlag } from '../lib/teamFlags'
@@ -484,6 +485,8 @@ export default function Matches() {
 
   const isAdmin = user?.id === ADMIN_UUID
   const [predMap, setPredMap] = useState({})
+
+  useEffect(() => { logPageView(user?.id, 'matches') }, [])
 
   // Load model_predictions for all matches
   useEffect(() => {

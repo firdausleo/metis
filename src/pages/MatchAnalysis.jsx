@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase'
 import { runModels, capProb, SCORE_MAX, monteCarlo, getVenueAdvantage, LEAGUE_AVG_GOALS, DEF_FACTOR_MIN, DEF_FACTOR_MAX, blendInput, isXgNoise, XG_BLEND_XG, XG_BLEND_GOAL } from '../lib/poisson'
 import { formatProb, analyse1X2, calcStake } from '../lib/evEngine'
 import { placeBet } from '../lib/bets'
+import { logPageView, track } from '../utils/activityTracker'
 import PredictionTab from '../components/match/PredictionTab'
 import BetsTab from '../components/match/BetsTab'
 
@@ -3355,6 +3356,7 @@ export default function MatchAnalysis() {
 
   useEffect(() => {
     let cancelled = false
+    logPageView(user?.id, 'match_detail')
 
     // Synchronous reset — happens before the async fetch so odds clear immediately
     // on every match navigation, regardless of fetch timing.
@@ -3425,6 +3427,7 @@ export default function MatchAnalysis() {
     setAiRunning(true)
     setAiRunMsg('')
     setAiRunError(null)
+    track.aiAnalysis(user?.id, match?.id, `${match?.home_team} vs ${match?.away_team}`)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
@@ -3437,6 +3440,7 @@ export default function MatchAnalysis() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
       setAiRunMsg(`✓ ${data.roles_run} roles complete`)
+      track.pasp(user?.id, match?.id)
       const { data: fresh } = await supabase
         .from('role_outputs')
         .select('*, ai_roles(role_number)')

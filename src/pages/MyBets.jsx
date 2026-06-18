@@ -3,17 +3,18 @@ import { supabase } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
 import { toBeijingTime } from '../lib/dateUtils'
 import { useUser } from '../context/UserContext'
+import { logPageView } from '../utils/activityTracker'
 
 export default function MyBets() {
   const { lang } = useTranslation()
-  const { tier } = useUser()
+  const { tier, user } = useUser()
   const isAdmin = tier === 'admin'
   const [bets, setBets] = useState([])
   const [loading, setLoading] = useState(true)
   const [settling, setSettling] = useState(null)
   const [settleModal, setSettleModal] = useState(null)
 
-  useEffect(() => { loadBets() }, [])
+  useEffect(() => { logPageView(user?.id, 'tracker'); loadBets() }, [])
 
   async function loadBets() {
     setLoading(true)

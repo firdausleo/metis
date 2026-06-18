@@ -2,16 +2,20 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
+import { useUser } from '../context/UserContext'
+import { logPageView } from '../utils/activityTracker'
 
 export default function Dashboard() {
   const { lang } = useTranslation()
   const navigate = useNavigate()
+  const { user } = useUser()
   const [matches, setMatches] = useState([])
   const [predictions, setPredictions] = useState([])
   const [bets, setBets] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    logPageView(user?.id, 'dashboard')
     async function load() {
       const [{ data: m }, { data: p }, { data: b }] = await Promise.all([
         supabase.from('matches').select('*').order('match_date'),
