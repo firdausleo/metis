@@ -247,11 +247,12 @@ export default function ModelPerformance() {
   const [aiRoles, setAiRoles] = useState([])
   const [filter, setFilter] = useState('all')
   const [showAll, setShowAll] = useState(false)
+  const [refitLog, setRefitLog] = useState([])
 
   useEffect(() => {
     logPageView(user?.id, 'model_performance')
     async function load() {
-      const [predsRes, accRes, rolesRes] = await Promise.all([
+      const [predsRes, accRes, rolesRes, refitRes] = await Promise.all([
         supabase
           .from('model_predictions')
           .select('*, match:matches(home_team,away_team,home_score,away_score,match_date)')
@@ -266,10 +267,15 @@ export default function ModelPerformance() {
           .from('ai_roles')
           .select('id,role_number,role_name')
           .order('role_number'),
+        supabase
+          .from('dc_refit_log')
+          .select('*')
+          .order('refit_date', { ascending: false }),
       ])
       setRows(predsRes.data || [])
       setAccRows(accRes.data || [])
       setAiRoles(rolesRes.data || [])
+      setRefitLog(refitRes.data || [])
       setLoading(false)
     }
     load().catch(console.error)
@@ -618,6 +624,88 @@ export default function ModelPerformance() {
               {lang === 'zh'
                 ? '绿色 ✓ = 已完成 · 金色 PENDING = 进行中 · 灰色 PLANNED = 路线图'
                 : 'Green ✓ = shipped · Gold PENDING = in progress · Grey PLANNED = roadmap'}
+            </p>
+          </div>
+
+          {/* Section H: DC Refit Log */}
+          <div style={{ marginBottom: 28 }}>
+            <span style={SH}>
+              {lang === 'zh' ? 'DC模型重新拟合日志' : 'DC Model Refit Log'}
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* Hardcoded initial entry always shown first */}
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <div style={{
+                  width: 8, height: 8, borderRadius: '50%',
+                  marginTop: 5, flexShrink: 0, background: '#2D7A4F',
+                }} />
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>
+                    Initial fit — 15,508 international matches (pre-WC2026)
+                  </span>
+                  <span style={{
+                    fontSize: 10, color: 'var(--color-text-muted)',
+                    marginLeft: 8, fontFamily: "'IBM Plex Mono', monospace",
+                  }}>2026-06-15</span>
+                  <div style={{
+                    fontSize: 11, color: 'var(--color-text-muted)',
+                    marginTop: 3, fontFamily: "'IBM Plex Mono', monospace",
+                  }}>
+                    ρ=−0.0612 · T=1.11 · homeAdv=0.2686
+                  </div>
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, flexShrink: 0, color: '#2D7A4F' }}>✓</span>
+              </div>
+              {/* Dynamic entries from DB */}
+              {refitLog.map((r, i) => (
+                <div key={r.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  <div style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    marginTop: 5, flexShrink: 0, background: '#C9A84C',
+                  }} />
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>
+                      Refit #{refitLog.length - i} — {r.match_count.toLocaleString()} matches
+                      {r.wc_matches > 0 && ` (${r.wc_matches} WC2026)`}
+                    </span>
+                    <span style={{
+                      fontSize: 10, color: 'var(--color-text-muted)',
+                      marginLeft: 8, fontFamily: "'IBM Plex Mono', monospace",
+                    }}>
+                      {new Date(r.refit_date).toLocaleDateString('en-US', {
+                        timeZone: 'Asia/Shanghai', month: 'short', day: 'numeric',
+                      })}
+                    </span>
+                    <div style={{
+                      fontSize: 11, color: 'var(--color-text-muted)',
+                      marginTop: 3, fontFamily: "'IBM Plex Mono', monospace",
+                    }}>
+                      ρ={r.rho} · T={r.temperature}
+                      {r.notes && ` · ${r.notes}`}
+                    </div>
+                    {r.key_changes && (
+                      <div style={{
+                        fontSize: 10, color: 'var(--color-text-muted)',
+                        marginTop: 2, fontFamily: "'IBM Plex Mono', monospace",
+                      }}>
+                        {Object.entries(r.key_changes)
+                          .slice(0, 4)
+                          .map(([team, change]) => `${team}: ${change}`)
+                          .join(' · ')}
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, flexShrink: 0, color: '#C9A84C' }}>✓</span>
+                </div>
+              ))}
+            </div>
+            <p style={{
+              fontSize: 11, color: 'var(--color-text-muted)',
+              marginTop: 12, lineHeight: 1.6,
+            }}>
+              {lang === 'zh'
+                ? 'DC模型每次有新的比赛结果时都会重新拟合。金色 = WC2026期间重新拟合。'
+                : 'DC model is refit each time new match results are available. Gold = refit during WC2026.'}
             </p>
           </div>
         </>
