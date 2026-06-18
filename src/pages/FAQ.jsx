@@ -112,6 +112,72 @@ const SECTIONS = [
     ],
   },
   {
+    id: 'pasp_v3',
+    title: '💰 PASP v3 — How to Place Bets',
+    items: [
+      {
+        q: 'What is PASP v3?',
+        a: [
+          { p: 'PASP (Probability-Anchored Scoreline Portfolio) v3 is Metis\'s betting framework. It builds a 4-leg portfolio for each match:' },
+          { list: [
+            'Primary (45% of budget): exact scoreline bet — high payout, biggest stake',
+            'Insurance 1 (25%): total goals = anchor — recovers most of budget if score wrong but total right',
+            'Insurance 2 (20%): total goals adjacent — recovers partial budget if lower/higher scoring than expected',
+            'Value play (10%): scoreline at anchor+1 — low-cost high-upside bet, triggered by R11 only',
+          ]},
+        ],
+      },
+      {
+        q: 'What is the anchor total?',
+        a: [{ p: 'The anchor is the most likely total goals for the match. Metis calculates it from the V3 model (λ home + λ away) then confirms against market total goals odds. The anchor determines which scorelines to target.' }],
+      },
+      {
+        q: 'What is Rule R11?',
+        a: [
+          { p: 'R11 triggers when the market\'s implied win probability for the dominant team is more than 15 percentage points higher than V3\'s prediction. This signals the DC model is underestimating the stronger team — possibly due to recent form or tournament momentum not yet captured. When R11 triggers, the anchor shifts UP by 1 goal.' },
+          { code: 'Example: France vs Senegal\nModel: 43% France win · Market: 67%\nDivergence 24pp → R11 triggered → anchor 2→3 goals' },
+        ],
+      },
+      {
+        q: 'Why put the most money on the scoreline, not total goals?',
+        a: [{ p: 'If the exact scoreline hits, the return is 5–10× your stake. The insurance layer (total goals) is designed to recover 70–80% of your session budget if the score is wrong. Total goals bets have lower odds (3–5×) — putting big money there limits your upside. Big money on the scoreline, insurance money on total goals.' }],
+      },
+      {
+        q: 'What is the insurance layer?',
+        a: [
+          { p: 'Total goals bets serve as insurance. If your primary scoreline is wrong but the total goal count is right:' },
+          { list: [
+            'Insurance 1 (total goals = anchor): returns ~75–85% of total session budget',
+            'Insurance 2 (adjacent total): returns ~50–60% if game is lower/higher scoring',
+            'Full loss only in tail scenarios (very low or very high scoring games)',
+          ]},
+        ],
+      },
+      {
+        q: 'How much should I bet per match?',
+        a: [
+          { p: 'Define a session budget per match (e.g. ¥300–¥400). Then split: 45% primary, 25% insurance 1, 20% insurance 2, 10% value play.' },
+          { p: 'Hard rule: never put more than 5% of total bankroll on a single leg (MT24 — cannot be overridden).' },
+        ],
+      },
+      {
+        q: 'What bets should I avoid?',
+        a: [
+          { p: 'Avoid any correct score where the market implied probability is more than 25% above what the model predicts — the market is overpricing it and you have no edge.' },
+          { p: 'For heavy favourites (odds 1.10–1.20), all their win scorelines tend to be overpriced by public money. Focus on the 2-1 / 3-1 range where value exists.' },
+        ],
+      },
+      {
+        q: 'How was PASP v3 validated?',
+        a: [
+          { p: 'Tested against 4 WC2026 matchday 1 results with real China lottery odds:' },
+          { code: 'PASP v3:   +¥1,965 profit on ¥1,300 staked (151% ROI)\nManual:    +¥425 profit on ¥900 staked (47% ROI)' },
+          { p: 'Key win: Portugal vs DR Congo — manual bets lost ¥300, PASP v3 insurance layer recovered almost all stake (−¥15).' },
+        ],
+      },
+    ],
+  },
+  {
     id: 'usage',
     title: '📱 Using the App',
     items: [
