@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTranslation } from '../lib/i18n'
@@ -35,6 +35,166 @@ function fmtPct(r) {
   if (r == null) return '—'
   return `${(r * 100).toFixed(1)}%`
 }
+// ── PASP v3+ADS Algorithm ─────────────────────────────────────────────────────
+
+function paspStripVig1x2(spf) {
+  const r = {
+    home: 1 / Number(spf.home),
+    draw: 1 / Number(spf.draw),
+    away: 1 / Number(spf.away),
+  }
+  const vig = r.home + r.draw + r.away
+  return { home: r.home / vig, draw: r.draw / vig, away: r.away / vig }
+}
+
+function paspStripVigTG(tg) {
+  const keys = Object.keys(tg)
+  let vigSum = 0
+  const raw = {}
+  for (const k of keys) { raw[k] = 1 / Number(tg[k]); vigSum += raw[k] }
+  const impl = {}
+  for (const k of keys) impl[k] = raw[k] / vigSum
+  return impl
+}
+
+function paspGetAnchor(implTG) {
+  let best = '2', bestP = 0
+  for (const [k, p] of Object.entries(implTG)) {
+    if (k === '7plus') continue
+    if (p > bestP) { bestP = p; best = k }
+  }
+  return parseInt(best)
+}
+
+function paspGetModelAnchor(lh, la) {
+  const s = lh + la
+  if (s < 2.0) return 1
+  if (s < 2.8) return 2
+  if (s < 3.8) return 3
+  if (s < 4.8) return 4
+  return 5
+}
+
+function paspCalcADS(implTG, anchor) {
+  const p  = implTG[String(anchor)]   || 0
+  const p1 = implTG[String(anchor - 1)] || 0
+  const p2 = implTG[String(anchor + 1)] || 0
+  return p - (p1 + p2)
+}
+
+function paspGetRatios(ads) {
+  if (ads > 0.10)  return { p: 0.50, i1: 0.25, i2: 0.15, v: 0.10 }
+  if (ads > 0.00)  return { p: 0.45, i1: 0.25, i2: 0.20, v: 0.10 }
+  if (ads > -0.10) return { p: 0.40, i1: 0.30, i2: 0.20, v: 0.10 }
+  return { p: 0.35, i1: 0.30, i2: 0.25, v: 0.10 }
+}
+
+function paspGetBestScore(scores, total, dir) {
+  let best = null
+  for (const [s, o] of Object.entries(scores)) {
+    if (!s.includes('-')) continue
+    const [h, a] = s.split('-').map(Number)
+    if (h + a !== total) continue
+    if (dir === 'home' && h <= a) continue
+    if (dir === 'away' && a <= h) continue
+    if (dir === 'draw' && h !== a) continue
+    if (!best || Number(o) < best.odds)
+      best = { score: s, odds: Number(o), h, a }
+  }
+  return best
+}
+
+function runPASP(oddsData, v3, budget = 400) {
+  if (!oddsData || !v3) return null
+  const { spf, totalGoals: tg, scores } = oddsData
+  if (!spf || !tg) return null
+
+  const impl1x2 = paspStripVig1x2(spf)
+  const implTG  = paspStripVigTG(tg)
+
+  const modelDom = Math.max(v3.v3_home_win || 0, v3.v3_away_win || 0)
+  const mktDom   = Math.max(impl1x2.home, impl1x2.away)
+  const divPp    = Math.round((mktDom - modelDom) * 100)
+  const r11      = divPp > 15
+  const softR11  = divPp > 12 && !r11
+
+  const dir = (v3.v3_home_win || 0) >= (v3.v3_away_win || 0) &&
+              (v3.v3_home_win || 0) >= (v3.v3_draw || 0)
+    ? 'home'
+    : (v3.v3_away_win || 0) >= (v3.v3_draw || 0) ? 'away' : 'draw'
+
+  const lh     = Number(v3.v3_lambda_home || 1.5)
+  const la     = Number(v3.v3_lambda_away || 1.5)
+  const mktAnc = paspGetAnchor(implTG)
+  const modAnc = paspGetModelAnchor(lh, la)
+  let anchor   = mktAnc
+  if (r11) { const ra = modAnc + 1; if (Math.abs(ra - mktAnc) <= 1) anchor = ra }
+
+  const ads    = paspCalcADS(implTG, anchor)
+  const ratios = paspGetRatios(ads)
+
+  const primary   = paspGetBestScore(scores || {}, anchor, dir)
+  const ins1Odds  = Number((tg || {})[String(anchor)] || 999)
+  const adjLow    = implTG[String(anchor - 1)] || 0
+  const adjHigh   = implTG[String(anchor + 1)] || 0
+  const ins2Total = adjLow >= adjHigh ? anchor - 1 : anchor + 1
+  const ins2Odds  = Number((tg || {})[String(ins2Total)] || 999)
+
+  let valueBet = null
+  if (r11 || softR11) {
+    const vb = paspGetBestScore(scores || {}, anchor + 1, dir)
+    if (vb && vb.odds <= 12) valueBet = vb
+  }
+
+  const rnd  = n => Math.max(10, Math.round(n / 10) * 10)
+  const legs = []
+
+  if (primary) legs.push({
+    role: 'Primary', bet: primary.score,
+    odds: primary.odds, stake: rnd(budget * ratios.p),
+    h: primary.h, a: primary.a, type: 'score',
+    color: '#1A3A6C',
+  })
+  if (ins1Odds < 900) legs.push({
+    role: 'Insurance 1', bet: `Total Goals ${anchor}`,
+    odds: ins1Odds, stake: rnd(budget * ratios.i1),
+    total: anchor, type: 'tg', color: '#2D7A4F',
+  })
+  if (ins2Odds < 900) legs.push({
+    role: 'Insurance 2', bet: `Total Goals ${ins2Total}`,
+    odds: ins2Odds, stake: rnd(budget * ratios.i2),
+    total: ins2Total, type: 'tg', color: '#BA7517',
+  })
+  if (valueBet) legs.push({
+    role: 'Value Play', bet: valueBet.score,
+    odds: valueBet.odds, stake: rnd(budget * ratios.v),
+    h: valueBet.h, a: valueBet.a, type: 'score',
+    color: '#C9A84C',
+  })
+
+  const totalStake    = legs.reduce((s, l) => s + l.stake, 0)
+  const ins1Coverage  = ins1Odds < 900
+    ? Math.round((rnd(budget * ratios.i1) * ins1Odds) / budget * 100) : 0
+  const ins2Coverage  = ins2Odds < 900
+    ? Math.round((rnd(budget * ratios.i2) * ins2Odds) / budget * 100) : 0
+
+  return {
+    legs, anchor, r11, softR11, divPp, ads,
+    modelAnchor: modAnc, marketAnchor: mktAnc,
+    adsLabel: ads > 0.10 ? 'Strong' : ads > 0 ? 'Moderate' : ads > -0.10 ? 'Weak' : 'FLAT',
+    ratioLabel: `${Math.round(ratios.p * 100)}/${Math.round(ratios.i1 * 100)}/${Math.round(ratios.i2 * 100)}/${Math.round(ratios.v * 100)}`,
+    totalStake, ins1Coverage, ins2Coverage,
+    modelDomPct: Math.round(modelDom * 100),
+    mktDomPct:   Math.round(mktDom * 100),
+  }
+}
+
+function scoreLeg(leg, rh, ra) {
+  const tot = rh + ra
+  if (leg.type === 'tg') return leg.total === tot ? leg.odds * leg.stake : 0
+  return (leg.h === rh && leg.a === ra) ? leg.odds * leg.stake : 0
+}
+
 function hitColor(r) {
   if (r == null) return 'var(--color-text-muted)'
   if (r >= 0.60) return 'var(--color-success)'
@@ -248,11 +408,13 @@ export default function ModelPerformance() {
   const [filter, setFilter] = useState('all')
   const [showAll, setShowAll] = useState(false)
   const [refitLog, setRefitLog] = useState([])
+  const [bets, setBets] = useState([])
+  const [odds, setOdds] = useState([])
 
   useEffect(() => {
     logPageView(user?.id, 'model_performance')
     async function load() {
-      const [predsRes, accRes, rolesRes, refitRes] = await Promise.all([
+      const [predsRes, accRes, rolesRes, refitRes, betsRes, oddsRes] = await Promise.all([
         supabase
           .from('model_predictions')
           .select('*, match:matches(home_team,away_team,home_score,away_score,match_date)')
@@ -271,11 +433,23 @@ export default function ModelPerformance() {
           .from('dc_refit_log')
           .select('*')
           .order('refit_date', { ascending: false }),
+        supabase
+          .from('user_bets')
+          .select('*, match:matches(id,home_team,away_team,home_score,away_score,status,match_date)')
+          .in('status', ['won', 'lost', 'pending'])
+          .order('placed_at', { ascending: false })
+          .limit(200),
+        supabase
+          .from('match_odds')
+          .select('*, match:matches(id,home_team,away_team,home_score,away_score,status,match_date)')
+          .order('updated_at', { ascending: false }),
       ])
       setRows(predsRes.data || [])
       setAccRows(accRes.data || [])
       setAiRoles(rolesRes.data || [])
       setRefitLog(refitRes.data || [])
+      setBets(betsRes.data || [])
+      setOdds(oddsRes.data || [])
       setLoading(false)
     }
     load().catch(console.error)
@@ -322,6 +496,118 @@ export default function ModelPerformance() {
     return true
   })
   const tableRows = showAll ? filteredRows : filteredRows.slice(0, 10)
+
+  // ── Betting Performance (PASP v3+ADS vs actual) ───────────────────────────
+  const bettingPerf = useMemo(() => {
+    if (!odds.length) return null
+
+    const betsByMatch = {}
+    for (const b of bets) {
+      const mid = b.match?.id || b.match_id
+      if (!mid) continue
+      if (!betsByMatch[mid]) betsByMatch[mid] = []
+      betsByMatch[mid].push(b)
+    }
+
+    const results = []
+    let totPASPStake = 0, totPASPRet = 0
+    let totYourStake = 0, totYourRet = 0
+    let insuranceSaved = 0
+
+    for (const oddsRow of odds) {
+      const m = oddsRow.match
+      if (!m || m.status !== 'finished' || m.home_score == null) continue
+
+      const pred = rows.find(r =>
+        r.match?.home_team === m.home_team &&
+        r.match?.away_team === m.away_team)
+      if (!pred?.v3_home_win) continue
+
+      const rh = Number(m.home_score)
+      const ra = Number(m.away_score)
+
+      const portfolio = runPASP(oddsRow.odds_data, pred, 400)
+      if (!portfolio?.legs?.length) continue
+
+      const paspLegs = portfolio.legs.map(l => ({
+        ...l,
+        return: Math.round(scoreLeg(l, rh, ra)),
+        hit: scoreLeg(l, rh, ra) > 0,
+      }))
+      const paspRet    = paspLegs.reduce((s, l) => s + l.return, 0)
+      const paspProfit = paspRet - portfolio.totalStake
+
+      const matchBets = betsByMatch[m.id] || []
+      const yourStake = matchBets.reduce((s, b) => s + (Number(b.stake) || 0), 0)
+      const yourRet   = matchBets.reduce((s, b) => {
+        const rr = Number(b.payout || b.actual_return || 0)
+        if (rr > 0) return s + rr
+        if (b.home_goals != null && b.away_goals != null) {
+          return s + (b.home_goals === rh && b.away_goals === ra
+            ? (Number(b.odds) || 0) * (Number(b.stake) || 0) : 0)
+        }
+        return s
+      }, 0)
+      const yourProfit = yourStake > 0 ? yourRet - yourStake : null
+      const yourROI    = yourStake > 0
+        ? Math.round(yourProfit / yourStake * 100) : null
+
+      const ins1Leg = paspLegs.find(l => l.role === 'Insurance 1')
+      if (ins1Leg?.hit && paspProfit > -30 &&
+          yourProfit !== null && yourProfit < -50) {
+        insuranceSaved += ins1Leg.return
+      }
+
+      results.push({
+        matchName: `${m.home_team} vs ${m.away_team}`,
+        result: `${rh}-${ra}`,
+        actualTotal: rh + ra,
+        anchor: portfolio.anchor,
+        ads: portfolio.ads,
+        adsLabel: portfolio.adsLabel,
+        r11: portfolio.r11,
+        softR11: portfolio.softR11,
+        divPp: portfolio.divPp,
+        ratioLabel: portfolio.ratioLabel,
+        ins1Coverage: portfolio.ins1Coverage,
+        paspStake: portfolio.totalStake,
+        paspReturn: paspRet,
+        paspProfit,
+        paspROI: Math.round(paspProfit / portfolio.totalStake * 100),
+        paspLegs,
+        yourStake, yourReturn: Math.round(yourRet),
+        yourProfit, yourROI,
+        hasBets: matchBets.length > 0,
+        betCount: matchBets.length,
+      })
+
+      totPASPStake += portfolio.totalStake
+      totPASPRet   += paspRet
+      if (yourStake > 0) {
+        totYourStake += yourStake
+        totYourRet   += yourRet
+      }
+    }
+
+    const paspTotalProfit = totPASPRet - totPASPStake
+    const yourTotalProfit = totYourRet - totYourStake
+
+    return {
+      results,
+      matchCount: results.length,
+      paspStake:  totPASPStake,
+      paspReturn: Math.round(totPASPRet),
+      paspProfit: Math.round(paspTotalProfit),
+      paspROI: totPASPStake > 0
+        ? Math.round(paspTotalProfit / totPASPStake * 100) : 0,
+      yourStake:  totYourStake,
+      yourReturn: Math.round(totYourRet),
+      yourProfit: Math.round(yourTotalProfit),
+      yourROI: totYourStake > 0
+        ? Math.round(yourTotalProfit / totYourStake * 100) : 0,
+      insuranceSaved: Math.round(insuranceSaved),
+    }
+  }, [odds, bets, rows])
 
   return (
     <div style={{ padding: '16px', maxWidth: 1100, margin: '0 auto' }}>
@@ -706,6 +992,410 @@ export default function ModelPerformance() {
               {lang === 'zh'
                 ? 'DC模型每次有新的比赛结果时都会重新拟合。金色 = WC2026期间重新拟合。'
                 : 'DC model is refit each time new match results are available. Gold = refit during WC2026.'}
+            </p>
+          </div>
+
+          {/* ── Section I: Betting Performance ── */}
+          <div style={{ marginBottom: 28 }}>
+            <span style={SH}>
+              {lang === 'zh' ? 'PASP v3+ADS 投注表现' : 'Betting Performance — PASP v3+ADS vs Actual'}
+            </span>
+
+            {!bettingPerf || bettingPerf.matchCount === 0 ? (
+              <p style={{ fontSize: 13, color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                {lang === 'zh'
+                  ? '需要有赔率数据的已完成比赛。在比赛分析页面提取赔率后显示。'
+                  : 'Needs finished matches with odds entered. Extract odds on the match analysis page first.'}
+              </p>
+            ) : (
+              <>
+                {/* KPI cards */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))',
+                  gap: 10, marginBottom: 16,
+                }}>
+                  {[
+                    {
+                      label: lang === 'zh' ? 'PASP+ADS 利润' : 'PASP+ADS Profit',
+                      value: `${bettingPerf.paspProfit >= 0 ? '+' : ''}¥${bettingPerf.paspProfit}`,
+                      sub: `¥${bettingPerf.paspStake} · ${bettingPerf.paspROI}% ROI`,
+                      gold: true,
+                      valueColor: bettingPerf.paspProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+                    },
+                    {
+                      label: lang === 'zh' ? '实际利润' : 'Your Profit',
+                      value: bettingPerf.yourStake > 0
+                        ? `${bettingPerf.yourProfit >= 0 ? '+' : ''}¥${bettingPerf.yourProfit}` : '—',
+                      sub: bettingPerf.yourStake > 0
+                        ? `¥${bettingPerf.yourStake} · ${bettingPerf.yourROI}% ROI`
+                        : 'No bets recorded',
+                      valueColor: bettingPerf.yourProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+                    },
+                    {
+                      label: lang === 'zh' ? '保险节省' : 'Insurance Saved',
+                      value: `+¥${bettingPerf.insuranceSaved}`,
+                      sub: lang === 'zh' ? '在失败场次中回收' : 'recovered on losing matches',
+                      valueColor: '#C9A84C',
+                    },
+                    {
+                      label: lang === 'zh' ? '场次分析' : 'Matches',
+                      value: bettingPerf.matchCount,
+                      sub: lang === 'zh' ? '含赔率已完成' : 'finished with odds',
+                    },
+                  ].map((c, i) => (
+                    <MetricCard key={i}
+                      label={c.label} value={c.value}
+                      sub={c.sub} gold={c.gold}
+                      valueColor={c.valueColor}
+                    />
+                  ))}
+                </div>
+
+                {/* Comparison table */}
+                <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+                  <table style={{
+                    width: '100%', borderCollapse: 'collapse',
+                    minWidth: 680, fontSize: 11,
+                  }}>
+                    <thead>
+                      <tr style={{
+                        fontSize: 9, fontWeight: 500,
+                        letterSpacing: '0.06em', textTransform: 'uppercase',
+                        fontFamily: "'IBM Plex Mono',monospace",
+                        color: 'var(--color-text-muted)',
+                      }}>
+                        {['Match', 'Score', 'Anc', 'ADS', 'R11',
+                          'Ratio', 'Ins%',
+                          'PASP P&L', 'PASP ROI',
+                          'Your P&L', 'Your ROI'].map((h, i) => (
+                          <th key={i} style={{
+                            padding: '0 8px 8px 0',
+                            textAlign: i >= 7 ? 'right' : 'left',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bettingPerf.results.map((r, i) => (
+                        <tr key={i}>
+                          <td style={{
+                            padding: '8px 8px 8px 0',
+                            borderBottom: '0.5px solid var(--color-border)',
+                            color: 'var(--color-text-primary)',
+                            fontSize: 11, whiteSpace: 'nowrap',
+                          }}>{r.matchName}</td>
+                          <td style={{
+                            padding: '8px 8px 8px 0',
+                            borderBottom: '0.5px solid var(--color-border)',
+                            fontFamily: "'IBM Plex Mono',monospace",
+                            fontWeight: 500,
+                          }}>{r.result}</td>
+                          <td style={{
+                            padding: '8px 8px 8px 0',
+                            borderBottom: '0.5px solid var(--color-border)',
+                            fontFamily: "'IBM Plex Mono',monospace",
+                            color: 'var(--color-text-muted)',
+                          }}>{r.anchor}g</td>
+                          <td style={{
+                            padding: '8px 8px 8px 0',
+                            borderBottom: '0.5px solid var(--color-border)',
+                            fontFamily: "'IBM Plex Mono',monospace",
+                            fontSize: 10,
+                            color: r.ads < -0.10 ? '#BA7517' : r.ads > 0.10 ? '#2D7A4F' : 'var(--color-text-muted)',
+                          }}>{Math.round(r.ads * 100)}%</td>
+                          <td style={{
+                            padding: '8px 8px 8px 0',
+                            borderBottom: '0.5px solid var(--color-border)',
+                            fontFamily: "'IBM Plex Mono',monospace",
+                            fontSize: 10,
+                            color: r.r11 ? '#C9A84C' : r.softR11 ? '#BA7517' : 'var(--color-text-muted)',
+                          }}>
+                            {r.r11 ? '⚡' : r.softR11 ? '~' : '—'}
+                            {(r.r11 || r.softR11) ? ` ${r.divPp}pp` : ''}
+                          </td>
+                          <td style={{
+                            padding: '8px 8px 8px 0',
+                            borderBottom: '0.5px solid var(--color-border)',
+                            fontFamily: "'IBM Plex Mono',monospace",
+                            fontSize: 10,
+                            color: 'var(--color-text-muted)',
+                          }}>{r.ratioLabel}</td>
+                          <td style={{
+                            padding: '8px 8px 8px 0',
+                            borderBottom: '0.5px solid var(--color-border)',
+                            fontFamily: "'IBM Plex Mono',monospace",
+                            fontSize: 10,
+                            color: r.ins1Coverage >= 90 ? '#2D7A4F' : '#BA7517',
+                          }}>{r.ins1Coverage}%</td>
+                          {[
+                            {
+                              v: `${r.paspProfit >= 0 ? '+' : ''}¥${Math.abs(r.paspProfit)}`,
+                              c: r.paspProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+                            },
+                            {
+                              v: `${r.paspROI >= 0 ? '+' : ''}${r.paspROI}%`,
+                              c: r.paspROI >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+                            },
+                            {
+                              v: r.hasBets
+                                ? `${r.yourProfit >= 0 ? '+' : ''}¥${Math.abs(r.yourProfit || 0)}` : '—',
+                              c: r.hasBets
+                                ? (r.yourProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)')
+                                : 'var(--color-text-muted)',
+                            },
+                            {
+                              v: r.hasBets && r.yourROI != null
+                                ? `${r.yourROI >= 0 ? '+' : ''}${r.yourROI}%` : '—',
+                              c: r.hasBets && r.yourROI != null
+                                ? (r.yourROI >= 0 ? 'var(--color-success)' : 'var(--color-danger)')
+                                : 'var(--color-text-muted)',
+                            },
+                          ].map((c, ci) => (
+                            <td key={ci} style={{
+                              padding: '8px 8px 8px 0',
+                              borderBottom: '0.5px solid var(--color-border)',
+                              fontFamily: "'IBM Plex Mono',monospace",
+                              textAlign: 'right', whiteSpace: 'nowrap',
+                              color: c.c,
+                            }}>{c.v}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={7} style={{
+                          padding: '10px 8px 0 0',
+                          fontSize: 10, fontWeight: 700,
+                          fontFamily: "'IBM Plex Mono',monospace",
+                          color: 'var(--color-text-muted)',
+                          letterSpacing: '0.06em', textTransform: 'uppercase',
+                        }}>TOTAL</td>
+                        {[
+                          {
+                            v: `${bettingPerf.paspProfit >= 0 ? '+' : ''}¥${Math.abs(bettingPerf.paspProfit)}`,
+                            c: bettingPerf.paspProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+                          },
+                          {
+                            v: `${bettingPerf.paspROI >= 0 ? '+' : ''}${bettingPerf.paspROI}%`,
+                            c: bettingPerf.paspROI >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+                          },
+                          {
+                            v: bettingPerf.yourStake > 0
+                              ? `${bettingPerf.yourProfit >= 0 ? '+' : ''}¥${Math.abs(bettingPerf.yourProfit)}` : '—',
+                            c: bettingPerf.yourProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+                          },
+                          {
+                            v: bettingPerf.yourStake > 0
+                              ? `${bettingPerf.yourROI >= 0 ? '+' : ''}${bettingPerf.yourROI}%` : '—',
+                            c: bettingPerf.yourROI >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+                          },
+                        ].map((c, ci) => (
+                          <td key={ci} style={{
+                            padding: '10px 8px 0 0',
+                            fontSize: 12, fontWeight: 700,
+                            fontFamily: "'IBM Plex Mono',monospace",
+                            textAlign: 'right', whiteSpace: 'nowrap',
+                            color: c.c,
+                          }}>{c.v}</td>
+                        ))}
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+                  {lang === 'zh'
+                    ? 'PASP+ADS使用¥400固定预算。⚡=R11触发(>15pp) · ~=软R11(12-15pp) · ADS负值=平坦分布需要更多保险 · Ins%=Insurance 1回报占预算比例'
+                    : 'PASP+ADS uses ¥400 fixed budget. ⚡=R11 triggered (>15pp) · ~=soft R11 (12-15pp) · ADS negative=flat distribution needing more insurance · Ins%=Insurance 1 return as % of budget'}
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* ── Section J: PASP Algorithm Reference ── */}
+          <div style={{ marginBottom: 28 }}>
+            <span style={SH}>
+              {lang === 'zh' ? 'PASP v3+ADS 算法参考' : 'PASP v3+ADS Algorithm Reference'}
+            </span>
+
+            {/* ADS Reference Table */}
+            <div style={{
+              marginBottom: 16,
+              border: '0.5px solid var(--color-border)',
+              borderRadius: 8, overflow: 'hidden',
+            }}>
+              <div style={{
+                padding: '8px 14px',
+                background: 'var(--color-bg-elevated)',
+                fontSize: 9, fontWeight: 700,
+                letterSpacing: '0.08em', textTransform: 'uppercase',
+                fontFamily: "'IBM Plex Mono',monospace",
+                color: 'var(--color-text-muted)',
+                borderBottom: '0.5px solid var(--color-border)',
+              }}>
+                ADS → Stake Ratios
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    {['ADS Range', 'Anchor Strength', 'Primary', 'Ins 1', 'Ins 2', 'Value'].map(h => (
+                      <th key={h} style={{
+                        fontSize: 9, fontWeight: 500,
+                        letterSpacing: '0.06em', textTransform: 'uppercase',
+                        fontFamily: "'IBM Plex Mono',monospace",
+                        color: 'var(--color-text-muted)',
+                        padding: '6px 12px', textAlign: 'left',
+                        borderBottom: '0.5px solid var(--color-border)',
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ['> +10%', 'Strong', '50%', '25%', '15%', '10%', '#2D7A4F'],
+                    ['0% to +10%', 'Moderate', '45%', '25%', '20%', '10%', '#2D7A4F'],
+                    ['−10% to 0%', 'Weak', '40%', '30%', '20%', '10%', '#BA7517'],
+                    ['< −10%', 'FLAT (max ins.)', '35%', '30%', '25%', '10%', '#791F1F'],
+                  ].map(([range, label, ...pcts], ri) => (
+                    <tr key={ri}>
+                      <td style={{
+                        padding: '8px 12px',
+                        borderBottom: '0.5px solid var(--color-border)',
+                        fontFamily: "'IBM Plex Mono',monospace",
+                        fontSize: 11, color: pcts[4], fontWeight: 500,
+                      }}>{range}</td>
+                      <td style={{
+                        padding: '8px 12px',
+                        borderBottom: '0.5px solid var(--color-border)',
+                        fontSize: 11, color: 'var(--color-text-primary)',
+                      }}>{label}</td>
+                      {pcts.slice(0, 4).map((p, pi) => (
+                        <td key={pi} style={{
+                          padding: '8px 12px',
+                          borderBottom: '0.5px solid var(--color-border)',
+                          fontFamily: "'IBM Plex Mono',monospace",
+                          fontSize: 11, fontWeight: 600, color: pcts[4],
+                        }}>{p}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* R11 & Insurance cards */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 1fr',
+              gap: 10, marginBottom: 16,
+            }}>
+              {[
+                {
+                  title: 'R11 — Market Divergence',
+                  color: '#C9A84C',
+                  items: [
+                    '> 15pp → R11 triggered → anchor +1',
+                    '12-15pp → Soft R11 → value play only',
+                    '≤ 12pp → R11 off → no adjustment',
+                    'Conflict: market anchor always wins',
+                  ],
+                },
+                {
+                  title: 'Insurance Coverage Targets',
+                  color: '#2D7A4F',
+                  items: [
+                    'Ins 1: return ≥ 90% of budget',
+                    'Ins 2: return ≥ 75% of budget',
+                    'If fails: +10% Ins1, −10% Primary',
+                    'ADS flat → auto-increases insurance',
+                  ],
+                },
+              ].map((card, ci) => (
+                <div key={ci} style={{
+                  border: `0.5px solid ${card.color}33`,
+                  borderRadius: 8, padding: '12px 14px',
+                  background: `${card.color}08`,
+                }}>
+                  <div style={{
+                    fontSize: 10, fontWeight: 700,
+                    letterSpacing: '0.06em', textTransform: 'uppercase',
+                    fontFamily: "'IBM Plex Mono',monospace",
+                    color: card.color, marginBottom: 8,
+                  }}>{card.title}</div>
+                  {card.items.map((item, ii) => (
+                    <div key={ii} style={{
+                      fontSize: 11, color: 'var(--color-text-secondary)',
+                      marginBottom: 4, lineHeight: 1.4,
+                      paddingLeft: 8, borderLeft: `2px solid ${card.color}44`,
+                    }}>{item}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            {/* Decision rules table */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{
+                width: '100%', borderCollapse: 'collapse', minWidth: 480,
+              }}>
+                <thead>
+                  <tr>
+                    {['Rule', 'Condition', 'Action'].map(h => (
+                      <th key={h} style={{
+                        fontSize: 9, fontWeight: 500,
+                        letterSpacing: '0.06em', textTransform: 'uppercase',
+                        fontFamily: "'IBM Plex Mono',monospace",
+                        color: 'var(--color-text-muted)',
+                        padding: '0 12px 8px 0', textAlign: 'left',
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ['R3',   'Market implied > model × 1.25',        'AVOID scoreline'],
+                    ['R4',   'Value play odds > 12.00',               'Skip value play'],
+                    ['R5',   'Insurance coverage < 90%',              'Increase Ins1 stake'],
+                    ['R9',   'Single leg > 5% bankroll',              'Hard cap at 5%'],
+                    ['R11',  'Market dom > Model dom by >15pp',       'Shift anchor +1, add value play'],
+                    ['R11s', '12pp < divergence ≤ 15pp',             'Add value play only'],
+                    ['R12',  'Model dominant < 50%',                  'Reduce budget 25% or skip'],
+                    ['ADS',  'ADS < −10%',                           'Use 35/30/25/10 max insurance ratios'],
+                  ].map(([rule, cond, action], ri) => (
+                    <tr key={ri}>
+                      <td style={{
+                        padding: '7px 12px 7px 0',
+                        borderBottom: '0.5px solid var(--color-border)',
+                        fontFamily: "'IBM Plex Mono',monospace",
+                        fontSize: 11, fontWeight: 700,
+                        color: ['R11', 'R11s', 'R12', 'ADS'].includes(rule)
+                          ? '#C9A84C' : 'var(--color-text-primary)',
+                        whiteSpace: 'nowrap',
+                      }}>{rule}</td>
+                      <td style={{
+                        padding: '7px 12px 7px 0',
+                        borderBottom: '0.5px solid var(--color-border)',
+                        fontSize: 11, color: 'var(--color-text-secondary)',
+                      }}>{cond}</td>
+                      <td style={{
+                        padding: '7px 0',
+                        borderBottom: '0.5px solid var(--color-border)',
+                        fontSize: 11, fontWeight: 500,
+                        color: 'var(--color-text-primary)',
+                      }}>{action}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 12, lineHeight: 1.6 }}>
+              {lang === 'zh'
+                ? 'PASP v3+ADS基于WC2026第一轮4场有赔率比赛验证。样本需≥20场才有统计意义。'
+                : 'PASP v3+ADS validated against 4 WC2026 matchday 1 results with odds. Sample needs ≥20 matches for statistical significance.'}
             </p>
           </div>
         </>
