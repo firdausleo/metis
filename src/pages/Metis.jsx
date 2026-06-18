@@ -85,7 +85,7 @@ export default function MetisWizard() {
       const [{ data: matches }, { data: predictions }, { data: bets }] = await Promise.all([
         supabase.from('matches').select('id, home_team, away_team, match_date, status, home_score, away_score, group_name').order('match_date'),
         supabase.from('model_predictions').select('match_id, v3_home_win, v3_draw, v3_away_win, anchor_total, v3_top_score, quality_warning'),
-        supabase.from('user_bets').select('selection, odds, stake, status, actual_return, bet_type').order('placed_at', { ascending: false }).limit(20),
+        supabase.from('user_bets').select('*, matches(home_team, away_team)').order('placed_at', { ascending: false }).limit(20),
       ])
       const predMap = {}
       predictions?.forEach(p => { predMap[p.match_id] = p })
@@ -120,7 +120,20 @@ export default function MetisWizard() {
     const totalReturned = settled.reduce((s, b) => s + (b.actual_return || 0), 0)
     const pnl = totalReturned - totalStaked
     const betsText = context.bets.length > 0
-      ? context.bets.slice(0, 10).map(b => `  ${b.selection} @${b.odds} ¥${b.stake} → ${b.status}${b.actual_return ? ` (returned ¥${b.actual_return})` : ''}`).join('\n')
+      ? context.bets.slice(0, 10).map(b => {
+          const match = b.matches
+            ? `${b.matches.home_team} vs ${b.matches.away_team}`
+            : 'Unknown match'
+          const score = b.home_goals != null
+            ? `${b.home_goals}-${b.away_goals}`
+            : b.selection || '?'
+          const pnl = b.profit_loss != null
+            ? ` (P&L: ¥${b.profit_loss})`
+            : b.actual_return
+              ? ` (returned ¥${b.actual_return})`
+              : ''
+          return `  ${match} · ${score} @${b.odds || '?'} ¥${b.stake} → ${b.status}${pnl}`
+        }).join('\n')
       : '  No bets recorded yet'
 
     return `You are METIS — an elite WC2026 football prediction and betting intelligence AI. You are the central brain of the Metis app, built for a private group of friends who track predictions and bets together.
