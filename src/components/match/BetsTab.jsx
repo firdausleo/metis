@@ -943,7 +943,7 @@ export default function BetsTab({ match, sidebarModel, v1x2Odds: initialV1x2Odds
           .select('odds_data, updated_at')
           .eq('user_id', session.user.id)
           .eq('match_id', restoreMatchId)
-          .single()
+          .maybeSingle()
 
         if (!data?.odds_data) return
 
