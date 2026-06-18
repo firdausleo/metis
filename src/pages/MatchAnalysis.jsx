@@ -13,6 +13,7 @@ import { placeBet } from '../lib/bets'
 import { logPageView, track } from '../utils/activityTracker'
 import PredictionTab from '../components/match/PredictionTab'
 import BetsTab from '../components/match/BetsTab'
+import PASPTab from '../components/match/PASPTab'
 
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
@@ -28,7 +29,7 @@ const CONFIDENCE_CONFIG = {
   max:    { icon: '🔥', color: 'var(--color-accent)',  desc: '4–5 WC games' },
 }
 
-const TABS = ['prediction', 'bets']
+const TABS = ['prediction', 'bets', 'pasp']
 // Legacy tab components kept below for reference — not rendered in the 2-tab UI.
 // const LEGACY_TABS = ['stats', 'matrix', 'value', 'asian', 'portfolio', 'ai']
 
@@ -3555,6 +3556,14 @@ export default function MatchAnalysis() {
             v1x2Odds={v1x2Odds}
             setV1x2Odds={setV1x2Odds}
             isAdmin={isAdmin}
+          />
+        )}
+
+        {/* TAB 3: PASP v3 Calculator */}
+        {activeTab === 'pasp' && (
+          <PASPTab
+            match={match}
+            model={sidebarModel}
           />
         )}
 

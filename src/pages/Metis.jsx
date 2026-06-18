@@ -82,14 +82,15 @@ export default function MetisWizard() {
 
   async function loadContext() {
     try {
-      const [{ data: matches }, { data: predictions }, { data: bets }] = await Promise.all([
+      const [{ data: matches }, { data: predictions }, { data: bets }, { data: odds }] = await Promise.all([
         supabase.from('matches').select('id, home_team, away_team, match_date, status, home_score, away_score, group_name').order('match_date'),
         supabase.from('model_predictions').select('match_id, v3_home_win, v3_draw, v3_away_win, anchor_total, v3_top_score, quality_warning'),
         supabase.from('user_bets').select('*, matches(home_team, away_team)').order('placed_at', { ascending: false }).limit(20),
+        supabase.from('match_odds').select('*, matches(home_team, away_team, match_date, status)').order('updated_at', { ascending: false }).limit(10),
       ])
       const predMap = {}
       predictions?.forEach(p => { predMap[p.match_id] = p })
-      setContext({ matches: matches || [], predMap, bets: bets || [] })
+      setContext({ matches: matches || [], predMap, bets: bets || [], odds: odds || [] })
     } catch (err) {
       console.warn('Failed to load METIS context:', err)
     }
@@ -135,6 +136,28 @@ export default function MetisWizard() {
           return `  ${match} · ${score} @${b.odds || '?'} ¥${b.stake} → ${b.status}${pnl}`
         }).join('\n')
       : '  No bets recorded yet'
+
+    const oddsText = (context.odds || [])
+      .filter(o => o.matches?.status === 'upcoming')
+      .slice(0, 3)
+      .map(o => {
+        const m = o.matches
+        const d = o.odds_data || {}
+        const spf = d.spf || {}
+        const tg = d.totalGoals || {}
+        const lines = []
+        if (spf.home) lines.push(`  1X2: Home ${spf.home} / Draw ${spf.draw} / Away ${spf.away}`)
+        const tgStr = Object.entries(tg).map(([k,v]) => `${k}g:${v}`).join(' · ')
+        if (tgStr) lines.push(`  Total goals: ${tgStr}`)
+        const topScores = Object.entries(d.scores || {})
+          .filter(([k]) => k.includes('-'))
+          .sort(([,a],[,b]) => Number(a)-Number(b))
+          .slice(0, 8)
+          .map(([k,v]) => `${k}@${v}`)
+          .join(' ')
+        if (topScores) lines.push(`  Top scores: ${topScores}`)
+        return `${m?.home_team} vs ${m?.away_team}:\n${lines.join('\n')}`
+      }).join('\n\n')
 
     return `You are METIS — an elite WC2026 football prediction and betting intelligence AI. You are the central brain of the Metis app, built for a private group of friends who track predictions and bets together.
 
@@ -234,6 +257,36 @@ P&L summary:
   Total returned: ¥${totalReturned}
   P&L: ${pnl >= 0 ? '+' : ''}¥${pnl}
   ${settled.length > 0 ? `ROI: ${((pnl / totalStaked) * 100).toFixed(1)}%` : 'ROI: N/A'}
+
+════════════════════════════════════
+CHINA ODDS (upcoming matches with odds entered)
+════════════════════════════════════
+
+${oddsText || '  No odds entered yet — user will paste screenshot'}
+
+════════════════════════════════════
+PASP v3 BETTING ALGORITHM — Follow this exactly when asked
+════════════════════════════════════
+
+Step 1: Strip vig from 1X2: implied = (1/odds) / sum(1/all_odds)
+Step 2: Check R11 — if market dominant% > model dominant% by >15pp → R11 triggered
+Step 3: Model anchor = round(λ_home + λ_away)
+        If R11 triggered → anchor += 1
+        Confirm with market total goals (highest implied prob)
+Step 4: Primary (45% budget) = best scoreline at anchor total
+        Insurance 1 (25%) = Total Goals = anchor
+        Insurance 2 (20%) = Total Goals = anchor ± 1 (higher implied)
+        Value play (10%) = best scoreline at anchor+1 (R11 only, odds ≤ 12)
+Step 5: Round stakes to nearest ¥10
+Step 6: Show payout table — primary hits / score wrong total right / lower scoring
+Step 7: NEVER recommend bets where market implied > model prob × 1.25
+
+When user asks "how should I bet [match]" or "PASP for [match]":
+  - Look up V3 predictions and China odds in context above
+  - Run all 7 steps explicitly showing the math
+  - Output a formatted portfolio table with Role / Bet / Odds / Stake / If wins
+  - State R11 status, anchor, insurance coverage %
+  - End with: "Place via PASP tab on the match page"
 
 ════════════════════════════════════
 HOW TO RESPOND
