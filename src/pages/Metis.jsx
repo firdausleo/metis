@@ -86,7 +86,7 @@ export default function MetisWizard() {
         supabase.from('matches').select('id, home_team, away_team, match_date, status, home_score, away_score, group_name').order('match_date'),
         supabase.from('model_predictions').select('match_id, v3_home_win, v3_draw, v3_away_win, anchor_total, v3_top_score, quality_warning'),
         supabase.from('user_bets').select('*, matches(home_team, away_team)').order('placed_at', { ascending: false }).limit(20),
-        supabase.from('match_odds').select('*, matches(home_team, away_team, match_date, status)').order('updated_at', { ascending: false }).limit(10),
+        supabase.from('match_odds').select('match_id, odds_data, updated_at, match:matches!match_odds_match_id_fkey(home_team, away_team, match_date, status)').order('updated_at', { ascending: false }).limit(15),
       ])
       const predMap = {}
       predictions?.forEach(p => { predMap[p.match_id] = p })
@@ -137,11 +137,15 @@ export default function MetisWizard() {
         }).join('\n')
       : '  No bets recorded yet'
 
-    const oddsText = (context.odds || [])
-      .filter(o => o.matches?.status === 'upcoming')
-      .slice(0, 3)
+    const rawOddsCount = (context.odds || []).length
+    const upcomingOdds = (context.odds || []).filter(o => {
+      const m = o.match || o.matches
+      return m?.status === 'upcoming'
+    })
+    const oddsText = upcomingOdds
+      .slice(0, 8)
       .map(o => {
-        const m = o.matches
+        const m = o.match || o.matches
         const d = o.odds_data || {}
         const spf = d.spf || {}
         const tg = d.totalGoals || {}
@@ -262,7 +266,7 @@ P&L summary:
 CHINA ODDS (upcoming matches with odds entered)
 ════════════════════════════════════
 
-${oddsText || '  No odds entered yet — user will paste screenshot'}
+${oddsText || `  No odds for upcoming matches (${rawOddsCount} total odds rows, ${upcomingOdds.length} upcoming)`}
 
 ════════════════════════════════════
 PASP v3 BETTING ALGORITHM — Follow this exactly when asked
