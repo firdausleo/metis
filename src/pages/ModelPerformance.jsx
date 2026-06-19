@@ -473,6 +473,76 @@ export default function ModelPerformance() {
   const v2Rate = hasEnough ? v2c / n : null
   const v3Rate = hasEnough ? v3c / n : null
 
+  // ── Three-layer model performance ─────────────────────────────────────────────
+  const modelPerf = useMemo(() => {
+    let v1Correct = 0, v2Correct = 0, v3Correct = 0, total = 0
+    let tgCorrect = 0, tgTotal = 0
+    let scoreCorrect = 0, scoreTotal = 0
+    let marginSum = 0
+    let highConvTotal = 0, highConvCorrect = 0
+    let brierSum = 0, brierCount = 0
+    let rpsSum = 0, rpsCount = 0
+
+    for (const row of rows) {
+      const m = row.match
+      if (!m || m.home_score == null || row.actual_outcome == null) continue
+      total++
+
+      if (row.correct_v1) v1Correct++
+      if (row.correct_v2) v2Correct++
+      const v3Hit = !!row.correct_v3
+      if (v3Hit) v3Correct++
+
+      if (row.brier_score != null) { brierSum += Number(row.brier_score); brierCount++ }
+      if (row.rps_score != null) { rpsSum += Number(row.rps_score); rpsCount++ }
+
+      // Layer 2: Total Goals
+      const predLH = row.v3_lambda_home
+      const predLA = row.v3_lambda_away
+      if (predLH != null && predLA != null) {
+        tgTotal++
+        const predTotal = Math.round(Number(predLH) + Number(predLA))
+        const actualTotal = Number(m.home_score) + Number(m.away_score)
+        if (predTotal === actualTotal) tgCorrect++
+      }
+
+      // Layer 3: Exact Score
+      const topScore = row.v3_top_score
+      if (topScore) {
+        scoreTotal++
+        const [pH, pA] = topScore.split('-').map(Number)
+        if (pH === Number(m.home_score) && pA === Number(m.away_score)) scoreCorrect++
+      }
+
+      // Margin (gap between top and 2nd V3 outcome)
+      const v3Sorted = [row.v3_home_win || 0, row.v3_draw || 0, row.v3_away_win || 0]
+        .map(Number).sort((a, b) => b - a)
+      const margin = v3Sorted[0] - v3Sorted[1]
+      marginSum += margin
+      if (margin >= 0.10) {
+        highConvTotal++
+        if (v3Hit) highConvCorrect++
+      }
+    }
+
+    return {
+      total,
+      v1Correct, v2Correct, v3Correct,
+      v1Acc: total > 0 ? (v1Correct / total * 100).toFixed(1) : null,
+      v2Acc: total > 0 ? (v2Correct / total * 100).toFixed(1) : null,
+      v3Acc: total > 0 ? (v3Correct / total * 100).toFixed(1) : null,
+      tgCorrect, tgTotal,
+      tgAcc: tgTotal > 0 ? (tgCorrect / tgTotal * 100).toFixed(1) : null,
+      scoreCorrect, scoreTotal,
+      scoreAcc: scoreTotal > 0 ? (scoreCorrect / scoreTotal * 100).toFixed(1) : null,
+      highConvTotal, highConvCorrect,
+      highConvAcc: highConvTotal > 0 ? (highConvCorrect / highConvTotal * 100).toFixed(1) : null,
+      avgMargin: total > 0 ? (marginSum / total * 100).toFixed(1) : null,
+      avgBrier: brierCount > 0 ? (brierSum / brierCount).toFixed(3) : null,
+      avgRps: rpsCount > 0 ? (rpsSum / rpsCount).toFixed(3) : null,
+    }
+  }, [rows])
+
   // ── Role aggregation ─────────────────────────────────────────────────────────
   const byRole = {}
   for (const r of accRows) {
@@ -651,48 +721,189 @@ export default function ModelPerformance() {
                 {t('perf.waiting')}
               </p>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                <MetricCard
-                  label={<>V1 Accuracy <InfoTooltip title="1X2 Accuracy" explanation="Correct prediction of match result (H/D/A). Random guesser: 33%. Bookmaker average: ~54%." explanationZh="预测比赛结果（主胜/平/客胜）准确率。随机猜测约33%，庄家均值约54%。" lang={lang} /></>}
-                  value={fmtPct(v1Rate)}
-                  sub={`${v1c}/${n} ${lang === 'zh' ? '命中' : 'correct'}`}
-                  valueColor={hitColor(v1Rate)}
-                />
-                <MetricCard
-                  label={<>V2 Accuracy <InfoTooltip title="1X2 Accuracy" explanation="Correct prediction of match result (H/D/A). Random guesser: 33%. Bookmaker average: ~54%." explanationZh="预测比赛结果（主胜/平/客胜）准确率。随机猜测约33%，庄家均值约54%。" lang={lang} /></>}
-                  value={fmtPct(v2Rate)}
-                  sub={`${v2c}/${n} ${lang === 'zh' ? '命中' : 'correct'}`}
-                  valueColor={hitColor(v2Rate)}
-                />
-                <MetricCard
-                  label={<>{lang === 'zh' ? 'V3准确率 ★' : 'V3 Accuracy ★'} <InfoTooltip title="1X2 Accuracy" explanation="Correct prediction of match result (H/D/A). Random guesser: 33%. Bookmaker average: ~54%." explanationZh="预测比赛结果（主胜/平/客胜）准确率。随机猜测约33%，庄家均值约54%。" lang={lang} /></>}
-                  value={fmtPct(v3Rate)}
-                  sub={`${v3c}/${n} ${lang === 'zh' ? '命中' : 'correct'}`}
-                  gold
-                  valueColor={hitColor(v3Rate)}
-                />
-                <MetricCard
-                  label={<>{lang === 'zh' ? 'V3 Brier分' : 'V3 Brier Score'} <InfoTooltip title="Brier Score" explanation="Probability scoring rule: lower is better, 0 is perfect. Penalises confident wrong predictions more than uncertain ones." explanationZh="概率评分规则：越低越好，0分为完美。对自信预测错误的惩罚更重。" lang={lang} /></>}
-                  value={avgBrier != null ? avgBrier.toFixed(3) : '—'}
-                  sub={lang === 'zh' ? '越低越好 (完美=0)' : 'lower = better (perfect = 0)'}
-                  valueColor={avgBrier != null
-                    ? (avgBrier < 0.5 ? 'var(--color-success)' : avgBrier < 0.65 ? 'var(--color-edge-amber)' : 'var(--color-danger)')
-                    : undefined}
-                />
-                <MetricCard
-                  label={<>{lang === 'zh' ? 'V3 RPS分' : 'V3 RPS Score'} <InfoTooltip title="RPS" explanation="Ranked Probability Score: like Brier but accounts for outcome ordering (H/D/A). Lower = better. Rewards well-ordered confidence." explanationZh="排名概率分：类似Brier分，但考虑结果排序（主胜/平/客胜）。越低越好。" lang={lang} /></>}
-                  value={avgRps != null ? avgRps.toFixed(3) : '—'}
-                  sub={lang === 'zh' ? '越低越好 (完美=0)' : 'lower = better (perfect = 0)'}
-                  valueColor={avgRps != null
-                    ? (avgRps < 0.25 ? 'var(--color-success)' : avgRps < 0.35 ? 'var(--color-edge-amber)' : 'var(--color-danger)')
-                    : undefined}
-                />
-                <MetricCard
-                  label={<>{lang === 'zh' ? '总进球准确率' : 'TG Accuracy'} <InfoTooltip title="TG Accuracy" explanation="Percentage of matches where the model's top-probability total goals count matched the actual total." explanationZh="模型最高概率总进球数与实际总进球数一致的比例。" lang={lang} /></>}
-                  value="—"
-                  sub={lang === 'zh' ? '即将推出' : 'coming soon'}
-                />
-              </div>
+              <>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1fr',
+                  gap: 16, marginBottom: 16,
+                }}>
+                  {/* Layer 1: Direction */}
+                  <div>
+                    <div style={{
+                      fontSize: 10, fontWeight: 700,
+                      letterSpacing: '0.08em', textTransform: 'uppercase',
+                      fontFamily: "'IBM Plex Mono', monospace",
+                      color: '#1A3A6C', marginBottom: 8,
+                      paddingBottom: 6,
+                      borderBottom: '2px solid #1A3A6C',
+                    }}>
+                      {lang === 'zh' ? '第一层 — 方向 (1X2)' : 'Layer 1 — Direction (1X2)'}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <MetricCard
+                        label="V1 Direction"
+                        value={modelPerf.v1Acc ? `${modelPerf.v1Acc}%` : '—'}
+                        sub={`${modelPerf.v1Correct}/${modelPerf.total} correct`}
+                        valueColor={hitColor(modelPerf.v1Acc ? parseFloat(modelPerf.v1Acc) / 100 : null)}
+                      />
+                      <MetricCard
+                        label="V2 Direction"
+                        value={modelPerf.v2Acc ? `${modelPerf.v2Acc}%` : '—'}
+                        sub={`${modelPerf.v2Correct}/${modelPerf.total} correct`}
+                        valueColor={hitColor(modelPerf.v2Acc ? parseFloat(modelPerf.v2Acc) / 100 : null)}
+                      />
+                      <MetricCard
+                        label="V3 Direction ★"
+                        value={modelPerf.v3Acc ? `${modelPerf.v3Acc}%` : '—'}
+                        sub={`${modelPerf.v3Correct}/${modelPerf.total} correct`}
+                        gold
+                        valueColor={hitColor(modelPerf.v3Acc ? parseFloat(modelPerf.v3Acc) / 100 : null)}
+                      />
+                      <MetricCard
+                        label={lang === 'zh' ? '高确信度' : 'High Conviction'}
+                        value={modelPerf.highConvAcc ? `${modelPerf.highConvAcc}%` : '—'}
+                        sub={`${modelPerf.highConvCorrect}/${modelPerf.highConvTotal} ${lang === 'zh' ? '≥10pp优势' : 'calls ≥10pp margin'}`}
+                        valueColor={hitColor(modelPerf.highConvAcc ? parseFloat(modelPerf.highConvAcc) / 100 : null)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Layer 2: Total Goals */}
+                  <div>
+                    <div style={{
+                      fontSize: 10, fontWeight: 700,
+                      letterSpacing: '0.08em', textTransform: 'uppercase',
+                      fontFamily: "'IBM Plex Mono', monospace",
+                      color: '#BA7517', marginBottom: 8,
+                      paddingBottom: 6,
+                      borderBottom: '2px solid #BA7517',
+                    }}>
+                      {lang === 'zh' ? '第二层 — 总进球数' : 'Layer 2 — Total Goals'}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <MetricCard
+                        label={lang === 'zh' ? 'V3总进球准确率' : 'V3 Total Goals Acc'}
+                        value={modelPerf.tgAcc ? `${modelPerf.tgAcc}%` : '—'}
+                        sub={`${modelPerf.tgCorrect}/${modelPerf.tgTotal} ${lang === 'zh' ? '精确总进球' : 'exact total'}`}
+                        valueColor={
+                          modelPerf.tgAcc
+                            ? parseFloat(modelPerf.tgAcc) >= 30
+                              ? 'var(--color-success)'
+                              : parseFloat(modelPerf.tgAcc) >= 22
+                                ? '#BA7517' : 'var(--color-danger)'
+                            : undefined
+                        }
+                      />
+                      <MetricCard
+                        label={lang === 'zh' ? 'V3 Brier分' : 'V3 Brier Score'}
+                        value={modelPerf.avgBrier ?? '—'}
+                        sub={lang === 'zh' ? '越低越好 · 随机≈0.667' : 'lower = better · random ≈ 0.667'}
+                        valueColor={
+                          modelPerf.avgBrier != null
+                            ? parseFloat(modelPerf.avgBrier) < 0.5
+                              ? 'var(--color-success)' : '#BA7517'
+                            : undefined
+                        }
+                      />
+                      <MetricCard
+                        label={lang === 'zh' ? 'V3 RPS分' : 'V3 RPS'}
+                        value={modelPerf.avgRps ?? '—'}
+                        sub={lang === 'zh' ? '越低越好 · 随机≈0.227' : 'lower = better · random ≈ 0.227'}
+                        valueColor={
+                          modelPerf.avgRps != null
+                            ? parseFloat(modelPerf.avgRps) < 0.25
+                              ? 'var(--color-success)' : '#BA7517'
+                            : undefined
+                        }
+                      />
+                      <MetricCard
+                        label={lang === 'zh' ? 'V3平均优势' : 'Avg V3 Margin'}
+                        value={modelPerf.avgMargin ? `${modelPerf.avgMargin}pp` : '—'}
+                        sub={lang === 'zh' ? '第1与第2预测间平均差距' : 'avg gap 1st vs 2nd prediction'}
+                        valueColor={
+                          modelPerf.avgMargin && parseFloat(modelPerf.avgMargin) > 15
+                            ? 'var(--color-success)' : '#BA7517'
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Layer 3: Exact Score */}
+                  <div>
+                    <div style={{
+                      fontSize: 10, fontWeight: 700,
+                      letterSpacing: '0.08em', textTransform: 'uppercase',
+                      fontFamily: "'IBM Plex Mono', monospace",
+                      color: '#C9A84C', marginBottom: 8,
+                      paddingBottom: 6,
+                      borderBottom: '2px solid #C9A84C',
+                    }}>
+                      {lang === 'zh' ? '第三层 — 精确比分' : 'Layer 3 — Exact Score'}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <MetricCard
+                        label={lang === 'zh' ? 'V3精确比分准确率' : 'V3 Top Score Acc'}
+                        value={modelPerf.scoreAcc ? `${modelPerf.scoreAcc}%` : '—'}
+                        sub={`${modelPerf.scoreCorrect}/${modelPerf.scoreTotal} ${lang === 'zh' ? '比分命中' : 'exact scoreline hits'}`}
+                        gold
+                        valueColor={
+                          modelPerf.scoreAcc
+                            ? parseFloat(modelPerf.scoreAcc) >= 10
+                              ? 'var(--color-success)'
+                              : parseFloat(modelPerf.scoreAcc) >= 5
+                                ? '#BA7517' : 'var(--color-danger)'
+                            : undefined
+                        }
+                      />
+                      <div style={{
+                        border: '0.5px solid var(--color-border)',
+                        borderRadius: 8, padding: '12px 14px',
+                        background: 'var(--color-bg-card)',
+                      }}>
+                        <div style={{
+                          fontSize: 10, fontWeight: 700,
+                          letterSpacing: '0.06em', textTransform: 'uppercase',
+                          fontFamily: "'IBM Plex Mono', monospace",
+                          color: 'var(--color-text-muted)', marginBottom: 8,
+                        }}>
+                          {lang === 'zh' ? '基准参考' : 'Benchmarks'}
+                        </div>
+                        {[
+                          { label: lang === 'zh' ? '随机猜测' : 'Random guess',   value: '~2%',    color: 'var(--color-text-muted)' },
+                          { label: lang === 'zh' ? '优秀模型' : 'Good model',     value: '8-12%',  color: '#BA7517' },
+                          { label: lang === 'zh' ? '专业机构' : 'Pro syndicates', value: '12-15%', color: '#2D7A4F' },
+                        ].map((b, i) => (
+                          <div key={i} style={{
+                            display: 'flex', justifyContent: 'space-between',
+                            fontSize: 11, marginBottom: 4,
+                            fontFamily: "'IBM Plex Mono', monospace",
+                          }}>
+                            <span style={{ color: 'var(--color-text-muted)' }}>{b.label}</span>
+                            <span style={{ color: b.color, fontWeight: 600 }}>{b.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Explanation note */}
+                <div style={{
+                  padding: '10px 14px', marginBottom: 4,
+                  background: 'var(--color-background-secondary)',
+                  borderRadius: 8,
+                  borderLeft: '3px solid #C9A84C',
+                  fontSize: 11, color: 'var(--color-text-muted)',
+                  lineHeight: 1.6,
+                }}>
+                  <strong style={{ color: '#C9A84C' }}>
+                    {lang === 'zh' ? '三层准确率：' : 'Three-layer accuracy:'}
+                  </strong>{' '}
+                  {lang === 'zh'
+                    ? '第一层（方向）判断模型是否选对胜者——基准为庄家约54%。第二层（总进球）判断预测进球总数是否正确——即PASP锚点，目标≥25%。第三层（精确比分）判断最高概率比分是否命中——即使8%也很出色，专业机构达12-15%。模型可能在方向上错误但总进球正确——三层同时评估才能全面了解模型质量。'
+                    : 'Layer 1 (Direction) shows if the model picked the right winner — benchmark is bookmakers at ~54%. Layer 2 (Total Goals) shows if the predicted goal total was right — this is the PASP anchor, target ≥25%. Layer 3 (Exact Score) shows if the top predicted scoreline hit — even 8% is good, pro syndicates reach 12-15%. A model can be wrong on direction but right on total goals — all three layers tell a fuller story.'}
+                </div>
+              </>
             )}
           </div>
 
@@ -747,7 +958,7 @@ export default function ModelPerformance() {
             ) : (
               <>
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 920 }}>
                     <thead>
                       <tr>
                         <th style={TH}>Date</th>
@@ -756,9 +967,11 @@ export default function ModelPerformance() {
                         <th style={{ ...TH, textAlign: 'center' }}>V1</th>
                         <th style={{ ...TH, textAlign: 'center' }}>V2</th>
                         <th style={{ ...TH, textAlign: 'center' }}>V3 ★</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Brier <InfoTooltip title="Brier Score" explanation="Probability scoring rule: lower is better, 0 is perfect. Penalises confident wrong predictions more." explanationZh="概率评分规则：越低越好，0分为完美。对自信预测错误惩罚更重。" lang={lang} /></th>
-                        <th style={TH}>Top Score</th>
-                        <th style={{ ...TH, textAlign: 'center' }}>Anchor</th>
+                        <th style={{ ...TH, textAlign: 'center' }}>Margin</th>
+                        <th style={{ ...TH, textAlign: 'center' }}>TG Pred</th>
+                        <th style={{ ...TH, textAlign: 'center' }}>TG✓</th>
+                        <th style={{ ...TH, textAlign: 'center' }}>Top Score</th>
+                        <th style={{ ...TH, textAlign: 'center' }}>Score✓</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -769,9 +982,27 @@ export default function ModelPerformance() {
                         const outcomeLabel = row.actual_outcome === 'H' ? 'H' : row.actual_outcome === 'A' ? 'A' : 'D'
                         const topScore = row.v3_top_score || null
                         const topMatched = topScore && hs != null && topScore === `${hs}-${as_}`
-                        const anchorLine = row.anchor_line != null ? Number(row.anchor_line) : null
-                        const totalGoals = hs != null ? Number(hs) + Number(as_) : null
-                        const anchorHit = anchorLine != null && totalGoals != null ? totalGoals > anchorLine : null
+
+                        // Layer 2: Total Goals
+                        const predLH = row.v3_lambda_home
+                        const predLA = row.v3_lambda_away
+                        const tgPred = predLH != null && predLA != null
+                          ? Math.round(Number(predLH) + Number(predLA)) : null
+                        const tgActual = hs != null ? Number(hs) + Number(as_) : null
+                        const tgHit = tgPred != null && tgActual != null ? tgPred === tgActual : null
+
+                        // Layer 3: Exact Score
+                        const scoreHit = topScore && hs != null
+                          ? (Number(topScore.split('-')[0]) === Number(hs) &&
+                             Number(topScore.split('-')[1]) === Number(as_))
+                          : null
+
+                        // Margin
+                        const v3Sorted = [row.v3_home_win || 0, row.v3_draw || 0, row.v3_away_win || 0]
+                          .map(Number).sort((a, b) => b - a)
+                        const margin = v3Sorted[0] > 0
+                          ? Math.round((v3Sorted[0] - v3Sorted[1]) * 100) : null
+
                         return (
                           <tr key={row.id}>
                             <td style={{ ...TD, whiteSpace: 'nowrap', fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-text-muted)' }}>
@@ -791,18 +1022,40 @@ export default function ModelPerformance() {
                                   : <span style={{ color: c ? 'var(--color-success)' : 'var(--color-danger)' }}>{c ? '✓' : '✗'}</span>}
                               </td>
                             ))}
-                            <td style={{ ...TD, textAlign: 'right', fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: 'var(--color-text-muted)' }}>
-                              {row.brier_score != null ? Number(row.brier_score).toFixed(3) : '—'}
+                            {/* Margin */}
+                            <td style={{ ...TD, textAlign: 'center', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
+                              color: margin == null ? 'var(--color-text-muted)'
+                                : margin >= 15 ? '#2D7A4F'
+                                : margin >= 10 ? '#BA7517' : '#791F1F',
+                            }}>
+                              {margin != null ? `${margin}pp` : '—'}
                             </td>
-                            <td style={{ ...TD, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 }}>
-                              {topScore
-                                ? <span style={{ color: topMatched ? '#C9A84C' : 'var(--color-text-muted)', fontWeight: topMatched ? 700 : 400 }}>{topScore}</span>
-                                : '—'}
+                            {/* TG Predicted */}
+                            <td style={{ ...TD, textAlign: 'center', fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-text-muted)' }}>
+                              {tgPred != null ? `${tgPred}g` : '—'}
                             </td>
-                            <td style={{ ...TD, textAlign: 'center', fontSize: 13 }}>
-                              {anchorHit == null
-                                ? <span style={{ color: 'var(--color-text-muted)' }}>—</span>
-                                : <span style={{ color: anchorHit ? 'var(--color-success)' : 'var(--color-danger)' }}>{anchorHit ? '✓' : '✗'}</span>}
+                            {/* TG Hit */}
+                            <td style={{ ...TD, textAlign: 'center', fontSize: 13, fontWeight: 700 }}>
+                              {tgHit === true
+                                ? <span style={{ color: '#2D7A4F' }}>✓</span>
+                                : tgHit === false
+                                  ? <span style={{ color: '#791F1F' }}>✗</span>
+                                  : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
+                            </td>
+                            {/* Top Score Predicted */}
+                            <td style={{ ...TD, textAlign: 'center', fontSize: 11, fontFamily: "'IBM Plex Mono', monospace",
+                              color: scoreHit ? '#C9A84C' : 'var(--color-text-muted)',
+                              fontWeight: scoreHit ? 700 : 400,
+                            }}>
+                              {topScore || '—'}
+                            </td>
+                            {/* Score Hit */}
+                            <td style={{ ...TD, textAlign: 'center', fontSize: 13, fontWeight: 700 }}>
+                              {scoreHit === true
+                                ? <span style={{ color: '#C9A84C' }}>★</span>
+                                : scoreHit === false
+                                  ? <span style={{ color: '#791F1F' }}>✗</span>
+                                  : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
                             </td>
                           </tr>
                         )
