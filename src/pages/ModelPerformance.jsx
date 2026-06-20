@@ -22,7 +22,7 @@ const TH = {
   fontSize: 11, fontWeight: 700, letterSpacing: '0.05em',
   color: 'var(--color-text-muted)', padding: '0 12px 10px 0',
   textAlign: 'left', whiteSpace: 'nowrap',
-  position: 'sticky', top: 0, zIndex: 10, background: 'var(--color-background)',
+  position: 'sticky', top: 0, zIndex: 20, background: 'var(--color-bg)',
 }
 const TD = {
   fontSize: 13, padding: '9px 12px 9px 0',
