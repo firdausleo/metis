@@ -6,6 +6,16 @@ import InfoTooltip from '../components/InfoTooltip'
 import { useUser } from '../context/UserContext'
 import { logPageView } from '../utils/activityTracker'
 import ModelComparisonTab from '../components/ModelComparisonTab'
+import { poissonPMF } from '../lib/poisson'
+
+// ── Matrix helpers (identical to ModelComparisonTab) ─────────────────────────
+const _RHO = -0.0612, _MG = 8
+function _tau(x,y,lh,la){if(x===0&&y===0)return 1-lh*la*_RHO;if(x===0&&y===1)return 1+lh*_RHO;if(x===1&&y===0)return 1+la*_RHO;if(x===1&&y===1)return 1-_RHO;return 1}
+function _v1(lh,la){const M=[];let t=0;for(let x=0;x<=_MG;x++){M[x]=[];for(let y=0;y<=_MG;y++){M[x][y]=poissonPMF(x,lh)*poissonPMF(y,la);t+=M[x][y]}}if(t>0)for(let x=0;x<=_MG;x++)for(let y=0;y<=_MG;y++)M[x][y]/=t;return M}
+function _dc(lh,la){const M=[];let t=0;for(let x=0;x<=_MG;x++){M[x]=[];for(let y=0;y<=_MG;y++){M[x][y]=Math.max(poissonPMF(x,lh)*poissonPMF(y,la)*_tau(x,y,lh,la),0);t+=M[x][y]}}if(t>0)for(let x=0;x<=_MG;x++)for(let y=0;y<=_MG;y++)M[x][y]/=t;return M}
+function _v3mat(lh,la){const v=_v1(lh,la),d=_dc(lh,la),M=[];for(let x=0;x<=_MG;x++){M[x]=[];for(let y=0;y<=_MG;y++)M[x][y]=0.65*d[x][y]+0.35*v[x][y]}return M}
+function _anchor(M){const t=new Array(_MG*2+1).fill(0);for(let x=0;x<=_MG;x++)for(let y=0;y<=_MG;y++)t[x+y]+=M[x][y];let a=0;for(let k=1;k<=_MG;k++)if(t[k]>t[a])a=k;return a}
+function _top3(M){const c=[];for(let x=0;x<=_MG;x++)for(let y=0;y<=_MG;y++)c.push({s:`${x}-${y}`,p:M[x][y]});c.sort((a,b)=>b.p-a.p);return c.slice(0,3).map(e=>e.s)}
 
 // ── Style constants ─────────────────────────────────────────────────────────
 const TH = {
@@ -487,6 +497,7 @@ export default function ModelPerformance() {
     let highConvTotal = 0, highConvCorrect = 0
     let brierSum = 0, brierCount = 0
     let rpsSum = 0, rpsCount = 0
+    let v1TgC=0,dcTgC=0,v3TgC=0, v1ScC=0,dcScC=0,v3ScC=0, v1T3C=0,dcT3C=0,v3T3C=0, lambdaN=0
 
     for (const row of rows) {
       const m = row.match
@@ -506,9 +517,27 @@ export default function ModelPerformance() {
       const predLA = row.v3_lambda_away
       if (predLH != null && predLA != null) {
         tgTotal++
-        const predTotal = Math.round(Number(predLH) + Number(predLA))
+        const lhN = Number(predLH), laN = Number(predLA)
         const actualTotal = Number(m.home_score) + Number(m.away_score)
+        const predTotal = Math.round(lhN + laN)
         if (predTotal === actualTotal) tgCorrect++
+
+        // V1 / DC / V3 matrix-based metrics
+        const actual = `${Number(m.home_score)}-${Number(m.away_score)}`
+        const v1M = _v1(lhN, laN), dcM = _dc(lhN, laN), v3M = _v3mat(lhN, laN)
+        lambdaN++
+        if (_anchor(v1M) === actualTotal) v1TgC++
+        if (_anchor(dcM) === actualTotal) dcTgC++
+        const v3Anc = row.anchor_total != null ? Number(row.anchor_total) : _anchor(v3M)
+        if (v3Anc === actualTotal) v3TgC++
+        const v1T = _top3(v1M), dcT = _top3(dcM), v3T = _top3(v3M)
+        const v3Top1 = row.v3_top_score || v3T[0]
+        if (v1T[0] === actual) v1ScC++
+        if (dcT[0] === actual) dcScC++
+        if (v3Top1 === actual) v3ScC++
+        if (v1T.includes(actual)) v1T3C++
+        if (dcT.includes(actual)) dcT3C++
+        if (v3T.includes(actual)) v3T3C++
       }
 
       // Layer 3: Exact Score
@@ -545,6 +574,19 @@ export default function ModelPerformance() {
       avgMargin: total > 0 ? (marginSum / total * 100).toFixed(1) : null,
       avgBrier: brierCount > 0 ? (brierSum / brierCount).toFixed(3) : null,
       avgRps: rpsCount > 0 ? (rpsSum / rpsCount).toFixed(3) : null,
+      lambdaN,
+      v1TgC, dcTgC, v3TgC,
+      v1TgAcc: lambdaN ? (v1TgC/lambdaN*100).toFixed(1) : null,
+      dcTgAcc: lambdaN ? (dcTgC/lambdaN*100).toFixed(1) : null,
+      v3TgAcc: lambdaN ? (v3TgC/lambdaN*100).toFixed(1) : null,
+      v1ScC, dcScC, v3ScC,
+      v1ScAcc: lambdaN ? (v1ScC/lambdaN*100).toFixed(1) : null,
+      dcScAcc: lambdaN ? (dcScC/lambdaN*100).toFixed(1) : null,
+      v3ScAcc: lambdaN ? (v3ScC/lambdaN*100).toFixed(1) : null,
+      v1T3C, dcT3C, v3T3C,
+      v1T3Acc: lambdaN ? (v1T3C/lambdaN*100).toFixed(1) : null,
+      dcT3Acc: lambdaN ? (dcT3C/lambdaN*100).toFixed(1) : null,
+      v3T3Acc: lambdaN ? (v3T3C/lambdaN*100).toFixed(1) : null,
     }
   }, [rows])
 
@@ -811,19 +853,18 @@ export default function ModelPerformance() {
                       {lang === 'zh' ? '第二层 — 总进球数' : 'Layer 2 — Total Goals'}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <MetricCard
-                        label={lang === 'zh' ? 'V3总进球准确率' : 'V3 Total Goals Acc'}
-                        value={modelPerf.tgAcc ? `${modelPerf.tgAcc}%` : '—'}
-                        sub={`${modelPerf.tgCorrect}/${modelPerf.tgTotal} ${lang === 'zh' ? '精确总进球' : 'exact total'}`}
-                        valueColor={
-                          modelPerf.tgAcc
-                            ? parseFloat(modelPerf.tgAcc) >= 30
-                              ? 'var(--color-success)'
-                              : parseFloat(modelPerf.tgAcc) >= 22
-                                ? '#BA7517' : 'var(--color-danger)'
-                            : undefined
-                        }
-                      />
+                      {[
+                        { label: 'V1 Total Goals Acc',    acc: modelPerf.v1TgAcc, n: modelPerf.v1TgC, gold: false, vc: null },
+                        { label: 'DC Total Goals Acc',    acc: modelPerf.dcTgAcc, n: modelPerf.dcTgC, gold: false, vc: '#0F3460' },
+                        { label: 'V3 Total Goals Acc ★', acc: modelPerf.v3TgAcc, n: modelPerf.v3TgC, gold: true,  vc: null },
+                      ].map(({ label, acc, n: nc, gold, vc }) => (
+                        <MetricCard key={label} label={label}
+                          value={acc ? `${acc}%` : '—'}
+                          sub={`${nc ?? 0}/${modelPerf.lambdaN ?? 0} exact total`}
+                          gold={gold}
+                          valueColor={vc || (acc ? parseFloat(acc) >= 30 ? 'var(--color-success)' : parseFloat(acc) >= 22 ? '#BA7517' : 'var(--color-danger)' : undefined)}
+                        />
+                      ))}
                       <MetricCard
                         label={lang === 'zh' ? 'V3 Brier分' : 'V3 Brier Score'}
                         value={modelPerf.avgBrier ?? '—'}
@@ -871,20 +912,33 @@ export default function ModelPerformance() {
                       {lang === 'zh' ? '第三层 — 精确比分' : 'Layer 3 — Exact Score'}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <MetricCard
-                        label={lang === 'zh' ? 'V3精确比分准确率' : 'V3 Top Score Acc'}
-                        value={modelPerf.scoreAcc ? `${modelPerf.scoreAcc}%` : '—'}
-                        sub={`${modelPerf.scoreCorrect}/${modelPerf.scoreTotal} ${lang === 'zh' ? '比分命中' : 'exact scoreline hits'}`}
-                        gold
-                        valueColor={
-                          modelPerf.scoreAcc
-                            ? parseFloat(modelPerf.scoreAcc) >= 10
-                              ? 'var(--color-success)'
-                              : parseFloat(modelPerf.scoreAcc) >= 5
-                                ? '#BA7517' : 'var(--color-danger)'
-                            : undefined
-                        }
-                      />
+                      {[
+                        { label: 'V1 Top Score Acc',    acc: modelPerf.v1ScAcc, n: modelPerf.v1ScC, gold: false, vc: null },
+                        { label: 'DC Top Score Acc',    acc: modelPerf.dcScAcc, n: modelPerf.dcScC, gold: false, vc: '#0F3460' },
+                        { label: 'V3 Top Score Acc ★', acc: modelPerf.v3ScAcc, n: modelPerf.v3ScC, gold: true,  vc: null },
+                      ].map(({ label, acc, n: nc, gold, vc }) => (
+                        <MetricCard key={label} label={label}
+                          value={acc ? `${acc}%` : '—'}
+                          sub={`${nc ?? 0}/${modelPerf.lambdaN ?? 0} exact`}
+                          gold={gold}
+                          valueColor={vc || (acc ? parseFloat(acc) >= 10 ? 'var(--color-success)' : parseFloat(acc) >= 5 ? '#BA7517' : 'var(--color-danger)' : undefined)}
+                        />
+                      ))}
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-text-muted)', marginTop: 4, marginBottom: 4 }}>
+                        {lang === 'zh' ? '前三比分准确率' : 'Top-3 Accuracy'}
+                      </div>
+                      {[
+                        { label: 'V1 Top-3 Acc',    acc: modelPerf.v1T3Acc, n: modelPerf.v1T3C, gold: false, vc: null },
+                        { label: 'DC Top-3 Acc',    acc: modelPerf.dcT3Acc, n: modelPerf.dcT3C, gold: false, vc: '#0F3460' },
+                        { label: 'V3 Top-3 Acc ★', acc: modelPerf.v3T3Acc, n: modelPerf.v3T3C, gold: true,  vc: null },
+                      ].map(({ label, acc, n: nc, gold, vc }) => (
+                        <MetricCard key={label} label={label}
+                          value={acc ? `${acc}%` : '—'}
+                          sub={`${nc ?? 0}/${modelPerf.lambdaN ?? 0} in top 3`}
+                          gold={gold}
+                          valueColor={vc || (acc ? parseFloat(acc) >= 20 ? 'var(--color-success)' : parseFloat(acc) >= 12 ? '#BA7517' : 'var(--color-danger)' : undefined)}
+                        />
+                      ))}
                       <div style={{
                         border: '0.5px solid var(--color-border)',
                         borderRadius: 8, padding: '12px 14px',
