@@ -5,6 +5,7 @@ import { useTranslation } from '../lib/i18n'
 import InfoTooltip from '../components/InfoTooltip'
 import { useUser } from '../context/UserContext'
 import { logPageView } from '../utils/activityTracker'
+import ModelComparisonTab from '../components/ModelComparisonTab'
 
 // ── Style constants ─────────────────────────────────────────────────────────
 const TH = {
@@ -410,6 +411,7 @@ export default function ModelPerformance() {
   const [refitLog, setRefitLog] = useState([])
   const [bets, setBets] = useState([])
   const [odds, setOdds] = useState([])
+  const [mainTab, setMainTab] = useState('performance')
 
   useEffect(() => {
     logPageView(user?.id, 'model_performance')
@@ -417,7 +419,7 @@ export default function ModelPerformance() {
       const [predsRes, accRes, rolesRes, refitRes, betsRes, oddsRes] = await Promise.all([
         supabase
           .from('model_predictions')
-          .select('*, match:matches(home_team,away_team,home_score,away_score,match_date)')
+          .select('*, match:matches(home_team,away_team,home_score,away_score,match_date,stage,group_name,venue,city)')
           .not('actual_outcome', 'is', null)
           .order('settled_at', { ascending: false }),
         supabase
@@ -707,10 +709,35 @@ export default function ModelPerformance() {
         </p>
       </div>
 
+      {/* Top-level tab switcher */}
+      <div style={{ display: 'flex', gap: 0, borderBottom: '0.5px solid var(--color-border)', marginBottom: 24, flexWrap: 'wrap' }}>
+        {[
+          { key: 'performance', label: 'Performance' },
+          { key: 'comparison',  label: 'Model Comparison' },
+        ].map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setMainTab(key)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: '10px 16px', fontFamily: 'inherit', minHeight: 44,
+              fontSize: 13, fontWeight: mainTab === key ? 700 : 500,
+              color: mainTab === key ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+              borderBottom: mainTab === key ? '2px solid #1A3A6C' : '2px solid transparent',
+              marginBottom: -1,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <div>{[...Array(5)].map((_, i) => (
           <div key={i} className="skeleton" style={{ height: 44, borderRadius: 6, marginBottom: 10 }} />
         ))}</div>
+      ) : mainTab === 'comparison' ? (
+        <ModelComparisonTab rows={rows} />
       ) : (
         <>
           {/* Section B: Summary Metrics */}
