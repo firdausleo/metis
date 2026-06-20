@@ -988,7 +988,7 @@ export default function ModelPerformance() {
               <>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 920 }}>
-                    <thead>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--color-background)' }}>
                       <tr>
                         <th style={TH}>Date</th>
                         <th style={TH}>Match</th>
