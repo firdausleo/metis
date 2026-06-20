@@ -446,7 +446,9 @@ export default function ModelPerformance() {
           .select('*, match:matches(id,home_team,away_team,home_score,away_score,status,match_date)')
           .order('updated_at', { ascending: false }),
       ])
-      setRows(predsRes.data || [])
+      setRows((predsRes.data || []).sort((a, b) =>
+        new Date(b.match?.match_date || 0) - new Date(a.match?.match_date || 0)
+      ))
       setAccRows(accRes.data || [])
       setAiRoles(rolesRes.data || [])
       setRefitLog(refitRes.data || [])
