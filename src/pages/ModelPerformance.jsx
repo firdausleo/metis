@@ -1168,22 +1168,116 @@ export default function ModelPerformance() {
           {/* Section E: V3 Calibration chart (10+ matches only) */}
           {n >= 10 && (() => {
             const BUCKETS = [[0, 0.2], [0.2, 0.4], [0.4, 0.6], [0.6, 0.8], [0.8, 1.0]]
-            const hasPoints = BUCKETS.some(([min, max]) =>
-              rows.some(r => {
+            const calibPts = BUCKETS.map(([min, max]) => {
+              const br = rows.filter(r => {
                 const p = Number(r.v3_home_win)
                 return !isNaN(p) && p >= min && p < max && r.actual_outcome != null
               })
-            )
-            if (!hasPoints) return null
+              if (!br.length) return null
+              const actual = br.filter(r => r.actual_outcome === 'H').length / br.length
+              return { min, max, midpoint: (min + max) / 2, actual, n: br.length, label: `${Math.round(min * 100)}–${Math.round(max * 100)}%` }
+            }).filter(Boolean)
+            if (calibPts.length < 2) return null
+
+            const totalN = calibPts.reduce((s, b) => s + b.n, 0)
+            const ece = calibPts.reduce((s, b) => s + (b.n / totalN) * Math.abs(b.midpoint - b.actual), 0)
+            const largestErr = calibPts.reduce((m, b) => {
+              const err = Math.abs(b.midpoint - b.actual)
+              return err > m.err ? { ...b, err } : m
+            }, { err: -1 })
+
+            const eceColor = ece < 0.05 ? 'var(--color-success)' : ece < 0.10 ? '#C9A84C' : ece < 0.15 ? '#BA7517' : 'var(--color-danger)'
+            const eceLabel = ece < 0.05 ? 'Excellent ✓' : ece < 0.10 ? 'Good' : ece < 0.15 ? 'Acceptable' : 'Needs refit'
+            const paspText = ece < 0.05
+              ? 'Model probabilities are reliable inputs for Kelly sizing. Edge calculations are trustworthy across all probability ranges.'
+              : ece < 0.10
+              ? 'Minor calibration drift detected. Kelly stakes are broadly reliable but consider reducing stake 10–15% on high-conviction calls (>65% predicted).'
+              : 'Meaningful calibration error. Reduce all Kelly stakes by 20–25% until more match data stabilises the model.'
+            const largestDir = largestErr.actual > largestErr.midpoint ? 'underestimates' : 'overestimates'
+            const largestPP = Math.round(Math.abs(largestErr.actual - largestErr.midpoint) * 100)
+
+            const PANEL_TITLE = { fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontFamily: 'var(--font-display)', marginBottom: 8 }
+            const MONO = { fontFamily: "'IBM Plex Mono', monospace" }
+
             return (
               <div style={{ marginBottom: 28 }}>
                 <span style={SH}>{t('perf.calibration')} <InfoTooltip title="Calibration" explanation="A well-calibrated model predicts 60% when the true frequency is 60%. Dots near the diagonal line = good calibration." explanationZh="校准良好的模型预测60%时，实际发生率也约60%。散点靠近对角线=校准良好。" lang={lang} /></span>
-                <CalibrationChart rows={rows} />
-                <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8, lineHeight: 1.6 }}>
-                  {lang === 'zh'
-                    ? '散点靠近对角线 = 模型校准良好 · 圆圈大小 = 样本量 · 仅显示V3主队获胜概率'
-                    : 'Points near diagonal = well-calibrated · Circle size = sample count · V3 home win probability shown'}
-                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '55fr 40fr', gap: 24, alignItems: 'start' }}>
+                  {/* Left: chart */}
+                  <div>
+                    <CalibrationChart rows={rows} />
+                    <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8, lineHeight: 1.6 }}>
+                      {lang === 'zh'
+                        ? '散点靠近对角线 = 模型校准良好 · 圆圈大小 = 样本量 · 仅显示V3主队获胜概率'
+                        : 'Points near diagonal = well-calibrated · Circle size = sample count · V3 home win probability shown'}
+                    </p>
+                  </div>
+
+                  {/* Right: interpretation panel */}
+                  <div style={{ background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                    {/* 1 — How to read */}
+                    <div>
+                      <div style={PANEL_TITLE}>How to Read This</div>
+                      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.6, margin: 0 }}>
+                        Each bubble = a group of matches bucketed by predicted home win probability. Bubbles <strong>on the diagonal</strong> = perfect calibration. <strong>Above</strong> = model underestimates (reality beats prediction). <strong>Below</strong> = model overestimates.
+                      </p>
+                    </div>
+
+                    {/* 2 — ECE */}
+                    <div>
+                      <div style={PANEL_TITLE}>Calibration Error (ECE)</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                        <span style={{ fontSize: 22, fontWeight: 700, ...MONO, color: eceColor }}>{ece.toFixed(3)}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: eceColor }}>{eceLabel}</span>
+                      </div>
+                      <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4, margin: 0 }}>
+                        ECE &lt; 0.05 Excellent · 0.05–0.10 Good · 0.10–0.15 Acceptable · &gt;0.15 Needs refit
+                      </p>
+                    </div>
+
+                    {/* 3 — Bucket table */}
+                    <div>
+                      <div style={PANEL_TITLE}>Bucket Breakdown</div>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                        <thead>
+                          <tr>
+                            {['Range','Pred','Actual','N','Signal'].map(h => (
+                              <th key={h} style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-muted)', padding: '0 4px 6px', textAlign: h === 'Signal' ? 'center' : 'left' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {calibPts.map(b => {
+                            const diff = b.actual - b.midpoint
+                            const signal = diff > 0.05 ? { ch: '↑', color: 'var(--color-success)' } : diff < -0.05 ? { ch: '↓', color: 'var(--color-danger)' } : { ch: '=', color: '#C9A84C' }
+                            return (
+                              <tr key={b.label} style={{ borderTop: '0.5px solid var(--color-border-light)' }}>
+                                <td style={{ padding: '5px 4px', color: 'var(--color-text-muted)', ...MONO }}>{b.label}</td>
+                                <td style={{ padding: '5px 4px', ...MONO }}>{Math.round(b.midpoint * 100)}%</td>
+                                <td style={{ padding: '5px 4px', ...MONO }}>{Math.round(b.actual * 100)}%</td>
+                                <td style={{ padding: '5px 4px', ...MONO }}>{b.n}</td>
+                                <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 700, color: signal.color }}>{signal.ch}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* 4 — PASP implication */}
+                    <div>
+                      <div style={PANEL_TITLE}>PASP Impact</div>
+                      <p style={{ fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.6, margin: 0, marginBottom: 8 }}>{paspText}</p>
+                      {largestErr.label && (
+                        <p style={{ fontSize: 12, color: 'var(--color-text-muted)', margin: 0, ...MONO }}>
+                          Largest gap: <strong style={{ color: 'var(--color-text-primary)' }}>{largestErr.label}</strong> — model {largestDir} by <strong style={{ color: 'var(--color-text-primary)' }}>{largestPP}pp</strong>
+                        </p>
+                      )}
+                    </div>
+
+                  </div>
+                </div>
               </div>
             )
           })()}
