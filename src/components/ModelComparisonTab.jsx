@@ -394,6 +394,57 @@ export default function ModelComparisonTab({ rows }) {
 
   const n = matchData.length
 
+  // ── Top-N scoreline data (Section 5) ─────────────────────────────────────
+  const topNData = useMemo(() => {
+    return [...matchData]
+      .sort((a, b) => new Date(b.match.match_date || 0) - new Date(a.match.match_date || 0))
+      .map(d => {
+        const cells = []
+        for (let x = 0; x <= MAX_G; x++)
+          for (let y = 0; y <= MAX_G; y++)
+            cells.push({ score: `${x}-${y}`, prob: d.v3M[x][y], x, y })
+        cells.sort((a, b) => b.prob - a.prob)
+        const top10 = cells.slice(0, 10)
+        const actual = `${d.hs}-${d.as_}`
+        return {
+          ...d,
+          top10,
+          actual,
+          top1Hit:  top10[0]?.score === actual,
+          top3Hit:  top10.slice(0, 3).some(s => s.score === actual),
+          top5Hit:  top10.slice(0, 5).some(s => s.score === actual),
+        }
+      })
+  }, [matchData])
+
+  const topNSummary = useMemo(() => {
+    const tn = topNData.length
+    if (!tn) return null
+    let t1=0, t3=0, t5=0
+    let t1H=0, t3H=0, t5H=0
+    let t1D=0, t3D=0, t5D=0
+    let t1A=0, t3A=0, t5A=0
+    let nH=0, nD=0, nA=0
+    const missPred  = { home: 0, draw: 0, away: 0 }
+    const missActual = { home: 0, draw: 0, away: 0 }
+    for (const d of topNData) {
+      const res = d.hs > d.as_ ? 'home' : d.hs < d.as_ ? 'away' : 'draw'
+      if (res === 'home') nH++; else if (res === 'draw') nD++; else nA++
+      if (d.top1Hit) { t1++; if (res==='home') t1H++; else if (res==='draw') t1D++; else t1A++ }
+      if (d.top3Hit) { t3++; if (res==='home') t3H++; else if (res==='draw') t3D++; else t3A++ }
+      if (d.top5Hit) { t5++; if (res==='home') t5H++; else if (res==='draw') t5D++; else t5A++ }
+      if (!d.top1Hit && d.top10[0]) {
+        const c = d.top10[0]
+        const pr = c.x > c.y ? 'home' : c.x < c.y ? 'away' : 'draw'
+        missPred[pr]++
+        missActual[res]++
+      }
+    }
+    const topMissPred   = Object.entries(missPred).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—'
+    const topMissActual = Object.entries(missActual).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—'
+    return { tn, nH, nD, nA, t1, t3, t5, t1H, t3H, t5H, t1D, t3D, t5D, t1A, t3A, t5A, topMissPred, topMissActual }
+  }, [topNData])
+
   return (
     <div style={{ paddingBottom: 40 }}>
 
@@ -563,6 +614,123 @@ export default function ModelComparisonTab({ rows }) {
           Each group = one calendar day of WC2026 matches. Shows whether V3's DC blend
           improves as tournament data accumulates. Small samples per day produce noise.
         </p>
+      </div>
+
+      {/* ── SECTION 5: Top-N Scoreline Accuracy ───────────────────────────────── */}
+      <div style={{ marginTop: 32, marginBottom: 8 }}>
+        <SectionHead>Scoreline Accuracy — Top N Analysis</SectionHead>
+
+        {/* Sub-section A: Summary scorecard */}
+        {topNSummary && (
+          <div style={{ overflowX: 'auto', marginBottom: 20 }}>
+            <table style={{ borderCollapse: 'collapse', minWidth: 420, fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: 'var(--color-bg-secondary)' }}>
+                  <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: MONO, color: 'var(--color-text-muted)', borderBottom: '0.5px solid var(--color-border)' }}>
+                    Metric
+                  </th>
+                  {['Top 1', 'Top 3', 'Top 5'].map(h => (
+                    <th key={h} style={{ padding: '8px 12px', textAlign: 'center', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: MONO, color: MODEL_V3, borderBottom: '0.5px solid var(--color-border)' }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { label: 'Hits',                             vals: [`${topNSummary.t1}/${topNSummary.tn}`, `${topNSummary.t3}/${topNSummary.tn}`, `${topNSummary.t5}/${topNSummary.tn}`] },
+                  { label: 'Accuracy',                         vals: [`${(topNSummary.t1/topNSummary.tn*100).toFixed(1)}%`, `${(topNSummary.t3/topNSummary.tn*100).toFixed(1)}%`, `${(topNSummary.t5/topNSummary.tn*100).toFixed(1)}%`] },
+                  { label: `Home win hits (n=${topNSummary.nH})`, vals: [`${topNSummary.t1H}/${topNSummary.nH}`, `${topNSummary.t3H}/${topNSummary.nH}`, `${topNSummary.t5H}/${topNSummary.nH}`] },
+                  { label: `Draw hits (n=${topNSummary.nD})`,     vals: [`${topNSummary.t1D}/${topNSummary.nD}`, `${topNSummary.t3D}/${topNSummary.nD}`, `${topNSummary.t5D}/${topNSummary.nD}`] },
+                  { label: `Away win hits (n=${topNSummary.nA})`, vals: [`${topNSummary.t1A}/${topNSummary.nA}`, `${topNSummary.t3A}/${topNSummary.nA}`, `${topNSummary.t5A}/${topNSummary.nA}`] },
+                ].map(({ label, vals }) => (
+                  <tr key={label}>
+                    <td style={{ padding: '8px 12px', color: 'var(--color-text-secondary)', borderBottom: '0.5px solid var(--color-border)', fontSize: 12 }}>
+                      {label}
+                    </td>
+                    {vals.map((v, i) => (
+                      <td key={i} style={{ padding: '8px 12px', textAlign: 'center', fontFamily: MONO, fontWeight: 600, fontSize: 12, borderBottom: '0.5px solid var(--color-border)', color: 'var(--color-text-primary)' }}>
+                        {v}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Sub-section B: Match detail table */}
+        <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+          <table style={{ borderCollapse: 'collapse', minWidth: 700, width: '100%', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: 'var(--color-bg-secondary)' }}>
+                {['Date', 'Match', 'Actual', 'Top 1', 'Top 2', 'Top 3', 'Hit?'].map((h, i) => (
+                  <th key={h} style={{
+                    padding: '7px 10px', textAlign: i <= 1 ? 'left' : 'center',
+                    fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                    fontFamily: MONO, color: 'var(--color-text-muted)', borderBottom: '0.5px solid var(--color-border)',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {topNData.map(d => {
+                const m = d.match
+                const dateStr = m.match_date
+                  ? new Date(m.match_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Asia/Shanghai' })
+                  : '—'
+                return (
+                  <tr key={d.id}>
+                    <td style={{ padding: '8px 10px', fontFamily: MONO, fontSize: 11, color: 'var(--color-text-muted)', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap' }}>
+                      {dateStr}
+                    </td>
+                    <td style={{ padding: '8px 10px', fontSize: 12, color: 'var(--color-text-primary)', borderBottom: '0.5px solid var(--color-border)', whiteSpace: 'nowrap' }}>
+                      {m.home_team} vs {m.away_team}
+                    </td>
+                    <td style={{ padding: '8px 10px', fontFamily: MONO, textAlign: 'center', fontWeight: 700, fontSize: 13, borderBottom: '0.5px solid var(--color-border)', color: d.top3Hit ? MODEL_V3 : 'var(--color-text-primary)' }}>
+                      {d.actual}
+                    </td>
+                    {[0, 1, 2].map(i => {
+                      const cell = d.top10[i]
+                      const isHit = cell?.score === d.actual
+                      return (
+                        <td key={i} style={{
+                          padding: '8px 10px', textAlign: 'center', fontFamily: MONO, fontSize: 11,
+                          borderBottom: '0.5px solid var(--color-border)',
+                          background: isHit ? '#dcfce7' : 'transparent',
+                          color: isHit ? '#166534' : 'var(--color-text-secondary)',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {cell ? `${cell.score} ${p2(cell.prob)}` : '—'}
+                        </td>
+                      )
+                    })}
+                    <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, fontSize: 14, borderBottom: '0.5px solid var(--color-border)' }}>
+                      {d.top1Hit
+                        ? <span style={{ color: MODEL_V3 }}>★</span>
+                        : d.top3Hit
+                          ? <span style={{ color: '#22c55e' }}>✓</span>
+                          : <span style={{ color: '#ef4444' }}>✗</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Sub-section C: Distribution insight */}
+        {topNSummary && (
+          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: MONO, lineHeight: 1.8 }}>
+            Top-1 hit rate: {(topNSummary.t1/topNSummary.tn*100).toFixed(1)}%
+            {' · '}Top-3 hit rate: {(topNSummary.t3/topNSummary.tn*100).toFixed(1)}%
+            {' · '}Most common miss pattern: {topNSummary.topMissPred} predicted, {topNSummary.topMissActual} occurred
+          </div>
+        )}
       </div>
 
     </div>
