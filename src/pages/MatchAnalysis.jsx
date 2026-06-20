@@ -29,7 +29,7 @@ const CONFIDENCE_CONFIG = {
   max:    { icon: '🔥', color: 'var(--color-accent)',  desc: '4–5 WC games' },
 }
 
-const TABS = ['prediction', 'bets', 'pasp']
+const TABS = ['prediction', 'pasp', 'bets']
 // Legacy tab components kept below for reference — not rendered in the 2-tab UI.
 // const LEGACY_TABS = ['stats', 'matrix', 'value', 'asian', 'portfolio', 'ai']
 

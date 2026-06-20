@@ -105,6 +105,11 @@
   --color-edge-amber:      #D4860A;
   --color-edge-red:        #C0392B;
 
+  /* ── Model identity colours ── */
+  --model-v1:              #6b7280;
+  --model-dc:              #0F3460;
+  --model-v3:              #D4AF37;
+
   /* ── V1/V2 agreement ── */
   --color-agree:           #2D7A4F;
   --color-diverge:         #D4860A;

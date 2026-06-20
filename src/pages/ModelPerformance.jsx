@@ -322,44 +322,119 @@ function BenchmarkBars({ v1Rate, v2Rate, v3Rate, lang }) {
   )
 }
 
-// ── CalibrationChart (SVG) ────────────────────────────────────────────────────
+// ── CalibrationChart (SVG) — V1 / DC / V3 three-model ───────────────────────
 function CalibrationChart({ rows }) {
   const BUCKETS = [[0, 0.2], [0.2, 0.4], [0.4, 0.6], [0.6, 0.8], [0.8, 1.0]]
-  const points = BUCKETS.map(([min, max]) => {
-    const br = rows.filter(r => {
-      const p = Number(r.v3_home_win)
-      return !isNaN(p) && p >= min && p < max && r.actual_outcome != null
-    })
-    if (!br.length) return null
-    const actual = br.filter(r => r.actual_outcome === 'H').length / br.length
-    return { midpoint: (min + max) / 2, actual, n: br.length, label: `${Math.round(min * 100)}–${Math.round(max * 100)}%` }
-  }).filter(Boolean)
 
-  const W = 260, H = 180, PAD = 30
+  // Enrich each row with V1 and DC home-win probabilities computed from stored lambdas
+  const enriched = rows.map(r => {
+    const lh = Number(r.v3_lambda_home || 1.5)
+    const la = Number(r.v3_lambda_away || 1.5)
+    const v1M = _v1(lh, la)
+    const dcM = _dc(lh, la)
+    let v1h = 0, dch = 0
+    for (let x = 0; x <= _MG; x++) for (let y = 0; y <= _MG; y++) {
+      if (x > y) { v1h += v1M[x][y]; dch += dcM[x][y] }
+    }
+    return { ...r, _v1hw: v1h, _dchw: dch }
+  })
+
+  function computePts(field) {
+    return BUCKETS.map(([min, max]) => {
+      const br = enriched.filter(r => {
+        const p = Number(r[field])
+        return !isNaN(p) && p >= min && p < max && r.actual_outcome != null
+      })
+      if (!br.length) return null
+      const actual = br.filter(r => r.actual_outcome === 'H').length / br.length
+      return { midpoint: (min + max) / 2, actual, n: br.length, label: `${Math.round(min * 100)}–${Math.round(max * 100)}%` }
+    }).filter(Boolean)
+  }
+
+  const v1Pts = computePts('_v1hw')
+  const dcPts = computePts('_dchw')
+  const v3Pts = computePts('v3_home_win')
+
+  const allPts = [...v1Pts, ...dcPts, ...v3Pts]
+  if (allPts.length < 2) return null
+
+  // Compute mean calibration error per model
+  function mce(pts) {
+    if (!pts.length) return null
+    return pts.reduce((s, p) => s + Math.abs(p.midpoint - p.actual), 0) / pts.length
+  }
+  const v1Mce = mce(v1Pts), dcMce = mce(dcPts), v3Mce = mce(v3Pts)
+  const bestModel = [
+    { name: 'V3 (Primary)', mce: v3Mce },
+    { name: 'DC-only', mce: dcMce },
+    { name: 'V1 (Raw Poisson)', mce: v1Mce },
+  ].filter(m => m.mce != null).sort((a, b) => a.mce - b.mce)[0]
+
+  const W = 280, H = 190, PAD = 32
   const innerW = W - PAD * 2, innerH = H - PAD * 2
   const px = v => PAD + v * innerW
   const py = v => H - PAD - v * innerH
+  const OFFSETS = { v1: -9, dc: 0, v3: 9 }
 
-  if (points.length < 2) return null
+  const MODELS = [
+    { key: 'v1', pts: v1Pts, color: '#6b7280', label: 'V1', off: OFFSETS.v1 },
+    { key: 'dc', pts: dcPts, color: '#0F3460', label: 'DC', off: OFFSETS.dc },
+    { key: 'v3', pts: v3Pts, color: '#D4AF37', label: 'V3', off: OFFSETS.v3 },
+  ]
 
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 280, display: 'block' }}>
-        <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="#ccc" strokeWidth={0.5} />
-        <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="#ccc" strokeWidth={0.5} />
-        {[0.25, 0.5, 0.75].map(v => (
-          <line key={v} x1={PAD} y1={py(v)} x2={W - PAD} y2={py(v)} stroke="#eee" strokeWidth={0.5} />
+    <div>
+      <div style={{ overflowX: 'auto' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 300, display: 'block' }}>
+          {/* Axes */}
+          <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="#ccc" strokeWidth={0.5} />
+          <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="#ccc" strokeWidth={0.5} />
+          {[0.25, 0.5, 0.75].map(v => (
+            <line key={v} x1={PAD} y1={py(v)} x2={W - PAD} y2={py(v)} stroke="#eee" strokeWidth={0.5} />
+          ))}
+          {/* Perfect calibration diagonal */}
+          <line x1={px(0)} y1={py(0)} x2={px(1)} y2={py(1)} stroke="#bbb" strokeWidth={1} strokeDasharray="4,3" />
+          {/* Bubbles — V1, DC, V3 with x-offsets */}
+          {MODELS.map(({ key, pts, color, off }) =>
+            pts.map(({ midpoint, actual, n, label }) => (
+              <circle
+                key={`${key}-${label}`}
+                cx={px(midpoint) + off}
+                cy={py(actual)}
+                r={Math.min(10, Math.max(3, n * 1.5))}
+                fill={color}
+                opacity={0.82}
+              />
+            ))
+          )}
+          <text x={W / 2} y={H - 5} textAnchor="middle" fontSize={7.5} fill="#aaa">Predicted P(home win)</text>
+          <text x={9} y={H / 2} textAnchor="middle" fontSize={7.5} fill="#aaa" transform={`rotate(-90,9,${H / 2})`}>Actual rate</text>
+        </svg>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+        {[
+          { color: '#6b7280', label: 'V1 (Raw Poisson)', mce: v1Mce },
+          { color: '#0F3460', label: 'DC-only',          mce: dcMce },
+          { color: '#D4AF37', label: 'V3 (Primary) ★',  mce: v3Mce },
+        ].map(m => (
+          <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <svg width={10} height={10}><circle cx={5} cy={5} r={5} fill={m.color} opacity={0.85} /></svg>
+            <span style={{ fontSize: 10, color: 'var(--color-text-muted)', fontFamily: "'IBM Plex Mono', monospace" }}>
+              {m.label}{m.mce != null ? ` · err ${(m.mce * 100).toFixed(1)}pp` : ''}
+            </span>
+          </div>
         ))}
-        <line x1={px(0)} y1={py(0)} x2={px(1)} y2={py(1)} stroke="#bbb" strokeWidth={1} strokeDasharray="4,3" />
-        {points.map(({ midpoint, actual, n, label }) => (
-          <g key={label}>
-            <circle cx={px(midpoint)} cy={py(actual)} r={Math.min(10, Math.max(4, n * 1.5))} fill="#C9A84C" opacity={0.85} />
-            <text x={px(midpoint)} y={py(actual) - 12} textAnchor="middle" fontSize={8} fill="#888">{label}</text>
-          </g>
-        ))}
-        <text x={W / 2} y={H - 6} textAnchor="middle" fontSize={8} fill="#aaa">Predicted P(home win)</text>
-        <text x={10} y={H / 2} textAnchor="middle" fontSize={8} fill="#aaa" transform={`rotate(-90,10,${H / 2})`}>Actual rate</text>
-      </svg>
+      </div>
+
+      {/* Best calibrated insight */}
+      {bestModel && (
+        <div style={{ marginTop: 8, fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-text-muted)' }}>
+          Best calibrated: <strong style={{ color: 'var(--color-text-primary)' }}>{bestModel.name}</strong>
+          {' '}(mean err {(bestModel.mce * 100).toFixed(1)}pp)
+        </div>
+      )}
     </div>
   )
 }
@@ -1209,7 +1284,7 @@ export default function ModelPerformance() {
                     <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 8, lineHeight: 1.6 }}>
                       {lang === 'zh'
                         ? '散点靠近对角线 = 模型校准良好 · 圆圈大小 = 样本量 · 仅显示V3主队获胜概率'
-                        : 'Points near diagonal = well-calibrated · Circle size = sample count · V3 home win probability shown'}
+                        : 'Points near diagonal = well-calibrated · Circle size = sample count · V1 grey / DC navy / V3 gold'}
                     </p>
                   </div>
 

@@ -361,6 +361,8 @@ export default function PASPTab({ match, model }) {
   const [loading, setLoading] = useState(true)
   const [stratCtx, setStratCtx] = useState(null)
   const [stratLoading, setStratLoading] = useState(false)
+  const [aiConf, setAiConf] = useState(null)
+  const [calibData, setCalibData] = useState(null)
 
   useEffect(() => {
     if (!match?.id) return
@@ -448,6 +450,55 @@ export default function PASPTab({ match, model }) {
     }).catch(() => setStratLoading(false))
   }, [match?.id, match?.group_name, match?.home_team, match?.away_team])
 
+  // AI Role 10 confidence — role_id is the composite role
+  useEffect(() => {
+    if (!match?.id) return
+    supabase.from('role_outputs')
+      .select('output_json')
+      .eq('match_id', match.id)
+      .eq('role_id', '1a064ca4-0fa3-43ec-ba86-264a5665f70e')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data?.output_json) { setAiConf(null); return }
+        let json = data.output_json
+        if (typeof json === 'string') try { json = JSON.parse(json) } catch {}
+        setAiConf({ confidence: json?.confidence ?? null, recommendation: json?.recommendation ?? null })
+      })
+      .catch(() => {})
+  }, [match?.id])
+
+  // Direction calibration — all finished predictions with correct_v3 populated
+  useEffect(() => {
+    supabase.from('model_predictions')
+      .select('v3_home_win, v3_draw, v3_away_win, correct_v3')
+      .not('v3_lambda_home', 'is', null)
+      .not('correct_v3', 'is', null)
+      .then(({ data }) => {
+        if (!data?.length) { setCalibData(null); return }
+        const BUCKETS = [
+          { min: 0.30, max: 0.40, label: 'Near even (30–40%)' },
+          { min: 0.40, max: 0.50, label: 'Slight edge (40–50%)' },
+          { min: 0.50, max: 0.60, label: 'Moderate (50–60%)' },
+          { min: 0.60, max: 0.70, label: 'Strong (60–70%)' },
+          { min: 0.70, max: 1.01, label: 'Dominant (70%+)' },
+        ]
+        const buckets = BUCKETS.map(b => {
+          const rows = data.filter(r => {
+            const dom = Math.max(Number(r.v3_home_win) || 0, Number(r.v3_draw) || 0, Number(r.v3_away_win) || 0)
+            return dom >= b.min && dom < b.max
+          })
+          const n = rows.length
+          if (!n) return { ...b, n: 0, actual_rate: null, predicted_rate: null, ci_lower: null, ci_upper: null }
+          const actual_rate = rows.filter(r => r.correct_v3).length / n
+          const predicted_rate = rows.reduce((s, r) => s + Math.max(Number(r.v3_home_win) || 0, Number(r.v3_draw) || 0, Number(r.v3_away_win) || 0), 0) / n
+          const moe = 1.96 * Math.sqrt(actual_rate * (1 - actual_rate) / Math.max(n, 1))
+          return { ...b, n, actual_rate, predicted_rate, ci_lower: Math.max(0, actual_rate - moe), ci_upper: Math.min(1, actual_rate + moe) }
+        })
+        setCalibData(buckets)
+      })
+      .catch(() => {})
+  }, [])
+
   // Normalise sidebarModel.v3 into the shape runPASPv3 expects
   const v3Normalised = useMemo(() => {
     if (!model?.v3) return null
@@ -459,6 +510,16 @@ export default function PASPTab({ match, model }) {
       lambdaAway: model.v3.lambdaAway,
     }
   }, [model])
+
+  // AI confidence tier — depends on aiConf (async) only
+  const aiTier = useMemo(() => {
+    if (aiConf?.confidence == null) return null
+    const c = aiConf.confidence
+    if (c >= 0.75) return { tier: 'HIGH',   label: 'AI HIGH',   sub: 'Full Kelly sizing',               kelly: 1.00, bg: '#2D7A4F', tx: '#fff' }
+    if (c >= 0.50) return { tier: 'MEDIUM', label: 'AI MEDIUM', sub: '75% Kelly sizing',                kelly: 0.75, bg: '#BA7517', tx: '#fff' }
+    if (c >= 0.30) return { tier: 'LOW',    label: 'AI LOW',    sub: '50% Kelly sizing — caution',      kelly: 0.50, bg: '#C0392B', tx: '#fff' }
+    return              { tier: 'SKIP',   label: 'AI SKIP',  sub: 'Insufficient data — do not bet', kelly: 0.00, bg: '#6b7280', tx: '#fff' }
+  }, [aiConf])
 
   // Tactical signal — derived from stratCtx + current v3 lambdas
   // NOTE: must be declared AFTER v3Normalised to avoid TDZ error
@@ -743,6 +804,81 @@ export default function PASPTab({ match, model }) {
         </div>
       )}
 
+      {/* AI Confidence Badge */}
+      {aiTier && (() => {
+        const rec = aiConf?.recommendation
+        const v3Dir = v3Normalised
+          ? (v3Normalised.home >= v3Normalised.away && v3Normalised.home >= v3Normalised.draw ? 'home_win'
+            : v3Normalised.away >= v3Normalised.draw ? 'away_win' : 'draw')
+          : null
+        const agrees = rec && v3Dir && (rec === v3Dir)
+        const dirLabel = { home_win: 'Home Win', away_win: 'Away Win', draw: 'Draw', over: 'Over', skip: 'Skip' }[rec] || rec
+        return (
+          <div style={{ ...panel, marginBottom: 14 }}>
+            <div style={ph}><span>AI Confidence</span><span style={{ color: '#C9A84C' }}>Role 10</span></div>
+            <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', background: aiTier.bg, borderRadius: 6, padding: '6px 12px', minWidth: 100 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: aiTier.tx }}>{aiTier.label}</span>
+                <span style={{ fontSize: 11, color: `${aiTier.tx}cc`, marginTop: 2 }}>{aiTier.sub}</span>
+              </div>
+              {rec && rec !== 'skip' && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)' }}>
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', fontFamily: mono }}>Recommends:</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: agrees ? '#2D7A4F' : '#BA7517', fontFamily: mono }}>{dirLabel}</span>
+                  {v3Dir && <span style={{ fontSize: 9, color: agrees ? '#2D7A4F' : '#BA7517', fontFamily: mono }}>{agrees ? '✓ agrees V3' : '⚠ differs V3'}</span>}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Direction Calibration */}
+      {calibData && v3Normalised && (() => {
+        const dom = Math.max(v3Normalised.home, v3Normalised.draw, v3Normalised.away)
+        const bucket = calibData.find(b => dom >= b.min && dom < b.max)
+        if (!bucket || bucket.n === 0) return null
+        const { actual_rate, predicted_rate, ci_lower, ci_upper, n, label } = bucket
+        const diff = actual_rate - predicted_rate
+        const arrow = diff > 0.05 ? { ch: '↑', color: '#2D7A4F' } : diff < -0.05 ? { ch: '↓', color: '#C0392B' } : { ch: '=', color: '#BA7517' }
+        let signal, stakeNote
+        if (actual_rate < 0.5) {
+          signal = { label: 'Caution — model and history diverge', color: '#C0392B', bg: 'rgba(192,57,43,0.08)', border: 'rgba(192,57,43,0.25)' }
+          stakeNote = 'Review before betting — model and history diverge'
+        } else if (ci_lower < 0.5) {
+          signal = { label: `Wide uncertainty — small sample (n=${n})`, color: '#BA7517', bg: 'rgba(186,119,23,0.08)', border: 'rgba(186,119,23,0.25)' }
+          stakeNote = 'Reduce primary stake 15% — wide CI'
+        } else {
+          signal = { label: 'Calibration confirms V3 direction', color: '#2D7A4F', bg: 'rgba(45,122,79,0.08)', border: 'rgba(45,122,79,0.25)' }
+          stakeNote = 'No calibration adjustment needed'
+        }
+        return (
+          <div style={{ ...panel, marginBottom: 14 }}>
+            <div style={ph}><span>Direction Calibration</span><span style={{ color: '#C9A84C' }}>Historical</span></div>
+            <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ fontSize: 11, fontFamily: mono, color: 'var(--color-text-primary)' }}>
+                  V3 dominant: <strong>{(dom * 100).toFixed(1)}%</strong> · bucket: {label}
+                </div>
+                <div style={{ fontSize: 11, fontFamily: mono, color: 'var(--color-text-muted)' }}>
+                  Calibrated: <strong style={{ color: 'var(--color-text-primary)' }}>{(actual_rate * 100).toFixed(1)}%</strong>
+                  <span style={{ color: arrow.color, marginLeft: 4 }}>{arrow.ch}</span>
+                  {'  '}CI [{(ci_lower * 100).toFixed(0)}%–{(ci_upper * 100).toFixed(0)}%]
+                  {'  '}n={n} matches
+                </div>
+              </div>
+              <div style={{ padding: '6px 10px', borderRadius: 6, background: signal.bg, border: `0.5px solid ${signal.border}`, fontSize: 11, fontWeight: 600, color: signal.color, fontFamily: mono }}>
+                {signal.label}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--color-text-muted)', fontFamily: mono }}>
+                → {stakeNote}
+                {n < 5 && <span style={{ color: '#BA7517', marginLeft: 6 }}>(limited data — treat as indicative)</span>}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Budget input */}
       <div style={panel}>
         <div style={ph}>
@@ -832,10 +968,38 @@ export default function PASPTab({ match, model }) {
                 <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 1, lineHeight: 1.3 }}>{leg.reason}</div>
               </div>
               <div style={{ textAlign: 'right', fontSize: 13, fontFamily: mono, fontWeight: 500, color: 'var(--color-text-primary)' }}>{leg.odds}</div>
-              <div style={{ textAlign: 'right', fontSize: 13, fontFamily: mono, fontWeight: 500, color: 'var(--color-text-primary)' }}>¥{leg.stake}</div>
-              <div style={{ textAlign: 'right', fontSize: 12, fontFamily: mono, color: '#2D7A4F' }}>¥{Math.round(leg.stake * leg.odds)}</div>
+              <div style={{ textAlign: 'right', fontFamily: mono }}>
+                {aiTier && aiTier.kelly !== 1.0 ? (
+                  aiTier.kelly === 0 ? (
+                    <span style={{ fontSize: 13, color: '#6b7280' }}>—</span>
+                  ) : (() => {
+                    const adj = Math.round(leg.stake * aiTier.kelly / 10) * 10 || 10
+                    return (
+                      <>
+                        <div style={{ fontSize: 11, color: 'var(--color-text-muted)', textDecoration: 'line-through' }}>¥{leg.stake}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>¥{adj}</div>
+                      </>
+                    )
+                  })()
+                ) : (
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)' }}>¥{leg.stake}</span>
+                )}
+              </div>
+              <div style={{ textAlign: 'right', fontSize: 12, fontFamily: mono, color: '#2D7A4F' }}>
+                {aiTier && aiTier.kelly === 0 ? '—' : (() => {
+                  const s = aiTier ? Math.round(leg.stake * aiTier.kelly / 10) * 10 || 10 : leg.stake
+                  return `¥${Math.round(s * leg.odds)}`
+                })()}
+              </div>
             </div>
           ))}
+
+          {/* Kelly modifier note */}
+          {aiTier && aiTier.kelly !== 1.0 && (
+            <div style={{ padding: '8px 14px', borderTop: '0.5px solid var(--color-border)', fontSize: 10, fontFamily: mono, color: 'var(--color-text-muted)', background: 'var(--color-bg-secondary)' }}>
+              Stakes adjusted for AI confidence ({aiTier.label} — ×{aiTier.kelly})
+            </div>
+          )}
 
           {/* Payout scenarios */}
           <div style={{ padding: '10px 14px', borderTop: '0.5px solid var(--color-border)', background: 'var(--color-bg-secondary)' }}>
