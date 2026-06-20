@@ -60,7 +60,7 @@ BASE_RATINGS = {
   "Sweden":       {"att": 0.9580, "def": 0.3429},
   "Switzerland":  {"att": 0.7938, "def": 0.6516},
   "Tunisia":      {"att": 0.65,   "def": 0.3780},
-  "Turkey":       {"att": 0.7033, "def": 0.3537},
+  "Turkiye":      {"att": 0.7033, "def": 0.3537},
   "USA":          {"att": 0.8716, "def": 0.6682},
   "Uruguay":      {"att": 0.886,  "def": 1.2223},
   "Uzbekistan":   {"att": 0.5149, "def": 0.8727},
@@ -90,6 +90,23 @@ WC_RESULTS = [
   ("Iran",         "New Zealand",  2, 2, False),
   ("Sweden",       "Tunisia",      5, 1, False),
   ("Saudi Arabia", "Uruguay",      1, 1, False),
+  # Matchday 2
+  ("Iraq",         "Norway",           1, 4, False),
+  ("France",       "Senegal",          3, 1, False),
+  ("Argentina",    "Algeria",          3, 0, False),
+  ("Austria",      "Jordan",           3, 1, False),
+  ("Portugal",     "DR Congo",         1, 1, False),
+  ("England",      "Croatia",          4, 2, False),
+  ("Ghana",        "Panama",           1, 0, False),
+  ("Uzbekistan",   "Colombia",         1, 2, False),
+  ("Czechia",      "South Africa",     1, 1, False),
+  ("Switzerland",  "Bosnia-Herzegovina", 4, 1, False),
+  ("Canada",       "Qatar",            6, 0, True),
+  ("Mexico",       "South Korea",      1, 0, True),
+  ("USA",          "Australia",        2, 0, True),
+  ("Scotland",     "Morocco",          0, 1, False),
+  ("Brazil",       "Haiti",            3, 0, False),
+  ("Turkiye",      "Paraguay",         0, 1, False),
   # ← ADD NEW RESULTS HERE AFTER EACH MATCHDAY
 ]
 
@@ -147,15 +164,13 @@ def fit(matches):
   defe = {t: result.x[n+i] for i, t in enumerate(teams)}
   return att, defe, teams
 
-def generate_js(att_new, def_new, game_counts):
+def generate_js(att_new, def_new):
   all_teams = dict(BASE_RATINGS)
   for t in att_new:
-    if game_counts.get(t, 0) >= 2:
-      all_teams[t] = {
-        "att": round(att_new[t], 4),
-        "def": round(def_new[t], 4),
-      }
-    # else: keep base rating unchanged
+    all_teams[t] = {
+      "att": round(att_new[t], 4),
+      "def": round(def_new[t], 4),
+    }
 
   # Read current dcRatings.js
   with open("src/utils/dcRatings.js", "r") as f:
@@ -185,10 +200,9 @@ def generate_js(att_new, def_new, game_counts):
 
   # Replace teams object content
   content = re.sub(
-    r'(teams: \{)[^}]*(  \})',
-    f'\\1\n{teams_block}\n  \\2',
-    content,
-    flags=re.DOTALL
+    r'(teams: \{)[\s\S]*?(\n  \})',
+    f'\\1\n{teams_block}\\2',
+    content
   )
 
   return content
@@ -203,17 +217,35 @@ if __name__ == "__main__":
 
   att, defe, teams = fit(WC_RESULTS)
 
-  print("\nRating changes vs base:")
+  # ── Bayesian blending: shrink fitted values toward base prior ────────────
+  PRIOR_WEIGHT = 3  # trust 3 historical games worth
+  final_ratings = {}
+  for team in teams:
+    n_wc = game_counts.get(team, 0)
+    fitted_att = att[team]
+    fitted_def = defe[team]
+    base_att = BASE_RATINGS.get(team, {}).get('att', 0.5)
+    base_def = BASE_RATINGS.get(team, {}).get('def', 0.5)
+    blended_att = (n_wc * fitted_att + PRIOR_WEIGHT * base_att) / (n_wc + PRIOR_WEIGHT)
+    blended_def = (n_wc * fitted_def + PRIOR_WEIGHT * base_def) / (n_wc + PRIOR_WEIGHT)
+    final_ratings[team] = {
+      'att': round(blended_att, 4),
+      'def': round(blended_def, 4)
+    }
+
+  print(f"\nRating changes vs base (blended, PRIOR_WEIGHT={PRIOR_WEIGHT}):")
   print(f"{'Team':<20} {'att_old':>8} {'att_new':>8} {'Δatt':>7} {'def_old':>8} {'def_new':>8} {'Δdef':>7}")
   print("-" * 75)
   for t in sorted(teams):
     base = BASE_RATINGS.get(t, {"att": 0.5, "def": 0.5})
-    da = att[t] - base["att"]
-    dd = defe[t] - base["def"]
-    print(f"{t:<20} {base['att']:>8.4f} {att[t]:>8.4f} {da:>+7.4f} {base['def']:>8.4f} {defe[t]:>8.4f} {dd:>+7.4f}")
+    da = final_ratings[t]['att'] - base["att"]
+    dd = final_ratings[t]['def'] - base["def"]
+    print(f"{t:<20} {base['att']:>8.4f} {final_ratings[t]['att']:>8.4f} {da:>+7.4f} {base['def']:>8.4f} {final_ratings[t]['def']:>8.4f} {dd:>+7.4f}")
 
   # Write updated dcRatings.js
-  new_content = generate_js(att, defe, game_counts)
+  blended_att = {t: final_ratings[t]['att'] for t in final_ratings}
+  blended_def = {t: final_ratings[t]['def'] for t in final_ratings}
+  new_content = generate_js(blended_att, blended_def)
   with open("src/utils/dcRatings.js", "w") as f:
     f.write(new_content)
 
