@@ -335,15 +335,6 @@ export default function PASPTab({ match, model }) {
     }).catch(() => setStratLoading(false))
   }, [match?.id, match?.group_name, match?.home_team, match?.away_team])
 
-  // Tactical signal — derived from stratCtx + current v3 lambdas
-  const stratSignal = useMemo(() => {
-    if (!stratCtx || !v3Normalised) return null
-    const lh = Number(v3Normalised.lambdaHome || 1.5)
-    const la = Number(v3Normalised.lambdaAway || 1.5)
-    const v3Anchor = getModelAnchor(lh, la)
-    return { ...computeTacticalSignal(stratCtx.hMot, stratCtx.aMot, v3Anchor), v3Anchor }
-  }, [stratCtx, v3Normalised])
-
   // Normalise sidebarModel.v3 into the shape runPASPv3 expects
   const v3Normalised = useMemo(() => {
     if (!model?.v3) return null
@@ -355,6 +346,16 @@ export default function PASPTab({ match, model }) {
       lambdaAway: model.v3.lambdaAway,
     }
   }, [model])
+
+  // Tactical signal — derived from stratCtx + current v3 lambdas
+  // NOTE: must be declared AFTER v3Normalised to avoid TDZ error
+  const stratSignal = useMemo(() => {
+    if (!stratCtx || !v3Normalised) return null
+    const lh = Number(v3Normalised.lambdaHome || 1.5)
+    const la = Number(v3Normalised.lambdaAway || 1.5)
+    const v3Anchor = getModelAnchor(lh, la)
+    return { ...computeTacticalSignal(stratCtx.hMot, stratCtx.aMot, v3Anchor), v3Anchor }
+  }, [stratCtx, v3Normalised])
 
   const portfolio = useMemo(() => {
     if (!oddsData || !v3Normalised) return null
