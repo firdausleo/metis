@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from '../../lib/i18n'
 import { useUser } from '../../context/UserContext'
 import { getFlag } from '../../lib/teamFlags'
 import { SCORE_MAX } from '../../lib/poisson'
 import { getRangeProbabilities } from '../../utils/pasp'
 import InfoTooltip from '../InfoTooltip'
+import { supabase } from '../../lib/supabase'
 
 // ── Rank → color mapping (gold #1 / navy #2 / green #3 / gray #4+) ────────
 const RANK_COLORS = { 1: '#C9A84C', 2: '#1A3A6C', 3: '#2D7A4F' }
@@ -257,6 +258,191 @@ function AiRoleCard({ output_json, isComposite }) {
   )
 }
 
+// ── Strategic context helpers ────────────────────────────────────────────
+
+function computeGroupStandings(matches) {
+  const teams = {}
+  const sorted = [...matches].sort((a, b) => new Date(a.match_date || 0) - new Date(b.match_date || 0))
+  for (const m of sorted) {
+    if (m.home_score == null || m.away_score == null) continue
+    for (const tm of [m.home_team, m.away_team])
+      if (!teams[tm]) teams[tm] = { team: tm, played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, pts: 0, form: [] }
+    const h = teams[m.home_team], a = teams[m.away_team]
+    h.played++; a.played++
+    h.gf += m.home_score; h.ga += m.away_score
+    a.gf += m.away_score; a.ga += m.home_score
+    if (m.home_score > m.away_score) {
+      h.won++; h.pts += 3; a.lost++; h.form.push('W'); a.form.push('L')
+    } else if (m.home_score < m.away_score) {
+      a.won++; a.pts += 3; h.lost++; h.form.push('L'); a.form.push('W')
+    } else {
+      h.drawn++; a.drawn++; h.pts++; a.pts++; h.form.push('D'); a.form.push('D')
+    }
+  }
+  return Object.values(teams)
+    .map(tm => ({ ...tm, gd: tm.gf - tm.ga }))
+    .sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
+}
+
+function computeMotivation(pts, gd, matchday) {
+  if (matchday <= 1) return 3
+  let s = 3
+  if (pts === 0) s += 2
+  else if (pts <= 1) s += 1
+  if (pts >= 3 && gd >= 3) s -= 2
+  else if (pts >= 3) s -= 1
+  return Math.max(1, Math.min(5, s))
+}
+
+function computeScenarios(pts) {
+  const w = pts + 3, d = pts + 1
+  return {
+    win:  { pts: w, label: w >= 6 ? 'Guaranteed top 2' : w >= 4 ? 'Strong position' : 'Needs MD3 win' },
+    draw: { pts: d, label: d >= 4 ? 'Likely safe' : d >= 2 ? 'Needs MD3 result' : 'Dangerous position' },
+    lose: { pts,    label: pts >= 3 ? 'Must win MD3' : 'Likely eliminated' },
+  }
+}
+
+function _getModelAnchor(lh, la) {
+  const sum = lh + la
+  if (sum < 2.0) return 1
+  if (sum < 2.8) return 2
+  if (sum < 3.8) return 3
+  if (sum < 4.8) return 4
+  return 5
+}
+
+function computeTacticalSignal(homeMot, awayMot, v3Anchor) {
+  let text, goalAdj = 0, note
+  if (homeMot >= 4 && awayMot <= 2) {
+    text = 'Home dominant — Away protecting'; goalAdj = 0.2
+    note = 'Home team must attack. Weight portfolio toward home win scorelines.'
+  } else if (awayMot >= 4 && homeMot <= 2) {
+    text = 'Away dominant — Home protecting'; goalAdj = 0.2
+    note = 'Away team more motivated. Consider away win scorelines despite home model edge.'
+  } else if (homeMot >= 4 && awayMot >= 4) {
+    text = 'Both must win — Open game'; goalAdj = 0.4
+    note = 'Both teams need goals. Increase TG insurance allocation. Avoid 0-0, 1-0 bets.'
+  } else if (homeMot <= 2 && awayMot <= 2) {
+    text = 'Both safe — Conservative game'; goalAdj = -0.3
+    note = 'Both teams safe. Expect conservative play. Reduce TG anchor by 1, favour draw.'
+  } else {
+    text = 'Balanced — Follow model'; goalAdj = 0
+    note = 'Follow V3 model — no strategic adjustment needed.'
+  }
+  const adjAnchor = Math.max(1, Math.round(v3Anchor + goalAdj))
+  const adjSign = goalAdj > 0 ? `+${goalAdj}` : goalAdj < 0 ? `${goalAdj}` : '±0'
+  return { text, goalAdj, adjSign, adjAnchor, note }
+}
+
+function motColor(m) {
+  return m >= 5 ? '#ef4444' : m === 4 ? '#BA7517' : m === 3 ? 'var(--color-text-muted)' : m === 2 ? '#C9A84C' : 'var(--color-text-muted)'
+}
+function motStars(m) { return '★'.repeat(m) + '☆'.repeat(5 - m) }
+function riskLabel(m) { return m >= 4 ? 'HIGH' : m === 3 ? 'MEDIUM' : 'LOW' }
+function riskColor(m) { return m >= 4 ? '#ef4444' : m === 3 ? '#BA7517' : '#C9A84C' }
+function scenColor(label) {
+  if (['Guaranteed top 2','Strong position','Likely safe'].includes(label)) return '#2D7A4F'
+  if (['Dangerous position','Likely eliminated'].includes(label)) return '#ef4444'
+  return '#BA7517'
+}
+function md3StrColor(s) { return s === 'Strong' ? '#ef4444' : s === 'Medium' ? '#BA7517' : '#2D7A4F' }
+
+const R32_BRACKET = {
+  A: { win: '3rd C/E/F/H/I', lose: '2nd G' },
+  B: { win: '3rd A/B/C/D/F', lose: '2nd H' },
+  C: { win: '3rd A/B/D/E/J', lose: '2nd F' },
+  D: { win: '3rd B/C/F/G/I', lose: '2nd E' },
+  E: { win: '3rd A/C/D/G/H', lose: '2nd D' },
+  F: { win: '3rd B/D/E/G/J', lose: '2nd C' },
+  G: { win: '3rd A/B/C/H/I', lose: '2nd F' },
+  H: { win: '3rd D/E/F/I/J', lose: '2nd G' },
+  I: { win: '3rd A/B/C/D/E', lose: '2nd J' },
+  J: { win: '3rd F/G/H/I/K', lose: '2nd I' },
+  K: { win: '3rd G/H/I/J/L', lose: '2nd L' },
+  L: { win: '3rd H/I/J/K/L', lose: '2nd K' },
+}
+const R16_HALF = {
+  A: 'Top', B: 'Top', C: 'Top', D: 'Top',
+  E: 'Top', F: 'Top', G: 'Top', H: 'Top',
+  I: 'Bottom', J: 'Bottom', K: 'Bottom', L: 'Bottom',
+}
+
+function parseSlot(slot) {
+  const m = slot.match(/(\d+)(?:st|nd|rd|th)\s+(.+)/)
+  if (!m) return { pos: 1, groups: [] }
+  return { pos: parseInt(m[1]), groups: m[2].split('/').map(s => s.trim()) }
+}
+function teamAtPos(ags, group, pos) {
+  const st = ags[group]
+  return (st && st[pos - 1]) ? st[pos - 1].team : null
+}
+function computeR32(group, ags) {
+  const br = R32_BRACKET[group]
+  if (!br) return null
+  const { pos: wp, groups: wg } = parseSlot(br.win)
+  const { pos: lp, groups: lg } = parseSlot(br.lose)
+  return {
+    ifFirst:  { slot: br.win,  opponents: wg.map(g => teamAtPos(ags, g, wp)).filter(Boolean) },
+    ifSecond: { slot: br.lose, opponent: lg.length === 1 ? teamAtPos(ags, lg[0], lp) : null },
+  }
+}
+function diffLabel(pts) {
+  if (pts === 0) return { label: 'Easy',   color: '#2D7A4F' }
+  if (pts <= 2)  return { label: 'Medium', color: '#BA7517' }
+  return              { label: 'Hard',   color: '#ef4444' }
+}
+function r32Diff(r32, ags, ifFirst) {
+  if (!r32) return null
+  if (ifFirst) {
+    const ptsList = r32.ifFirst.opponents.map(opp => {
+      for (const g of Object.keys(ags)) { const tm = ags[g].find(s => s.team === opp); if (tm) return tm.pts }
+      return 0
+    })
+    return diffLabel(ptsList.length ? Math.max(0, ...ptsList) : 0)
+  }
+  const opp = r32.ifSecond.opponent
+  if (!opp) return { label: 'Medium', color: '#BA7517' }
+  for (const g of Object.keys(ags)) { const tm = ags[g].find(s => s.team === opp); if (tm) return diffLabel(tm.pts) }
+  return { label: 'Medium', color: '#BA7517' }
+}
+function dangerTeams(group, ags) {
+  const half = R16_HALF[group]
+  if (!half) return []
+  return Object.keys(R16_HALF)
+    .filter(g => R16_HALF[g] === half && g !== group)
+    .map(g => ags[g]?.[0])
+    .filter(Boolean)
+    .sort((a, b) => b.pts - a.pts || b.gd - a.gd)
+    .slice(0, 2)
+    .map(tm => tm.team)
+}
+function md3Impl(winToday, md3Opp, md3Str) {
+  if (!md3Opp) return null
+  if (winToday && md3Str === 'Weak')    return `Can rotate squad vs ${md3Opp}. Top 2 virtually secured.`
+  if (winToday && md3Str === 'Strong')  return `Still needs MD3 focus vs ${md3Opp}. Win today = good but not safe.`
+  if (!winToday && md3Str === 'Weak')   return `Must beat ${md3Opp} in MD3 to qualify. Doable — they're likely eliminated.`
+  if (!winToday && md3Str === 'Strong') return `Dangerous — must beat strong ${md3Opp} in MD3. Draw today is risky.`
+  return null
+}
+function qualStatus(pts) {
+  if (pts >= 4) return { label: 'Safe ✓',        color: '#2D7A4F' }
+  if (pts >= 2) return { label: 'In contention',  color: '#BA7517' }
+  if (pts >= 1) return { label: 'At risk',         color: '#C9A84C' }
+  return              { label: 'Eliminated ✗',   color: '#ef4444' }
+}
+function chessLine(name, mot, scen, md3Opp, md3Str) {
+  if (mot >= 4) {
+    const sfx = md3Opp ? ` and forces full-strength MD3 vs ${md3Opp}.` : '.'
+    return scen.win.label === 'Guaranteed top 2'
+      ? `${name} must WIN today — draw leaves R32 at risk${sfx}`
+      : `${name} must WIN — anything less creates critical MD3 pressure.`
+  }
+  if (mot <= 2) return `${name} is already safe — expect rotation and conservative play.`
+  if (md3Str === 'Strong') return `WIN preferred for ${name} to avoid a dangerous MD3 vs ${md3Opp}.`
+  return `${name} comfortable — WIN locks top-2 spot, draw still workable.`
+}
+
 // ── PredictionTab ────────────────────────────────────────────────────────
 
 export default function PredictionTab({
@@ -270,6 +456,91 @@ export default function PredictionTab({
   const v3 = sidebarModel?.v3
   const v1 = sidebarModel?.v1
   const hasModel = !!v3
+  const mono = "'IBM Plex Mono', monospace"
+
+  const [stratCtx, setStratCtx] = useState(null)
+  const [stratLoading, setStratLoading] = useState(false)
+
+  // Strategic context: group standings + remaining fixtures + all-group standings
+  useEffect(() => {
+    if (!match?.id || !match?.group_name) return
+    setStratLoading(true)
+    Promise.all([
+      supabase.from('matches')
+        .select('home_team, away_team, home_score, away_score, match_date')
+        .eq('status', 'finished')
+        .eq('group_name', match.group_name)
+        .order('match_date', { ascending: true }),
+      supabase.from('matches')
+        .select('id, home_team, away_team, match_date')
+        .eq('status', 'upcoming')
+        .eq('group_name', match.group_name)
+        .neq('id', match.id)
+        .order('match_date', { ascending: true }),
+      supabase.from('matches')
+        .select('home_team, away_team, home_score, away_score, group_name')
+        .eq('status', 'finished')
+        .not('group_name', 'is', null),
+    ]).then(([finRes, upRes, allRes]) => {
+      const finished = finRes.data || []
+      const upcoming = (upRes.data || []).filter(f =>
+        f.home_team === match.home_team || f.away_team === match.home_team ||
+        f.home_team === match.away_team || f.away_team === match.away_team
+      )
+      const byGroup = {}
+      for (const row of (allRes.data || [])) {
+        if (!row.group_name) continue
+        if (!byGroup[row.group_name]) byGroup[row.group_name] = []
+        byGroup[row.group_name].push(row)
+      }
+      const ags = {}
+      for (const g of Object.keys(byGroup)) ags[g] = computeGroupStandings(byGroup[g])
+
+      const standings = computeGroupStandings(finished)
+      const getStat = team => standings.find(s => s.team === team) || { pts: 0, gd: 0, gf: 0, ga: 0, played: 0, form: [] }
+      const hStat = getStat(match.home_team)
+      const aStat = getStat(match.away_team)
+      const hMD = hStat.played + 1
+      const aMD = aStat.played + 1
+      const hMot = computeMotivation(hStat.pts, hStat.gd, hMD)
+      const aMot = computeMotivation(aStat.pts, aStat.gd, aMD)
+      const matchday = Math.max(hMD, aMD)
+      const md3Opp = team => {
+        const f = upcoming.find(u => u.home_team === team || u.away_team === team)
+        return f ? (f.home_team === team ? f.away_team : f.home_team) : null
+      }
+      const md3Str = opp => {
+        if (!opp) return null
+        const s = standings.find(tm => tm.team === opp)
+        return (s?.pts || 0) >= 3 ? 'Strong' : (s?.pts || 0) >= 1 ? 'Medium' : 'Weak'
+      }
+      const hMD3 = md3Opp(match.home_team)
+      const aMD3 = md3Opp(match.away_team)
+      const grp = match.group_name
+      setStratCtx({
+        standings, matchday, ags,
+        hStat, aStat, hMot, aMot,
+        hScen: computeScenarios(hStat.pts),
+        aScen: computeScenarios(aStat.pts),
+        hMD3, aMD3,
+        hMD3Str: md3Str(hMD3),
+        aMD3Str: md3Str(aMD3),
+        r32: computeR32(grp, ags),
+        r16Half: R16_HALF[grp] || '?',
+        danger: dangerTeams(grp, ags),
+      })
+      setStratLoading(false)
+    }).catch(() => setStratLoading(false))
+  }, [match?.id, match?.group_name, match?.home_team, match?.away_team])
+
+  // Tactical signal — derived from stratCtx + v3 lambdas
+  const stratSignal = useMemo(() => {
+    if (!stratCtx || !v3) return null
+    const lh = Number(v3.lambdaHome || 1.5)
+    const la = Number(v3.lambdaAway || 1.5)
+    const v3Anchor = _getModelAnchor(lh, la)
+    return { ...computeTacticalSignal(stratCtx.hMot, stratCtx.aMot, v3Anchor), v3Anchor }
+  }, [stratCtx, v3])
 
   // ── AI Verdict section ──────────────────────────────────────────────────
   const rawRec = aiComposite?.recommendation
@@ -469,9 +740,14 @@ export default function PredictionTab({
                     <p style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 700, color: col, lineHeight: 1 }}>
                       {(p * 100).toFixed(1)}%
                     </p>
-                    {sidebarModel?.v2 && (
+                    {v1?.probs?.[key] != null && (
                       <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>
-                        V2 {(sidebarModel.v2.probs[key] * 100).toFixed(1)}%
+                        V1 {(v1.probs[key] * 100).toFixed(1)}%
+                      </p>
+                    )}
+                    {key !== 'draw' && v3 && (
+                      <p style={{ fontSize: 12, fontFamily: mono, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                        λ = {key === 'home' ? v3.lambdaHome.toFixed(2) : v3.lambdaAway.toFixed(2)}
                       </p>
                     )}
                   </div>
@@ -783,6 +1059,200 @@ export default function PredictionTab({
           </>
         )}
       </Collapsible>
+
+      {/* ── Strategic Context (collapsible) ── */}
+      {match?.group_name && (stratLoading || stratCtx) && (
+        <Collapsible
+          label={`Strategic Context · Group ${match.group_name} · ${stratCtx ? `MD${stratCtx.matchday}` : '…'}`}
+          defaultOpen={true}
+        >
+          {stratLoading && !stratCtx ? (
+            <div style={{ fontSize: 11, color: 'var(--color-text-muted)', fontFamily: mono }}>
+              Loading group data…
+            </div>
+          ) : stratCtx && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+              {/* Three-column: home | tactical | away */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr minmax(150px,180px) 1fr', gap: 12, alignItems: 'start' }}>
+
+                {[
+                  { teamName: match.home_team, stat: stratCtx.hStat, mot: stratCtx.hMot, scen: stratCtx.hScen, md3: stratCtx.hMD3, md3Str: stratCtx.hMD3Str },
+                  { teamName: match.away_team, stat: stratCtx.aStat, mot: stratCtx.aMot, scen: stratCtx.aScen, md3: stratCtx.aMD3, md3Str: stratCtx.aMD3Str },
+                ].map((tm, idx) => {
+                  const r32 = stratCtx.r32
+                  const ags = stratCtx.ags || {}
+                  const danger = stratCtx.danger || []
+                  const half = stratCtx.r16Half
+                  const d1 = r32 ? r32Diff(r32, ags, true) : null
+                  const d2 = r32 ? r32Diff(r32, ags, false) : null
+                  return (
+                    <div key={idx} style={{ background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '12px', display: 'flex', flexDirection: 'column' }}>
+                      {/* Name + stats */}
+                      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '0.02em', marginBottom: 3 }}>{tm.teamName}</div>
+                      <div style={{ fontSize: 11, fontFamily: mono, color: 'var(--color-text-muted)', marginBottom: 8 }}>
+                        Pts: <strong style={{ color: 'var(--color-text-primary)' }}>{tm.stat.pts}</strong>
+                        {' · '}GD: <strong style={{ color: 'var(--color-text-primary)' }}>{tm.stat.gd >= 0 ? '+' : ''}{tm.stat.gd}</strong>
+                        {' · '}P: <strong style={{ color: 'var(--color-text-primary)' }}>{tm.stat.played}</strong>
+                      </div>
+
+                      {/* Motivation */}
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 15, color: motColor(tm.mot), letterSpacing: 1 }}>{motStars(tm.mot)}</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: riskColor(tm.mot), fontFamily: mono, marginTop: 2 }}>Risk: {riskLabel(tm.mot)}</div>
+                      </div>
+
+                      {/* Today */}
+                      <div style={{ borderTop: '0.5px solid var(--color-border)', paddingTop: 8, marginBottom: 8 }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 4 }}>Today (MD{tm.stat.played + 1})</div>
+                        {[
+                          { label: 'Win',  data: tm.scen.win },
+                          { label: 'Draw', data: tm.scen.draw },
+                          { label: 'Lose', data: tm.scen.lose },
+                        ].map(({ label, data }) => (
+                          <div key={label} style={{ display: 'flex', gap: 4, fontSize: 10, fontFamily: mono, marginBottom: 2 }}>
+                            <span style={{ color: 'var(--color-text-muted)', minWidth: 36 }}>If {label}:</span>
+                            <span style={{ color: scenColor(data.label), fontWeight: 600 }}>{data.label}</span>
+                            <span style={{ color: 'var(--color-text-muted)' }}>({data.pts}pt)</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* MD3 */}
+                      {tm.md3 && (
+                        <div style={{ borderTop: '0.5px solid var(--color-border)', paddingTop: 8, marginBottom: 8 }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 4 }}>MD3</div>
+                          <div style={{ fontSize: 11, fontFamily: mono, marginBottom: 4 }}>
+                            vs <strong>{tm.md3}</strong>
+                            {tm.md3Str && <span style={{ fontSize: 10, color: md3StrColor(tm.md3Str), fontWeight: 700, marginLeft: 4 }}>({tm.md3Str})</span>}
+                          </div>
+                          {md3Impl(true, tm.md3, tm.md3Str) && (
+                            <div style={{ fontSize: 10, color: '#2D7A4F', fontFamily: mono, lineHeight: 1.5, marginBottom: 2 }}>▸ Win: {md3Impl(true, tm.md3, tm.md3Str)}</div>
+                          )}
+                          {md3Impl(false, tm.md3, tm.md3Str) && (
+                            <div style={{ fontSize: 10, color: '#BA7517', fontFamily: mono, lineHeight: 1.5 }}>▸ Draw: {md3Impl(false, tm.md3, tm.md3Str)}</div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* R32 Projection */}
+                      {r32 && (
+                        <div style={{ borderTop: '0.5px solid var(--color-border)', paddingTop: 8, marginBottom: 8 }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 6 }}>R32 Projection</div>
+                          <div style={{ paddingLeft: 8, marginBottom: 4 }}>
+                            <div style={{ fontSize: 9, color: 'var(--color-text-muted)', marginBottom: 1 }}>If 1st:</div>
+                            <div style={{ fontSize: 10, fontFamily: mono, color: 'var(--color-text-primary)' }}>
+                              {r32.ifFirst.opponents.length > 0 ? r32.ifFirst.opponents.join(' / ') : r32.ifFirst.slot}
+                            </div>
+                            {d1 && <span style={{ fontSize: 9, fontWeight: 700, color: d1.color, fontFamily: mono }}>Difficulty: {d1.label}</span>}
+                          </div>
+                          <div style={{ paddingLeft: 8 }}>
+                            <div style={{ fontSize: 9, color: 'var(--color-text-muted)', marginBottom: 1 }}>If 2nd:</div>
+                            <div style={{ fontSize: 10, fontFamily: mono, color: 'var(--color-text-primary)' }}>
+                              {r32.ifSecond.opponent || r32.ifSecond.slot}
+                            </div>
+                            {d2 && <span style={{ fontSize: 9, fontWeight: 700, color: d2.color, fontFamily: mono }}>Difficulty: {d2.label}</span>}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* R16 Bracket */}
+                      <div style={{ borderTop: '0.5px solid var(--color-border)', paddingTop: 8 }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 4 }}>R16 Bracket</div>
+                        <div style={{ fontSize: 10, fontFamily: mono, color: 'var(--color-text-primary)', marginBottom: danger.length ? 4 : 0 }}>{half} half</div>
+                        {danger.length > 0 && (
+                          <div>
+                            <div style={{ fontSize: 9, color: 'var(--color-text-muted)', marginBottom: 2 }}>Danger teams:</div>
+                            {danger.map(d => (
+                              <div key={d} style={{ fontSize: 10, fontFamily: mono, color: '#C9A84C', fontWeight: 600 }}>{d}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* Tactical signal — middle column */}
+                {stratSignal && (
+                  <div style={{ background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)', borderRadius: 8, padding: '12px', display: 'flex', flexDirection: 'column', gap: 8, gridRow: 1, gridColumn: '2 / 3' }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>Tactical Signal</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', lineHeight: 1.4 }}>{stratSignal.text}</div>
+                    <div style={{ borderTop: '0.5px solid var(--color-border)', paddingTop: 8 }}>
+                      <div style={{ fontSize: 11, fontFamily: mono, color: 'var(--color-text-primary)' }}>
+                        Strategic anchor: <strong>{stratSignal.adjAnchor}g</strong>
+                      </div>
+                      <div style={{ fontSize: 10, fontFamily: mono, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                        (V3: {stratSignal.v3Anchor}g{stratSignal.goalAdj !== 0 ? ` + ${stratSignal.adjSign}` : ' · no adj'})
+                      </div>
+                    </div>
+                    <div style={{ borderTop: '0.5px solid var(--color-border)', paddingTop: 8 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 4 }}>PASP note</div>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.6 }}>{stratSignal.note}</div>
+                    </div>
+                    <div style={{ borderTop: '0.5px solid var(--color-border)', paddingTop: 8 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 6 }}>Chess summary</div>
+                      {[
+                        { name: match.home_team, mot: stratCtx.hMot, scen: stratCtx.hScen, md3: stratCtx.hMD3, md3Str: stratCtx.hMD3Str },
+                        { name: match.away_team, mot: stratCtx.aMot, scen: stratCtx.aScen, md3: stratCtx.aMD3, md3Str: stratCtx.aMD3Str },
+                      ].map(tm => (
+                        <div key={tm.name} style={{ fontSize: 11, fontStyle: 'italic', color: 'var(--color-text-primary)', lineHeight: 1.6, marginBottom: 6 }}>
+                          {chessLine(tm.name, tm.mot, tm.scen, tm.md3, tm.md3Str)}
+                        </div>
+                      ))}
+                      <div style={{ borderTop: '0.5px solid var(--color-border)', paddingTop: 6, fontSize: 10, color: 'var(--color-text-muted)', fontStyle: 'italic', lineHeight: 1.6 }}>
+                        {stratSignal.goalAdj > 0 && 'Both teams pressing — expect open play and set pieces.'}
+                        {stratSignal.goalAdj < 0 && 'Conservative game expected — low-scoring likely.'}
+                        {stratSignal.goalAdj === 0 && 'Follow V3 model — no strategic distortion expected.'}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Group standings mini table */}
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 6, fontFamily: mono }}>
+                  Group {match.group_name} Standings
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '0.5px solid var(--color-border)' }}>
+                      {['Pos','Team','Pts','GD','Form','Status'].map(h => (
+                        <th key={h} style={{ padding: '4px 8px', fontSize: 9, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--color-text-muted)', textAlign: h === 'Team' ? 'left' : 'center', fontFamily: mono }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stratCtx.standings.map((s, i) => {
+                      const isPlaying = s.team === match.home_team || s.team === match.away_team
+                      const qs = qualStatus(s.pts)
+                      return (
+                        <tr key={s.team} style={{ background: isPlaying ? 'rgba(26,58,108,0.06)' : 'transparent', borderBottom: '0.5px solid var(--color-border-light)' }}>
+                          <td style={{ padding: '5px 8px', textAlign: 'center', fontFamily: mono, color: 'var(--color-text-muted)', fontSize: 11 }}>{i + 1}</td>
+                          <td style={{ padding: '5px 8px', fontWeight: isPlaying ? 700 : 400, color: 'var(--color-text-primary)' }}>{s.team}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'center', fontFamily: mono, fontWeight: 700, color: 'var(--color-text-primary)' }}>{s.pts}</td>
+                          <td style={{ padding: '5px 8px', textAlign: 'center', fontFamily: mono, color: s.gd > 0 ? '#2D7A4F' : s.gd < 0 ? '#ef4444' : 'var(--color-text-muted)' }}>
+                            {s.gd > 0 ? '+' : ''}{s.gd}
+                          </td>
+                          <td style={{ padding: '5px 8px', textAlign: 'center', fontFamily: mono, letterSpacing: 2 }}>
+                            {s.form.map((f, fi) => (
+                              <span key={fi} style={{ color: f === 'W' ? '#2D7A4F' : f === 'L' ? '#ef4444' : '#BA7517', fontWeight: 700 }}>{f}</span>
+                            ))}
+                            {!s.form.length && <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
+                          </td>
+                          <td style={{ padding: '5px 8px', textAlign: 'center', fontSize: 9, fontWeight: 700, fontFamily: mono, color: qs.color, whiteSpace: 'nowrap' }}>{qs.label}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+          )}
+        </Collapsible>
+      )}
 
       {/* ── AI Role Analysis (collapsible) ── */}
       {(() => {
