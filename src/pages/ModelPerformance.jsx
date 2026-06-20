@@ -1033,7 +1033,7 @@ export default function ModelPerformance() {
                         return (
                           <tr key={row.id}>
                             <td style={{ ...TD, whiteSpace: 'nowrap', fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", color: 'var(--color-text-muted)' }}>
-                              {fmtDate(row.settled_at || m?.match_date)}
+                              {fmtDate(m?.match_date)}
                             </td>
                             <td style={{ ...TD, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {m ? `${m.home_team} vs ${m.away_team}` : '—'}
