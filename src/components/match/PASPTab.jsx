@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useUser } from '../../context/UserContext'
+import { poissonPMF, SCORE_MAX } from '../../lib/poisson'
 
-// ── PASP v3 Algorithm (pure JS) ──────────────────────────
+// ── PASP v3 Algorithm (pure JS, kept for direction calibration) ───────────
 
 function stripVig(odds) {
   const raw = { home: 1/odds.home, draw: 1/odds.draw, away: 1/odds.away }
@@ -20,15 +21,6 @@ function stripVigTotalGoals(tg) {
   return implied
 }
 
-function getModelAnchor(lh, la) {
-  const sum = lh + la
-  if (sum < 2.0) return 1
-  if (sum < 2.8) return 2
-  if (sum < 3.8) return 3
-  if (sum < 4.8) return 4
-  return 5
-}
-
 function getMarketAnchor(implied) {
   let best = '0', bestP = 0
   for (const [k, p] of Object.entries(implied)) {
@@ -38,156 +30,158 @@ function getMarketAnchor(implied) {
   return parseInt(best)
 }
 
-function checkR11(modelDominant, marketDominant) {
-  return (marketDominant - modelDominant) > 0.15
-}
+// ── Follow Model: matrix-based portfolio selection ────────────────────────
+// Uses V3 matrix (65% DC-corrected Poisson + 35% pure Poisson, rho=-0.0612)
+// to select scorelines from model probability, NOT market odds rankings.
 
-function isDistributionFlat(implied) {
-  const probs = Object.entries(implied)
-    .filter(([k]) => k !== '7plus')
-    .map(([,p]) => p)
-    .sort((a,b) => b-a)
-    .slice(0, 3)
-  return (probs[0] - probs[2]) < 0.03
-}
-
-function getBestScoreline(scores, targetTotal, direction) {
-  const candidates = []
-  for (const [score, odds] of Object.entries(scores)) {
-    if (!score.includes('-')) continue
-    const [h, a] = score.split('-').map(Number)
-    if (h + a !== targetTotal) continue
-    const isHome = h > a, isDraw = h === a, isAway = h < a
-    if (direction === 'home' && !isHome) continue
-    if (direction === 'away' && !isAway) continue
-    if (direction === 'draw' && !isDraw) continue
-    candidates.push({ score, odds: Number(odds), h, a })
-  }
-  if (!candidates.length) return null
-  candidates.sort((a,b) => a.odds - b.odds)
-  return candidates[0]
-}
-
-function runPASPv3(oddsData, v3, sessionBudget) {
-  if (!oddsData || !v3) return null
-  const spf = oddsData.spf
-  const scores = oddsData.scores || {}
-  const tg = oddsData.totalGoals || {}
-  if (!spf || !tg || !spf.home) return null
-
-  const market1X2 = stripVig({
-    home: Number(spf.home), draw: Number(spf.draw), away: Number(spf.away),
-  })
-  const modelDominant = Math.max(v3.home, v3.away)
-  const marketDominant = Math.max(market1X2.home, market1X2.away)
-  const direction = v3.home >= v3.away && v3.home >= v3.draw ? 'home'
-    : v3.away >= v3.home && v3.away >= v3.draw ? 'away' : 'draw'
-
-  const r11Triggered = checkR11(modelDominant, marketDominant)
-  const lh = Number(v3.lambdaHome || 1.5)
-  const la = Number(v3.lambdaAway || 1.5)
-  const modelAnchor = getModelAnchor(lh, la)
-
-  const tgImplied = stripVigTotalGoals(tg)
-  const marketAnchor = getMarketAnchor(tgImplied)
-
-  let anchor = marketAnchor
-  if (r11Triggered) {
-    const r11Anchor = modelAnchor + 1
-    if (r11Anchor === marketAnchor || r11Anchor === marketAnchor + 1) anchor = r11Anchor
-  }
-
-  const isFlat = isDistributionFlat(tgImplied)
-
-  const primary = getBestScoreline(scores, anchor, direction)
-  const insurance1Odds = Number(tg[anchor.toString()])
-  const insurance2Total = anchor - 1
-  const insurance2AltTotal = anchor + 1
-  const ins2OddsLower = Number(tg[insurance2Total.toString()] || 999)
-  const ins2OddsUpper = Number(tg[insurance2AltTotal.toString()] || 999)
-  const insurance2Total_final = ins2OddsLower <= ins2OddsUpper ? insurance2Total : insurance2AltTotal
-  const insurance2Odds = Math.min(ins2OddsLower, ins2OddsUpper)
-
-  let valueBet = null
-  if (r11Triggered) {
-    valueBet = getBestScoreline(scores, anchor + 1, direction)
-    if (valueBet && valueBet.odds > 12) valueBet = null
-  }
-
-  const pct = valueBet
-    ? { primary: 0.45, ins1: 0.25, ins2: 0.20, value: 0.10 }
-    : { primary: 0.50, ins1: 0.30, ins2: 0.20, value: 0 }
-
+function computeFollowModelPortfolio(lh, la, oddsData, budget) {
+  const N = SCORE_MAX + 1           // 9×9 matrix
+  const rho = -0.0612
   function roundStake(n) { return Math.round(n / 10) * 10 || 10 }
 
+  // V1: pure Poisson
+  const v1 = Array.from({ length: N }, (_, i) =>
+    Array.from({ length: N }, (_, j) => poissonPMF(i, lh) * poissonPMF(j, la))
+  )
+
+  // DC: V1 × tau, then normalise
+  const dc = v1.map((row, i) => row.map((v, j) => {
+    let tau = 1
+    if      (i === 0 && j === 0) tau = 1 - lh * la * rho
+    else if (i === 1 && j === 0) tau = 1 + la * rho
+    else if (i === 0 && j === 1) tau = 1 + lh * rho
+    else if (i === 1 && j === 1) tau = 1 - rho
+    return v * tau
+  }))
+  const dcSum = dc.flat().reduce((s, v) => s + v, 0)
+  const dcN   = dc.map(row => row.map(v => v / dcSum))
+
+  // V3: 0.65*DC + 0.35*V1, then normalise
+  const v3 = v1.map((row, i) => row.map((v, j) => 0.65 * dcN[i][j] + 0.35 * v))
+  const v3Sum = v3.flat().reduce((s, v) => s + v, 0)
+  const v3N   = v3.map(row => row.map(v => v / v3Sum))
+
+  // Total goals P(k) for k=0..8 (cap beyond 8 into bucket 8)
+  const pg = new Array(9).fill(0)
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    pg[Math.min(i + j, 8)] += v3N[i][j]
+  }
+
+  // Anchor = argmax P(k)
+  let anchor = 0
+  for (let k = 1; k <= 8; k++) if (pg[k] > pg[anchor]) anchor = k
+
+  // Direction from matrix
+  let homeWin = 0, draw = 0, awayWin = 0
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    if (i > j) homeWin += v3N[i][j]
+    else if (i === j) draw += v3N[i][j]
+    else awayWin += v3N[i][j]
+  }
+  const dominant = homeWin >= awayWin && homeWin >= draw ? 'home'
+    : awayWin >= homeWin && awayWin >= draw ? 'away' : 'draw'
+
+  // Primary: highest V3[x][y] at anchor total in dominant direction
+  let pX = -1, pY = -1, pProb = 0
+  for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) {
+    if (x + y !== anchor) continue
+    const dir = x > y ? 'home' : x < y ? 'away' : 'draw'
+    if (dir !== dominant) continue
+    if (v3N[x][y] > pProb) { pProb = v3N[x][y]; pX = x; pY = y }
+  }
+  // Fallback: best in any direction at anchor total
+  if (pX === -1) {
+    for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) {
+      if (x + y !== anchor) continue
+      if (v3N[x][y] > pProb) { pProb = v3N[x][y]; pX = x; pY = y }
+    }
+  }
+
+  // Insurance 2 total: whichever adjacent is more likely
+  const pMinus = anchor > 0 ? pg[anchor - 1] : 0
+  const pPlus  = anchor < 8 ? pg[anchor + 1] : 0
+  const ins2Total = pMinus > pPlus ? anchor - 1 : anchor + 1
+
+  const tg     = oddsData?.totalGoals || {}
+  const scores = oddsData?.scores     || {}
+
   const legs = []
-  if (primary) {
+
+  // Primary leg — pick scoreline from matrix, use market odds for edge only
+  if (pX >= 0) {
+    const scoreKey = `${pX}-${pY}`
+    const mktOdds  = Number(scores[scoreKey]) || null
+    const edge     = mktOdds ? (pProb * mktOdds) - 1 : null
     legs.push({
-      role: 'Primary', rolePct: Math.round(pct.primary * 100),
-      bet: primary.score, betType: 'correct_score', odds: primary.odds,
-      stake: roundStake(sessionBudget * pct.primary),
-      homeGoals: primary.h, awayGoals: primary.a, color: '#1A3A6C',
-      reason: `Best scoreline at anchor ${anchor}g`,
+      role: 'Primary', rolePct: 50,
+      bet: scoreKey, betType: 'correct_score',
+      odds: mktOdds, stake: roundStake(budget * 0.50),
+      homeGoals: pX, awayGoals: pY, color: '#1A3A6C',
+      reason: `Matrix peak ${(pProb * 100).toFixed(1)}% at ${anchor}g anchor · ${dominant} win`,
+      edge,
     })
   }
-  if (insurance1Odds && insurance1Odds < 999) {
+
+  // Insurance 1: Total Goals = anchor
+  const i1Odds = Number(tg[String(anchor)]) || null
+  if (i1Odds && i1Odds > 1) {
     legs.push({
-      role: 'Insurance 1', rolePct: Math.round(pct.ins1 * 100),
+      role: 'Insurance 1', rolePct: 30,
       bet: `Total Goals ${anchor}`, betType: `total_goals_${anchor}`,
-      odds: insurance1Odds, stake: roundStake(sessionBudget * pct.ins1),
+      odds: i1Odds, stake: roundStake(budget * 0.30),
       homeGoals: null, awayGoals: null, color: '#2D7A4F',
-      reason: `Recover cost if score wrong, total right`,
+      reason: `Recover cost if score wrong, total ${anchor}g right`,
+      edge: null,
     })
   }
-  if (insurance2Odds && insurance2Odds < 999) {
+
+  // Insurance 2: adjacent total
+  const i2Odds = Number(tg[String(ins2Total)]) || null
+  if (i2Odds && i2Odds > 1) {
     legs.push({
-      role: 'Insurance 2', rolePct: Math.round(pct.ins2 * 100),
-      bet: `Total Goals ${insurance2Total_final}`, betType: `total_goals_${insurance2Total_final}`,
-      odds: insurance2Odds, stake: roundStake(sessionBudget * pct.ins2),
+      role: 'Insurance 2', rolePct: 20,
+      bet: `Total Goals ${ins2Total}`, betType: `total_goals_${ins2Total}`,
+      odds: i2Odds, stake: roundStake(budget * 0.20),
       homeGoals: null, awayGoals: null, color: '#BA7517',
       reason: `Adjacent total coverage`,
-    })
-  }
-  if (valueBet) {
-    legs.push({
-      role: 'Value Play', rolePct: 10, bet: valueBet.score,
-      betType: 'correct_score', odds: valueBet.odds,
-      stake: roundStake(sessionBudget * pct.value),
-      homeGoals: valueBet.h, awayGoals: valueBet.a, color: '#C9A84C',
-      reason: `R11 value — anchor+1 scoreline`,
+      edge: null,
     })
   }
 
-  const ins1Leg = legs.find(l => l.role === 'Insurance 1')
-  const ins1Coverage = ins1Leg ? (ins1Leg.stake * ins1Leg.odds) / sessionBudget : 0
+  const ins1Leg      = legs.find(l => l.role === 'Insurance 1')
+  const totalStake   = legs.reduce((s, l) => s + l.stake, 0)
+  const ins1Coverage = ins1Leg && totalStake > 0
+    ? Math.round((ins1Leg.stake * ins1Leg.odds) / totalStake * 100)
+    : 0
 
   return {
-    legs, anchor, r11Triggered,
-    r11Anchor: r11Triggered ? modelAnchor + 1 : null,
-    isFlat, direction,
-    modelDominant: Math.round(modelDominant * 100),
-    marketDominant: Math.round(marketDominant * 100),
-    divergence: Math.round((marketDominant - modelDominant) * 100),
-    ins1Coverage: Math.round(ins1Coverage * 100),
-    totalStake: legs.reduce((s,l) => s + l.stake, 0),
+    legs, anchor, dominant,
+    homeWin: Math.round(homeWin * 100),
+    drawPct: Math.round(draw * 100),
+    awayWin: Math.round(awayWin * 100),
+    primaryProb: pX >= 0 ? +(pProb * 100).toFixed(1) : null,
+    ins2Total, totalStake,
+    ins1Coverage,
+    r11Triggered: false,
   }
 }
 
-// ── Component ─────────────────────────────────────────────
-// (Strategic context helpers moved to PredictionTab.jsx)
+// ── Component ─────────────────────────────────────────────────────────────
 
-// model = sidebarModel from runModels() — has model.v3.probs.{home,draw,away} + lambdaHome/Away
 export default function PASPTab({ match, model }) {
   const { user } = useUser()
-  const [oddsData, setOddsData] = useState(null)
-  const [budget, setBudget] = useState(400)
-  const [placing, setPlacing] = useState(false)
-  const [placed, setPlaced] = useState(false)
-  const [error, setError] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [aiConf, setAiConf] = useState(null)
+  const [oddsData,  setOddsData]  = useState(null)
+  const [budget,    setBudget]    = useState(400)
+  const [placing,   setPlacing]   = useState(false)
+  const [placed,    setPlaced]    = useState(false)
+  const [error,     setError]     = useState(null)
+  const [loading,   setLoading]   = useState(true)
+  const [aiConf,    setAiConf]    = useState(null)
   const [calibData, setCalibData] = useState(null)
+  const [modelPred, setModelPred] = useState(null)
+  const [predLoading, setPredLoading] = useState(true)
 
+  // Market odds
   useEffect(() => {
     if (!match?.id) return
     supabase
@@ -201,7 +195,21 @@ export default function PASPTab({ match, model }) {
       })
   }, [match?.id])
 
-  // AI Role 10 confidence — role_id is the composite role
+  // V3 lambdas from model_predictions
+  useEffect(() => {
+    if (!match?.id) return
+    supabase.from('model_predictions')
+      .select('v3_lambda_home, v3_lambda_away')
+      .eq('match_id', match.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        setModelPred(data || null)
+        setPredLoading(false)
+      })
+      .catch(() => setPredLoading(false))
+  }, [match?.id])
+
+  // AI Role 10 confidence
   useEffect(() => {
     if (!match?.id) return
     supabase.from('role_outputs')
@@ -218,7 +226,7 @@ export default function PASPTab({ match, model }) {
       .catch(() => {})
   }, [match?.id])
 
-  // Direction calibration — all finished predictions with correct_v3 populated
+  // Direction calibration — historical model_predictions
   useEffect(() => {
     supabase.from('model_predictions')
       .select('v3_home_win, v3_draw, v3_away_win, correct_v3')
@@ -250,7 +258,7 @@ export default function PASPTab({ match, model }) {
       .catch(() => {})
   }, [])
 
-  // Normalise sidebarModel.v3 into the shape runPASPv3 expects
+  // V3 normalised from sidebarModel — used for AI badge direction comparison
   const v3Normalised = useMemo(() => {
     if (!model?.v3) return null
     return {
@@ -262,7 +270,7 @@ export default function PASPTab({ match, model }) {
     }
   }, [model])
 
-  // AI confidence tier — depends on aiConf (async) only
+  // AI confidence tier
   const aiTier = useMemo(() => {
     if (aiConf?.confidence == null) return null
     const c = aiConf.confidence
@@ -272,29 +280,36 @@ export default function PASPTab({ match, model }) {
     return              { tier: 'SKIP',   label: 'AI SKIP',  sub: 'Insufficient data — do not bet', kelly: 0.00, bg: '#6b7280', tx: '#fff' }
   }, [aiConf])
 
-  const portfolio = useMemo(() => {
-    if (!oddsData || !v3Normalised) return null
-    return runPASPv3(oddsData, v3Normalised, budget)
-  }, [oddsData, v3Normalised, budget])
+  // Follow Model portfolio — matrix-based, uses DB lambdas
+  const followPortfolio = useMemo(() => {
+    if (!oddsData || !modelPred?.v3_lambda_home || !modelPred?.v3_lambda_away) return null
+    const lh = Number(modelPred.v3_lambda_home)
+    const la = Number(modelPred.v3_lambda_away)
+    if (!lh || !la) return null
+    return computeFollowModelPortfolio(lh, la, oddsData, budget)
+  }, [oddsData, modelPred, budget])
 
   async function placeAllBets() {
-    if (!portfolio?.legs?.length || !user?.id) return
+    if (!followPortfolio?.legs?.length || !user?.id) return
     setPlacing(true)
     setError(null)
     try {
-      const rows = portfolio.legs.map(leg => ({
-        user_id: user.id,
-        match_id: match.id,
-        home_goals: leg.homeGoals,
-        away_goals: leg.awayGoals,
-        odds: leg.odds,
-        stake: leg.stake,
-        bet_type: leg.betType,
-        status: 'pending',
-        selection: leg.bet,
-        notes: `PASP v3 ${leg.role} | anchor ${portfolio.anchor}g${portfolio.r11Triggered ? ' R11' : ''} | ${leg.reason}`,
-        placed_at: new Date().toISOString(),
-      }))
+      const rows = followPortfolio.legs
+        .filter(leg => leg.odds && leg.odds > 1)
+        .map(leg => ({
+          user_id: user.id,
+          match_id: match.id,
+          home_goals: leg.homeGoals,
+          away_goals: leg.awayGoals,
+          odds: leg.odds,
+          stake: leg.stake,
+          bet_type: leg.betType,
+          status: 'pending',
+          selection: leg.bet,
+          notes: `PASP v3 ${leg.role} | anchor ${followPortfolio.anchor}g | ${leg.reason}`,
+          placed_at: new Date().toISOString(),
+        }))
+      if (!rows.length) throw new Error('No legs with market odds to place')
       const { error: err } = await supabase.from('user_bets').insert(rows)
       if (err) throw err
       setPlaced(true)
@@ -322,9 +337,9 @@ export default function PASPTab({ match, model }) {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
   }
 
-  if (loading) return (
+  if (loading || predLoading) return (
     <div style={{ padding: 24, fontSize: 12, fontFamily: mono, color: 'var(--color-text-muted)' }}>
-      Loading odds...
+      Loading…
     </div>
   )
 
@@ -340,9 +355,9 @@ export default function PASPTab({ match, model }) {
     </div>
   )
 
-  if (!v3Normalised) return (
-    <div style={{ padding: 24, fontSize: 12, color: 'var(--color-text-muted)' }}>
-      No V3 predictions yet — fetch stats first to generate predictions.
+  if (!modelPred?.v3_lambda_home || !modelPred?.v3_lambda_away) return (
+    <div style={{ padding: 24, fontSize: 12, color: 'var(--color-text-muted)', fontFamily: mono }}>
+      No model predictions yet — sync stats first to generate V3 lambdas.
     </div>
   )
 
@@ -456,18 +471,18 @@ export default function PASPTab({ match, model }) {
         </div>
       </div>
 
-      {/* Model analysis context */}
-      {portfolio && (
+      {/* Model Analysis */}
+      {followPortfolio && (
         <div style={panel}>
-          <div style={ph}><span>Model Analysis</span></div>
+          <div style={ph}><span>Model Analysis</span><span style={{ color: '#C9A84C' }}>V3 Matrix</span></div>
           <div style={{ padding: '10px 14px', display: 'flex', flexWrap: 'wrap', gap: 16 }}>
             {[
-              { label: 'V3 dominant',    value: `${portfolio.modelDominant}%` },
-              { label: 'Market dominant', value: `${portfolio.marketDominant}%` },
-              { label: 'Divergence',     value: `${portfolio.divergence}pp`, color: portfolio.r11Triggered ? '#C9A84C' : 'var(--color-text-primary)' },
-              { label: 'Anchor',         value: `${portfolio.anchor} goals` },
-              { label: 'R11',            value: portfolio.r11Triggered ? 'TRIGGERED ⚡' : 'off', color: portfolio.r11Triggered ? '#C9A84C' : 'var(--color-text-muted)' },
-              { label: 'Ins. coverage',  value: `${portfolio.ins1Coverage}%`, color: portfolio.ins1Coverage >= 70 ? '#2D7A4F' : '#BA7517' },
+              { label: 'λ Home',      value: Number(modelPred.v3_lambda_home).toFixed(2) },
+              { label: 'λ Away',      value: Number(modelPred.v3_lambda_away).toFixed(2) },
+              { label: 'Anchor',      value: `${followPortfolio.anchor} goals` },
+              { label: 'Direction',   value: followPortfolio.dominant, color: followPortfolio.dominant === 'home' ? '#1A3A6C' : followPortfolio.dominant === 'away' ? '#C0392B' : '#BA7517' },
+              { label: 'Primary prob', value: followPortfolio.primaryProb != null ? `${followPortfolio.primaryProb}%` : '—' },
+              { label: 'Ins. coverage', value: `${followPortfolio.ins1Coverage}%`, color: followPortfolio.ins1Coverage >= 70 ? '#2D7A4F' : '#BA7517' },
             ].map((item, i) => (
               <div key={i}>
                 <div style={{ fontSize: 9, fontFamily: mono, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 3 }}>
@@ -479,20 +494,19 @@ export default function PASPTab({ match, model }) {
               </div>
             ))}
           </div>
-          {portfolio.r11Triggered && (
-            <div style={{ margin: '0 14px 10px', padding: '8px 12px', background: 'rgba(201,168,76,0.08)', border: '0.5px solid rgba(201,168,76,0.3)', borderRadius: 6, fontSize: 11, fontFamily: mono, color: '#C9A84C', lineHeight: 1.5 }}>
-              ⚡ R11 triggered — market sees dominant team as {portfolio.marketDominant}% vs model {portfolio.modelDominant}%. Anchor shifted up to {portfolio.anchor}g. Value play added at {portfolio.anchor + 1}g.
-            </div>
-          )}
+          <div style={{ padding: '6px 14px 10px', fontSize: 10, fontFamily: mono, color: 'var(--color-text-muted)' }}>
+            H {followPortfolio.homeWin}% · D {followPortfolio.drawPct}% · A {followPortfolio.awayWin}%
+            {' · '}Scoreline selected from matrix probability — not market odds ranking
+          </div>
         </div>
       )}
 
       {/* Portfolio legs */}
-      {portfolio?.legs?.length > 0 && (
+      {followPortfolio?.legs?.length > 0 && (
         <div style={panel}>
           <div style={ph}>
             <span>PASP v3 Portfolio</span>
-            <span style={{ fontFamily: mono, color: '#C9A84C' }}>Total ¥{portfolio.totalStake}</span>
+            <span style={{ fontFamily: mono, color: '#C9A84C' }}>Total ¥{followPortfolio.totalStake}</span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 60px 70px 70px', padding: '7px 14px', fontSize: 9, fontFamily: mono, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-muted)', borderBottom: '0.5px solid var(--color-border)', background: 'var(--color-bg-secondary)' }}>
@@ -502,8 +516,8 @@ export default function PASPTab({ match, model }) {
             <span style={{ textAlign: 'right' }}>If wins</span>
           </div>
 
-          {portfolio.legs.map((leg, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 60px 70px 70px', padding: '10px 14px', alignItems: 'center', borderBottom: i < portfolio.legs.length - 1 ? '0.5px solid var(--color-border)' : 'none' }}>
+          {followPortfolio.legs.map((leg, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 60px 70px 70px', padding: '10px 14px', alignItems: 'center', borderBottom: i < followPortfolio.legs.length - 1 ? '0.5px solid var(--color-border)' : 'none' }}>
               <div>
                 <span style={{ fontSize: 10, fontWeight: 600, fontFamily: mono, color: leg.color }}>{leg.role}</span>
                 <div style={{ fontSize: 9, color: 'var(--color-text-muted)', fontFamily: mono, marginTop: 1 }}>{leg.rolePct}%</div>
@@ -511,8 +525,15 @@ export default function PASPTab({ match, model }) {
               <div>
                 <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)' }}>{leg.bet}</div>
                 <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 1, lineHeight: 1.3 }}>{leg.reason}</div>
+                {leg.edge != null && (
+                  <div style={{ fontSize: 9, fontFamily: mono, marginTop: 2, color: leg.edge >= 0.05 ? '#2D7A4F' : leg.edge >= 0 ? '#BA7517' : '#C0392B' }}>
+                    edge {leg.edge >= 0 ? '+' : ''}{(leg.edge * 100).toFixed(1)}%
+                  </div>
+                )}
               </div>
-              <div style={{ textAlign: 'right', fontSize: 13, fontFamily: mono, fontWeight: 500, color: 'var(--color-text-primary)' }}>{leg.odds}</div>
+              <div style={{ textAlign: 'right', fontSize: 13, fontFamily: mono, fontWeight: 500, color: leg.odds ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                {leg.odds ? leg.odds : '—'}
+              </div>
               <div style={{ textAlign: 'right', fontFamily: mono }}>
                 {aiTier && aiTier.kelly !== 1.0 ? (
                   aiTier.kelly === 0 ? (
@@ -530,8 +551,8 @@ export default function PASPTab({ match, model }) {
                   <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)' }}>¥{leg.stake}</span>
                 )}
               </div>
-              <div style={{ textAlign: 'right', fontSize: 12, fontFamily: mono, color: '#2D7A4F' }}>
-                {aiTier && aiTier.kelly === 0 ? '—' : (() => {
+              <div style={{ textAlign: 'right', fontSize: 12, fontFamily: mono, color: leg.odds ? '#2D7A4F' : 'var(--color-text-muted)' }}>
+                {!leg.odds ? '—' : aiTier && aiTier.kelly === 0 ? '—' : (() => {
                   const s = aiTier ? Math.round(leg.stake * aiTier.kelly / 10) * 10 || 10 : leg.stake
                   return `¥${Math.round(s * leg.odds)}`
                 })()}
@@ -553,14 +574,14 @@ export default function PASPTab({ match, model }) {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               {(() => {
-                const pr  = portfolio.legs.find(l => l.role === 'Primary')
-                const i1  = portfolio.legs.find(l => l.role === 'Insurance 1')
-                const i2  = portfolio.legs.find(l => l.role === 'Insurance 2')
-                const tot = portfolio.totalStake
+                const pr  = followPortfolio.legs.find(l => l.role === 'Primary')
+                const i1  = followPortfolio.legs.find(l => l.role === 'Insurance 1')
+                const i2  = followPortfolio.legs.find(l => l.role === 'Insurance 2')
+                const tot = followPortfolio.totalStake
                 return [
-                  { label: 'Primary hits',          desc: 'Score correct',            value: pr && i1 ? Math.round(pr.stake*pr.odds + i1.stake*i1.odds) : pr ? Math.round(pr.stake*pr.odds) : 0 },
-                  { label: 'Score wrong, total right', desc: 'Insurance 1 recovers', value: i1 ? Math.round(i1.stake*i1.odds) : 0 },
-                  { label: 'Adjacent total',         desc: 'Insurance 2 partial',     value: i2 ? Math.round(i2.stake*i2.odds) : 0 },
+                  { label: 'Primary hits',             desc: 'Score correct',            value: pr?.odds && i1?.odds ? Math.round(pr.stake * pr.odds + i1.stake * i1.odds) : pr?.odds ? Math.round(pr.stake * pr.odds) : 0 },
+                  { label: 'Score wrong, total right',  desc: 'Insurance 1 recovers',     value: i1?.odds ? Math.round(i1.stake * i1.odds) : 0 },
+                  { label: 'Adjacent total',            desc: 'Insurance 2 partial',      value: i2?.odds ? Math.round(i2.stake * i2.odds) : 0 },
                 ].map((s, i) => (
                   <div key={i} style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 6, padding: '8px 10px' }}>
                     <div style={{ fontSize: 9, fontFamily: mono, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{s.label}</div>
@@ -577,7 +598,7 @@ export default function PASPTab({ match, model }) {
       )}
 
       {/* Place bets button */}
-      {portfolio?.legs?.length > 0 && !placed && (
+      {followPortfolio?.legs?.length > 0 && !placed && (
         <button onClick={placeAllBets} disabled={placing} style={{
           width: '100%', padding: '0 16px', minHeight: 52,
           borderRadius: 'var(--radius-lg)', border: 'none',
@@ -586,13 +607,13 @@ export default function PASPTab({ match, model }) {
           color: placing ? 'var(--color-text-muted)' : '#fff',
           fontSize: 14, fontWeight: 500, fontFamily: mono, letterSpacing: '0.05em',
         }}>
-          {placing ? 'Placing bets…' : `Place all ${portfolio.legs.length} bets — ¥${portfolio.totalStake}`}
+          {placing ? 'Placing bets…' : `Place all ${followPortfolio.legs.length} bets — ¥${followPortfolio.totalStake}`}
         </button>
       )}
 
       {placed && (
         <div style={{ padding: '14px 16px', background: 'rgba(45,122,79,0.08)', border: '0.5px solid rgba(45,122,79,0.3)', borderRadius: 'var(--radius-lg)', fontSize: 13, color: '#2D7A4F', fontFamily: mono, textAlign: 'center' }}>
-          ✓ {portfolio.legs.length} bets placed — ¥{portfolio.totalStake} total. View in My Tracker.
+          ✓ {followPortfolio.legs.length} bets placed — ¥{followPortfolio.totalStake} total. View in My Tracker.
         </div>
       )}
 
