@@ -205,6 +205,7 @@ export default function PASPTab({ match, model }) {
       .select('v3_home_win, v3_draw, v3_away_win, correct_v3')
       .not('v3_lambda_home', 'is', null)
       .not('correct_v3', 'is', null)
+      .eq('model_version', 'v3-dc-only')
       .then(({ data }) => {
         if (!data?.length) { setCalibData(null); return }
         const BUCKETS = [
@@ -247,10 +248,10 @@ export default function PASPTab({ match, model }) {
   const aiTier = useMemo(() => {
     if (aiConf?.confidence == null) return null
     const c = aiConf.confidence
-    if (c >= 0.75) return { tier: 'HIGH',   label: 'AI HIGH',   sub: 'Full Kelly sizing',               kelly: 1.00, bg: '#2D7A4F', tx: '#fff' }
-    if (c >= 0.50) return { tier: 'MEDIUM', label: 'AI MEDIUM', sub: '75% Kelly sizing',                kelly: 0.75, bg: '#BA7517', tx: '#fff' }
-    if (c >= 0.30) return { tier: 'LOW',    label: 'AI LOW',    sub: '50% Kelly sizing — caution',      kelly: 0.50, bg: '#C0392B', tx: '#fff' }
-    return              { tier: 'SKIP',   label: 'AI SKIP',  sub: 'Insufficient data — do not bet', kelly: 0.00, bg: '#6b7280', tx: '#fff' }
+    if (c >= 0.75) return { tier: 'HIGH',   label: 'AI HIGH ↑',   sub: 'Full Kelly — strong signal',    kelly: 1.00, bg: '#166534', tx: '#fff' }
+    if (c >= 0.50) return { tier: 'MEDIUM', label: 'AI MEDIUM ~', sub: '75% Kelly — moderate signal',  kelly: 0.75, bg: '#92400E', tx: '#fff' }
+    if (c >= 0.30) return { tier: 'LOW',    label: 'AI LOW ↓',    sub: '50% Kelly — weak signal',      kelly: 0.50, bg: '#991B1B', tx: '#fff' }
+    return              { tier: 'SKIP',   label: 'AI SKIP —',  sub: 'No bet — insufficient data',  kelly: 0.00, bg: '#374151', tx: '#fff' }
   }, [aiConf])
 
   // Follow Model portfolio — matrix-based, uses DB lambdas
@@ -345,23 +346,19 @@ export default function PASPTab({ match, model }) {
             : v3Normalised.away >= v3Normalised.draw ? 'away_win' : 'draw')
           : null
         const agrees = rec && v3Dir && (rec === v3Dir)
-        const dirLabel = { home_win: 'Home Win', away_win: 'Away Win', draw: 'Draw', over: 'Over', skip: 'Skip' }[rec] || rec
+        const showDir = rec && !['skip', 'over'].includes(rec)
         return (
-          <div style={{ ...panel, marginBottom: 14 }}>
-            <div style={ph}><span>AI Confidence</span><span style={{ color: '#C9A84C' }}>Role 10</span></div>
-            <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', background: aiTier.bg, borderRadius: 6, padding: '6px 12px', minWidth: 100 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: aiTier.tx }}>{aiTier.label}</span>
-                <span style={{ fontSize: 11, color: `${aiTier.tx}cc`, marginTop: 2 }}>{aiTier.sub}</span>
-              </div>
-              {rec && rec !== 'skip' && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--color-bg-secondary)', border: '0.5px solid var(--color-border)' }}>
-                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)', fontFamily: mono }}>Recommends:</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: agrees ? '#2D7A4F' : '#BA7517', fontFamily: mono }}>{dirLabel}</span>
-                  {v3Dir && <span style={{ fontSize: 9, color: agrees ? '#2D7A4F' : '#BA7517', fontFamily: mono }}>{agrees ? '✓ agrees V3' : '⚠ differs V3'}</span>}
-                </div>
-              )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div style={{ padding: '4px 10px', borderRadius: 4, background: aiTier.bg, fontFamily: 'DM Sans, sans-serif', fontSize: 12, fontWeight: 600, color: aiTier.tx, whiteSpace: 'nowrap' }}>
+              {aiTier.label}
             </div>
+            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>{aiTier.sub}</span>
+            {showDir && (
+              <div style={{ padding: '4px 8px', borderRadius: 4, border: '0.5px solid var(--color-border)', fontFamily: mono, fontSize: 11, fontWeight: 600, color: agrees ? '#2D7A4F' : '#BA7517', whiteSpace: 'nowrap' }}>
+                AI: {rec}{' '}
+                <span style={{ fontWeight: 400, fontSize: 10 }}>{agrees ? '✓ V3' : '⚠ ≠V3'}</span>
+              </div>
+            )}
           </div>
         )
       })()}
@@ -536,7 +533,7 @@ export default function PASPTab({ match, model }) {
           {/* Kelly modifier note */}
           {aiTier && aiTier.kelly !== 1.0 && (
             <div style={{ padding: '8px 14px', borderTop: '0.5px solid var(--color-border)', fontSize: 10, fontFamily: mono, color: 'var(--color-text-muted)', background: 'var(--color-bg-secondary)' }}>
-              Stakes adjusted for AI confidence ({aiTier.label} — ×{aiTier.kelly})
+              AI confidence: {aiTier.tier} · Stakes × {aiTier.kelly}
             </div>
           )}
 
