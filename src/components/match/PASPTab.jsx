@@ -3,33 +3,6 @@ import { supabase } from '../../lib/supabase'
 import { useUser } from '../../context/UserContext'
 import { poissonPMF, SCORE_MAX } from '../../lib/poisson'
 
-// ── PASP v3 Algorithm (pure JS, kept for direction calibration) ───────────
-
-function stripVig(odds) {
-  const raw = { home: 1/odds.home, draw: 1/odds.draw, away: 1/odds.away }
-  const vig = raw.home + raw.draw + raw.away
-  return { home: raw.home/vig, draw: raw.draw/vig, away: raw.away/vig, vig }
-}
-
-function stripVigTotalGoals(tg) {
-  const keys = Object.keys(tg)
-  const raws = {}
-  let vigSum = 0
-  for (const k of keys) { raws[k] = 1/Number(tg[k]); vigSum += raws[k] }
-  const implied = {}
-  for (const k of keys) implied[k] = raws[k] / vigSum
-  return implied
-}
-
-function getMarketAnchor(implied) {
-  let best = '0', bestP = 0
-  for (const [k, p] of Object.entries(implied)) {
-    if (k === '7plus') continue
-    if (p > bestP) { bestP = p; best = k }
-  }
-  return parseInt(best)
-}
-
 // ── Follow Model: matrix-based portfolio selection ────────────────────────
 // Uses V3 matrix (65% DC-corrected Poisson + 35% pure Poisson, rho=-0.0612)
 // to select scorelines from model probability, NOT market odds rankings.
@@ -357,7 +330,7 @@ export default function PASPTab({ match, model }) {
 
   if (!modelPred?.v3_lambda_home || !modelPred?.v3_lambda_away) return (
     <div style={{ padding: 24, fontSize: 12, color: 'var(--color-text-muted)', fontFamily: mono }}>
-      No model predictions yet — sync stats first to generate V3 lambdas.
+      Sync stats first to use Follow Model — no V3 lambdas available
     </div>
   )
 
