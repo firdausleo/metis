@@ -107,6 +107,11 @@ WC_RESULTS = [
   ("Scotland",     "Morocco",          0, 1, False),
   ("Brazil",       "Haiti",            3, 0, False),
   ("Turkiye",      "Paraguay",         0, 1, False),
+  # Matchday 3
+  ("Netherlands", "Sweden",      5, 1, False),
+  ("Germany",     "Ivory Coast", 2, 1, False),
+  ("Ecuador",     "Curacao",     0, 0, False),
+  ("Tunisia",     "Japan",       0, 4, False),
   # ← ADD NEW RESULTS HERE AFTER EACH MATCHDAY
 ]
 
