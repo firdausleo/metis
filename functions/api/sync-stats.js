@@ -52,10 +52,13 @@ const RECENCY_WEIGHTS = [0.10, 0.15, 0.20, 0.25, 0.30]
 const NAME_MAP = {
   'USA': 'United States',
   'Turkiye': 'Turkey',
-  'Ivory Coast': "Cote d'Ivoire",
-  'DR Congo': 'Congo DR',
+  'Ivory Coast': "Côte d'Ivoire",
+  'DR Congo': 'DR Congo',
   'Czechia': 'Czech Republic',
   'Cape Verde': 'Cabo Verde',
+  'Curacao': 'Curaçao',
+  'South Korea': 'Korea Republic',
+  'Bosnia-Herzegovina': 'Bosnia and Herzegovina',
 }
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
