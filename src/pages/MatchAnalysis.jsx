@@ -3739,7 +3739,7 @@ export default function MatchAnalysis() {
         {false && activeTab === 'portfolio' && <TabPortfolio stats={stats} match={match} odds1x2={v1x2Odds} />}
         {false && activeTab === 'ai' && <TabAI match={match} isAdmin={canRunAI} onAnalysisComplete={refreshProfile} />}
 
-        {isAdmin && <SettlementPanel match={match} />}
+        {isAdmin && <SettlementPanel match={match} onSyncComplete={refreshStats} />}
         </div>
       </div>
 
@@ -3818,15 +3818,17 @@ function TabNav({ tabs, activeTab, setActiveTab, vertical, t }) {
 }
 
 // Admin: record final score → status finished. Bets settle on owner's My Bets view.
-function SettlementPanel({ match }) {
+function SettlementPanel({ match, onSyncComplete }) {
   const { t } = useTranslation()
   const [h, setH] = useState(match.home_score ?? '')
   const [a, setA] = useState(match.away_score ?? '')
   const [msg, setMsg] = useState('')
+  const [syncMsg, setSyncMsg] = useState('')
   const save = async () => {
     const hs = parseInt(h, 10), as = parseInt(a, 10)
     if (Number.isNaN(hs) || Number.isNaN(as)) return
     setMsg(t('settle.settling'))
+    setSyncMsg('')
     const { data: { session } } = await supabase.auth.getSession()
     try {
       const r = await fetch('/api/settle-match', {
@@ -3835,9 +3837,28 @@ function SettlementPanel({ match }) {
         body: JSON.stringify({ match_id: match.id, home_score: hs, away_score: as }),
       })
       const d = await r.json()
-      setMsg(r.ok
-        ? `✓ Settled: ${match.home_team} ${hs} – ${as} ${match.away_team} · ${d.settled}/${d.pending} bets settled`
-        : `Failed: ${d.error}${d.detail ? ' — ' + d.detail : ''}`)
+      if (!r.ok) { setMsg(`Failed: ${d.error}${d.detail ? ' — ' + d.detail : ''}`); return }
+      setMsg(`✓ Settled: ${match.home_team} ${hs} – ${as} ${match.away_team} · ${d.settled}/${d.pending} bets settled`)
+      setSyncMsg('Syncing predictions…')
+      try {
+        const ctrl = new AbortController()
+        const timer = setTimeout(() => ctrl.abort(), 25000)
+        const syncRes = await fetch('/api/sync-stats', {
+          method: 'POST',
+          signal: ctrl.signal,
+          headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ match_ids: [match.id] }),
+        })
+        clearTimeout(timer)
+        if (syncRes.ok) {
+          setSyncMsg('✓ Predictions updated')
+          onSyncComplete?.()
+        } else {
+          setSyncMsg('Result saved. Predictions will update on next sync.')
+        }
+      } catch {
+        setSyncMsg('Result saved. Predictions will update on next sync.')
+      }
     } catch { setMsg('Save failed') }
   }
   const inp = { width: 56, fontSize: 18, fontWeight: 700, minHeight: 44, textAlign: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }
@@ -3858,6 +3879,7 @@ function SettlementPanel({ match }) {
         <button onClick={save} style={{ minHeight: 44, padding: '0 16px', fontWeight: 700, background: 'var(--color-accent)', color: 'var(--color-bg)', border: 'none', borderRadius: 'var(--radius-sm)', alignSelf: 'flex-end' }}>{t('settle.save')}</button>
       </div>
       {msg && <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 8 }}>{msg}</p>}
+      {syncMsg && <p style={{ fontSize: 13, color: syncMsg.startsWith('✓') ? 'var(--color-success)' : 'var(--color-text-muted)', marginTop: 4 }}>{syncMsg}</p>}
     </div>
   )
 }
