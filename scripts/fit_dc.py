@@ -112,6 +112,16 @@ WC_RESULTS = [
   ("Germany",     "Ivory Coast", 2, 1, False),
   ("Ecuador",     "Curacao",     0, 0, False),
   ("Tunisia",     "Japan",       0, 4, False),
+# Jun 21-22 Beijing
+("Spain",        "Saudi Arabia", 4, 0, False),
+("Belgium",      "Iran",         0, 0, False),
+("Uruguay",      "Cape Verde",   2, 2, False),
+("New Zealand",  "Egypt",        1, 3, False),
+("Argentina",    "Austria",      2, 0, False),
+("France",       "Iraq",         3, 0, False),
+("Norway",  "Senegal", 3, 2, False),
+("Jordan",  "Algeria", 1, 2, False),
+
   # ← ADD NEW RESULTS HERE AFTER EACH MATCHDAY
 ]
 
