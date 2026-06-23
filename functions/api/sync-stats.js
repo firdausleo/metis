@@ -53,7 +53,7 @@ const NAME_MAP = {
   'USA': 'United States',
   'Turkiye': 'Turkey',
   'Ivory Coast': "Côte d'Ivoire",
-  'DR Congo': 'DR Congo',
+  'DR Congo': 'Congo DR',
   'Czechia': 'Czech Republic',
   'Cape Verde': 'Cabo Verde',
   'Curacao': 'Curaçao',
