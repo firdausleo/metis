@@ -13,7 +13,7 @@ const _RHO = -0.0612, _MG = 8
 function _tau(x,y,lh,la){if(x===0&&y===0)return 1-lh*la*_RHO;if(x===0&&y===1)return 1+lh*_RHO;if(x===1&&y===0)return 1+la*_RHO;if(x===1&&y===1)return 1-_RHO;return 1}
 function _v1(lh,la){const M=[];let t=0;for(let x=0;x<=_MG;x++){M[x]=[];for(let y=0;y<=_MG;y++){M[x][y]=poissonPMF(x,lh)*poissonPMF(y,la);t+=M[x][y]}}if(t>0)for(let x=0;x<=_MG;x++)for(let y=0;y<=_MG;y++)M[x][y]/=t;return M}
 function _dc(lh,la){const M=[];let t=0;for(let x=0;x<=_MG;x++){M[x]=[];for(let y=0;y<=_MG;y++){M[x][y]=Math.max(poissonPMF(x,lh)*poissonPMF(y,la)*_tau(x,y,lh,la),0);t+=M[x][y]}}if(t>0)for(let x=0;x<=_MG;x++)for(let y=0;y<=_MG;y++)M[x][y]/=t;return M}
-function _v3mat(lh,la){const v=_v1(lh,la),d=_dc(lh,la),M=[];for(let x=0;x<=_MG;x++){M[x]=[];for(let y=0;y<=_MG;y++)M[x][y]=0.65*d[x][y]+0.35*v[x][y]}return M}
+function _blend(dcM,v1M){const M=[];let t=0;for(let x=0;x<=_MG;x++){M[x]=[];for(let y=0;y<=_MG;y++){M[x][y]=0.65*dcM[x][y]+0.35*v1M[x][y];t+=M[x][y]}}if(t>0)for(let x=0;x<=_MG;x++)for(let y=0;y<=_MG;y++)M[x][y]/=t;return M}
 function _anchor(M){const t=new Array(_MG*2+1).fill(0);for(let x=0;x<=_MG;x++)for(let y=0;y<=_MG;y++)t[x+y]+=M[x][y];let a=0;for(let k=1;k<=_MG;k++)if(t[k]>t[a])a=k;return a}
 function _top3(M){const c=[];for(let x=0;x<=_MG;x++)for(let y=0;y<=_MG;y++)c.push({s:`${x}-${y}`,p:M[x][y]});c.sort((a,b)=>b.p-a.p);return c.slice(0,3).map(e=>e.s)}
 
@@ -599,13 +599,17 @@ export default function ModelPerformance() {
 
         // V1 / DC / V3 matrix-based metrics
         const actual = `${Number(m.home_score)}-${Number(m.away_score)}`
-        const v1M = _v1(lhN, laN), dcM = _dc(lhN, laN), v3M = _v3mat(lhN, laN)
+        const v1M = _v1(lhN, laN)
+        const dcM = _dc(lhN, laN)
+        const v3M = _blend(dcM, v1M)
         lambdaN++
         if (_anchor(v1M) === actualTotal) v1TgC++
         if (_anchor(dcM) === actualTotal) dcTgC++
         const v3Anc = row.anchor_total != null ? Number(row.anchor_total) : _anchor(v3M)
         if (v3Anc === actualTotal) v3TgC++
-        const v1T = _top3(v1M), dcT = _top3(dcM), v3T = _top3(v3M)
+        const v1T = _top3(v1M)
+        const dcT = _top3(dcM)
+        const v3T = _top3(v3M)
         const v3Top1 = row.v3_top_score || v3T[0]
         if (v1T[0] === actual) v1ScC++
         if (dcT[0] === actual) dcScC++
