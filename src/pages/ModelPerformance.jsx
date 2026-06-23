@@ -572,7 +572,7 @@ export default function ModelPerformance() {
     let highConvTotal = 0, highConvCorrect = 0
     let brierSum = 0, brierCount = 0
     let rpsSum = 0, rpsCount = 0
-    let v1TgC=0,dcTgC=0,v3TgC=0, v1ScC=0,dcScC=0,v3ScC=0, v1T3C=0,dcT3C=0,v3T3C=0, lambdaN=0
+    let v1TgC=0,dcTgC=0,v3TgC=0, v1ScC=0,dcScC=0,v3ScC=0,v3ScC2=0,v3ScC3=0, v1T3C=0,dcT3C=0,v3T3C=0, lambdaN=0
 
     for (const row of rows) {
       const m = row.match
@@ -614,6 +614,8 @@ export default function ModelPerformance() {
         if (v1T[0] === actual) v1ScC++
         if (dcT[0] === actual) dcScC++
         if (v3Top1 === actual) v3ScC++
+        if (v3T[1] === actual) v3ScC2++
+        if (v3T[2] === actual) v3ScC3++
         if (v1T.includes(actual)) v1T3C++
         if (dcT.includes(actual)) dcT3C++
         if (v3T.includes(actual)) v3T3C++
@@ -658,7 +660,7 @@ export default function ModelPerformance() {
       v1TgAcc: lambdaN ? (v1TgC/lambdaN*100).toFixed(1) : null,
       dcTgAcc: lambdaN ? (dcTgC/lambdaN*100).toFixed(1) : null,
       v3TgAcc: lambdaN ? (v3TgC/lambdaN*100).toFixed(1) : null,
-      v1ScC, dcScC, v3ScC,
+      v1ScC, dcScC, v3ScC, v3ScC2, v3ScC3,
       v1ScAcc: lambdaN ? (v1ScC/lambdaN*100).toFixed(1) : null,
       dcScAcc: lambdaN ? (dcScC/lambdaN*100).toFixed(1) : null,
       v3ScAcc: lambdaN ? (v3ScC/lambdaN*100).toFixed(1) : null,
@@ -992,13 +994,14 @@ export default function ModelPerformance() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {[
-                        { label: 'V1 Top Score Acc',    acc: modelPerf.v1ScAcc, n: modelPerf.v1ScC, gold: false, vc: null },
-                        { label: 'DC Top Score Acc',    acc: modelPerf.dcScAcc, n: modelPerf.dcScC, gold: false, vc: '#0F3460' },
-                        { label: 'V3 Top Score Acc ★', acc: modelPerf.v3ScAcc, n: modelPerf.v3ScC, gold: true,  vc: null },
-                      ].map(({ label, acc, n: nc, gold, vc }) => (
+                        { label: 'V1 Top Score Acc',    acc: modelPerf.v1ScAcc, n: modelPerf.v1ScC, gold: false, vc: null, sub: null },
+                        { label: 'DC Top Score Acc',    acc: modelPerf.dcScAcc, n: modelPerf.dcScC, gold: false, vc: '#0F3460', sub: null },
+                        { label: 'V3 Top Score Acc ★', acc: modelPerf.v3ScAcc, n: modelPerf.v3ScC, gold: true,  vc: null,
+                          sub: (() => { const r1=modelPerf.v3ScC??0,r2=modelPerf.v3ScC2??0,r3=modelPerf.v3ScC3??0,N=modelPerf.lambdaN??0; return (r1+r2+r3)>0?`${r1+r2+r3}/${N} in top 3  (★×${r1}  #2×${r2}  #3×${r3})`:`${r1}/${N} exact` })() },
+                      ].map(({ label, acc, n: nc, gold, vc, sub: customSub }) => (
                         <MetricCard key={label} label={label}
                           value={acc ? `${acc}%` : '—'}
-                          sub={`${nc ?? 0}/${modelPerf.lambdaN ?? 0} exact`}
+                          sub={customSub ?? `${nc ?? 0}/${modelPerf.lambdaN ?? 0} exact`}
                           gold={gold}
                           valueColor={vc || (acc ? parseFloat(acc) >= 10 ? 'var(--color-success)' : parseFloat(acc) >= 5 ? '#BA7517' : 'var(--color-danger)' : undefined)}
                         />
@@ -1144,7 +1147,6 @@ export default function ModelPerformance() {
                         const scoreStr = hs != null ? `${hs}–${as_}` : null
                         const outcomeLabel = row.actual_outcome === 'H' ? 'H' : row.actual_outcome === 'A' ? 'A' : 'D'
                         const topScore = row.v3_top_score || null
-                        const topMatched = topScore && hs != null && topScore === `${hs}-${as_}`
 
                         // Layer 2: Total Goals
                         const predLH = row.v3_lambda_home
@@ -1154,11 +1156,19 @@ export default function ModelPerformance() {
                         const tgActual = hs != null ? Number(hs) + Number(as_) : null
                         const tgHit = tgPred != null && tgActual != null ? tgPred === tgActual : null
 
-                        // Layer 3: Exact Score
-                        const scoreHit = topScore && hs != null
-                          ? (Number(topScore.split('-')[0]) === Number(hs) &&
-                             Number(topScore.split('-')[1]) === Number(as_))
-                          : null
+                        // Layer 3: Exact Score rank (1/2/3 = hit, 0 = miss, null = no data)
+                        let scoreRank = null
+                        let top3Scores = null
+                        if (predLH != null && predLA != null && hs != null) {
+                          const lhN = Number(predLH), laN = Number(predLA)
+                          top3Scores = _top3(_blend(_dc(lhN, laN), _v1(lhN, laN)))
+                          const actual = `${Number(hs)}-${Number(as_)}`
+                          scoreRank = top3Scores[0] === actual ? 1
+                                    : top3Scores[1] === actual ? 2
+                                    : top3Scores[2] === actual ? 3 : 0
+                        } else if (topScore && hs != null) {
+                          scoreRank = topScore === `${Number(hs)}-${Number(as_)}` ? 1 : 0
+                        }
 
                         // Margin
                         const v3Sorted = [row.v3_home_win || 0, row.v3_draw || 0, row.v3_away_win || 0]
@@ -1207,18 +1217,22 @@ export default function ModelPerformance() {
                             </td>
                             {/* Top Score Predicted */}
                             <td style={{ ...TD, textAlign: 'center', fontSize: 11, fontFamily: "'IBM Plex Mono', monospace",
-                              color: scoreHit ? '#C9A84C' : 'var(--color-text-muted)',
-                              fontWeight: scoreHit ? 700 : 400,
+                              color: scoreRank === 1 ? '#D4AF37' : 'var(--color-text-muted)',
+                              fontWeight: scoreRank === 1 ? 700 : 400,
                             }}>
-                              {topScore || '—'}
+                              {top3Scores?.[0] || topScore || '—'}
                             </td>
-                            {/* Score Hit */}
-                            <td style={{ ...TD, textAlign: 'center', fontSize: 13, fontWeight: 700 }}>
-                              {scoreHit === true
-                                ? <span style={{ color: '#C9A84C' }}>★</span>
-                                : scoreHit === false
-                                  ? <span style={{ color: '#791F1F' }}>✗</span>
-                                  : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
+                            {/* Score Rank */}
+                            <td style={{ ...TD, textAlign: 'center', fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>
+                              {scoreRank === 1
+                                ? <span style={{ color: '#D4AF37' }}>★ #1</span>
+                                : scoreRank === 2
+                                  ? <span style={{ color: '#9CA3AF' }}>#2</span>
+                                  : scoreRank === 3
+                                    ? <span style={{ color: '#CD7F32' }}>#3</span>
+                                    : scoreRank === 0
+                                      ? <span style={{ color: 'var(--accent-red, var(--color-danger))' }}>✗</span>
+                                      : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
                             </td>
                           </tr>
                         )
