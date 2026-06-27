@@ -485,6 +485,9 @@ export default function Matches() {
 
   const isAdmin = user?.id === ADMIN_UUID
   const [predMap, setPredMap] = useState({})
+  const [fixtureRound, setFixtureRound] = useState('Round of 32')
+  const [syncingFixtures, setSyncingFixtures] = useState(false)
+  const [fixtureMsg, setFixtureMsg] = useState('')
 
   useEffect(() => { logPageView(user?.id, 'matches') }, [])
 
@@ -607,6 +610,34 @@ export default function Matches() {
     setRefreshMsg(msg)
     refetch()
     setRefreshingAll(false)
+  }
+
+  async function handleSyncFixtures() {
+    setSyncingFixtures(true)
+    setFixtureMsg('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/sync-fixtures', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ round: fixtureRound }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setFixtureMsg(`Error: ${json.error || res.status}`)
+      } else if (json.updated === 0 && json.skipped === 0) {
+        setFixtureMsg(json.message || 'No fixtures found')
+      } else {
+        setFixtureMsg(`Updated ${json.updated} fixtures${json.skipped ? ` · ${json.skipped} skipped` : ''}`)
+        if (json.updated > 0) refetch()
+      }
+    } catch (err) {
+      setFixtureMsg(`Error: ${err.message}`)
+    }
+    setSyncingFixtures(false)
   }
 
   // All non-finished (non-TBD) matches for the Upcoming tab and its badge count
@@ -743,9 +774,11 @@ export default function Matches() {
               {t('matches.title')}
             </h1>
             {isAdmin && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {refreshMsg && (
-                  <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{refreshMsg}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {(refreshMsg || fixtureMsg) && (
+                  <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+                    {fixtureMsg || refreshMsg}
+                  </span>
                 )}
                 <button
                   onClick={handleRefreshAll}
@@ -764,6 +797,44 @@ export default function Matches() {
                   }}
                 >
                   {refreshingAll ? t('common.loading') : `↻ ${t('analysis.refreshAll')}`}
+                </button>
+                <select
+                  value={fixtureRound}
+                  onChange={e => setFixtureRound(e.target.value)}
+                  style={{
+                    minHeight: 32, padding: '0 8px',
+                    background: 'var(--color-bg-secondary)',
+                    border: '0.5px solid var(--color-border)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--color-text-primary)',
+                    fontFamily: 'var(--font-ui)', fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="Round of 32">R32</option>
+                  <option value="Round of 16">R16</option>
+                  <option value="Quarter-finals">QF</option>
+                  <option value="Semi-finals">SF</option>
+                  <option value="3rd Place Final">3rd</option>
+                  <option value="Final">Final</option>
+                </select>
+                <button
+                  onClick={handleSyncFixtures}
+                  disabled={syncingFixtures}
+                  style={{
+                    minHeight: 32,
+                    padding: '0 12px',
+                    background: syncingFixtures ? 'transparent' : 'rgba(124,58,237,0.12)',
+                    border: '0.5px solid rgba(124,58,237,0.4)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: '#7C3AED',
+                    fontFamily: 'var(--font-ui)',
+                    fontSize: 12,
+                    cursor: syncingFixtures ? 'not-allowed' : 'pointer',
+                    opacity: syncingFixtures ? 0.6 : 1,
+                  }}
+                >
+                  {syncingFixtures ? '…' : '⚡ Sync Fixtures'}
                 </button>
               </div>
             )}
