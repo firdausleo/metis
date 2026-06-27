@@ -460,6 +460,21 @@ export default function PredictionTab({
 
   const [stratCtx, setStratCtx] = useState(null)
   const [stratLoading, setStratLoading] = useState(false)
+  const [v4Pred, setV4Pred] = useState(null)
+
+  // V4 predictions from DB
+  useEffect(() => {
+    if (!match?.id) return
+    supabase.from('model_predictions')
+      .select('v4_home_win, v4_draw, v4_away_win, v4_lambda_home, v4_lambda_away')
+      .eq('match_id', match.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.v4_home_win != null) setV4Pred(data)
+        else setV4Pred(null)
+      })
+      .catch(() => {})
+  }, [match?.id])
 
   // Strategic context: group standings + remaining fixtures + all-group standings
   useEffect(() => {
@@ -743,6 +758,11 @@ export default function PredictionTab({
                     {v1?.probs?.[key] != null && (
                       <p style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>
                         V1 {(v1.probs[key] * 100).toFixed(1)}%
+                      </p>
+                    )}
+                    {v4Pred && (
+                      <p style={{ fontSize: 11, fontFamily: mono, color: '#7C3AED', marginTop: 3 }}>
+                        V4 {(Number(v4Pred[key === 'home' ? 'v4_home_win' : key === 'away' ? 'v4_away_win' : 'v4_draw']) * 100).toFixed(1)}%
                       </p>
                     )}
                     {key !== 'draw' && v3 && (

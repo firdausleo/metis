@@ -168,11 +168,11 @@ export default function PASPTab({ match, model }) {
       })
   }, [match?.id])
 
-  // V3 lambdas from model_predictions
+  // V3 + V4 lambdas from model_predictions
   useEffect(() => {
     if (!match?.id) return
     supabase.from('model_predictions')
-      .select('v3_lambda_home, v3_lambda_away')
+      .select('v3_lambda_home, v3_lambda_away, v4_lambda_home, v4_lambda_away')
       .eq('match_id', match.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -254,13 +254,14 @@ export default function PASPTab({ match, model }) {
     return              { tier: 'SKIP',   label: 'AI SKIP —',  sub: 'No bet — insufficient data',  kelly: 0.00, bg: '#374151', tx: '#fff' }
   }, [aiConf])
 
-  // Follow Model portfolio — matrix-based, uses DB lambdas
+  // Follow Model portfolio — prefers V4 lambdas, falls back to V3
   const followPortfolio = useMemo(() => {
     if (!oddsData || !modelPred?.v3_lambda_home || !modelPred?.v3_lambda_away) return null
-    const lh = Number(modelPred.v3_lambda_home)
-    const la = Number(modelPred.v3_lambda_away)
+    const useV4 = modelPred?.v4_lambda_home != null && modelPred?.v4_lambda_away != null
+    const lh = Number(useV4 ? modelPred.v4_lambda_home : modelPred.v3_lambda_home)
+    const la = Number(useV4 ? modelPred.v4_lambda_away : modelPred.v3_lambda_away)
     if (!lh || !la) return null
-    return computeFollowModelPortfolio(lh, la, oddsData, budget)
+    return { ...computeFollowModelPortfolio(lh, la, oddsData, budget), modelVersion: useV4 ? 'V4' : 'V3' }
   }, [oddsData, modelPred, budget])
 
   async function placeAllBets() {
@@ -444,11 +445,11 @@ export default function PASPTab({ match, model }) {
       {/* Model Analysis */}
       {followPortfolio && (
         <div style={panel}>
-          <div style={ph}><span>Model Analysis</span><span style={{ color: '#C9A84C' }}>V3 Matrix</span></div>
+          <div style={ph}><span>Model Analysis</span><span style={{ color: followPortfolio.modelVersion === 'V4' ? '#7C3AED' : '#C9A84C' }}>{followPortfolio.modelVersion} Matrix</span></div>
           <div style={{ padding: '10px 14px', display: 'flex', flexWrap: 'wrap', gap: 16 }}>
             {[
-              { label: 'λ Home',      value: Number(modelPred.v3_lambda_home).toFixed(2) },
-              { label: 'λ Away',      value: Number(modelPred.v3_lambda_away).toFixed(2) },
+              { label: 'λ Home',      value: Number(followPortfolio.modelVersion === 'V4' ? modelPred.v4_lambda_home : modelPred.v3_lambda_home).toFixed(2) },
+              { label: 'λ Away',      value: Number(followPortfolio.modelVersion === 'V4' ? modelPred.v4_lambda_away : modelPred.v3_lambda_away).toFixed(2) },
               { label: 'Anchor',      value: `${followPortfolio.anchor} goals` },
               { label: 'Direction',   value: followPortfolio.dominant, color: followPortfolio.dominant === 'home' ? '#1A3A6C' : followPortfolio.dominant === 'away' ? '#C0392B' : '#BA7517' },
               { label: 'Primary prob', value: followPortfolio.primaryProb != null ? `${followPortfolio.primaryProb}%` : '—' },
@@ -475,7 +476,7 @@ export default function PASPTab({ match, model }) {
       {followPortfolio?.legs?.length > 0 && (
         <div style={panel}>
           <div style={ph}>
-            <span>PASP v3 Portfolio</span>
+            <span>PASP {followPortfolio.modelVersion} Portfolio</span>
             <span style={{ fontFamily: mono, color: '#C9A84C' }}>Total ¥{followPortfolio.totalStake}</span>
           </div>
 

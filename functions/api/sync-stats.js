@@ -489,6 +489,20 @@ async function logPredictions(env, matches, statsRows) {
     settledRes?.ok ? (await settledRes.json()).map(r => r.match_id) : []
   )
 
+  // Load V4 corrections for all teams in these matches
+  const allTeams = [...new Set(matches.flatMap(m => [m.home_team, m.away_team]))]
+  let v4Corrections = {}
+  try {
+    const corrRes = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/team_wc_corrections?team_name=in.(${allTeams.map(t => `"${t}"`).join(',')})&select=team_name,attack_bias,confidence`,
+      { headers: sbAuth(env) }
+    )
+    if (corrRes.ok) {
+      const rows = await corrRes.json()
+      for (const r of rows) v4Corrections[r.team_name] = r
+    }
+  } catch { /* V4 corrections optional — never block sync */ }
+
   const predRows = []
   for (const m of matches) {
     if (settledIds.has(m.id)) continue
@@ -508,12 +522,20 @@ async function logPredictions(env, matches, statsRows) {
       const lhV3 = 0.65 * dcH + 0.35 * v1.lambdaHome
       const laV3 = 0.65 * dcA + 0.35 * v1.lambdaAway
 
+      // V4: V3 + bias corrections from WC2026 match history
+      const hCorr = v4Corrections[m.home_team]
+      const aCorr = v4Corrections[m.away_team]
+      const lhV4 = Math.max(0.20, Math.min(5.0, lhV3 + (hCorr?.confidence ?? 0) * (hCorr?.attack_bias ?? 0)))
+      const laV4 = Math.max(0.20, Math.min(5.0, laV3 + (aCorr?.confidence ?? 0) * (aCorr?.attack_bias ?? 0)))
+
       const matV1 = predBuildMatrix(v1.lambdaHome, v1.lambdaAway)
       const matV2 = predBuildMatrix(v2.lambdaHome, v2.lambdaAway)
       const matV3 = predBuildMatrix(lhV3, laV3)
+      const matV4 = predBuildMatrix(lhV4, laV4)
       const pV1 = predCalcProbs(matV1)
       const pV2 = predCalcProbs(matV2)
       const pV3 = predCalcProbs(matV3)
+      const pV4 = predCalcProbs(matV4)
 
       predRows.push({
         match_id: m.id,
@@ -528,6 +550,8 @@ async function logPredictions(env, matches, statsRows) {
         v3_lambda_home: +lhV3.toFixed(3), v3_lambda_away: +laV3.toFixed(3),
         v3_top_score:   predTopScore(matV3),
         anchor_line:    predAnchorLine(lhV3 + laV3),
+        v4_lambda_home: +lhV4.toFixed(3), v4_lambda_away: +laV4.toFixed(3),
+        v4_home_win:    +pV4.home.toFixed(3), v4_draw: +pV4.draw.toFixed(3), v4_away_win: +pV4.away.toFixed(3),
       })
     } catch { /* skip this match — never block stats sync */ }
   }

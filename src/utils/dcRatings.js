@@ -128,6 +128,23 @@ export function blendedLambdas(home, away, m7Home, m7Away,
   }
 }
 
+export async function dcLambdasV4(home, away, homeIsHost, supabaseClient) {
+  const v3 = dcLambdas(home, away, homeIsHost)
+  const { data: corrections } = await supabaseClient
+    .from('team_wc_corrections')
+    .select('team_name, attack_bias, confidence')
+    .in('team_name', [home, away])
+  const homeCorr = corrections?.find(c => c.team_name === home)
+  const awayCorr = corrections?.find(c => c.team_name === away)
+  const lhV4 = Math.max(0.20, Math.min(5.0,
+    v3.lh + (homeCorr?.confidence ?? 0) * (homeCorr?.attack_bias ?? 0)
+  ))
+  const laV4 = Math.max(0.20, Math.min(5.0,
+    v3.la + (awayCorr?.confidence ?? 0) * (awayCorr?.attack_bias ?? 0)
+  ))
+  return { lh: lhV4, la: laV4, lhV3: v3.lh, laV3: v3.la }
+}
+
 export function matrixStats(M, maxG = 8) {
   let homeWin = 0, draw = 0, awayWin = 0, over25 = 0, btts = 0
   const totals = Array(maxG * 2 + 1).fill(0)
