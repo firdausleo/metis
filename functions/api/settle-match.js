@@ -5,6 +5,54 @@
 
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
+// ── Knockout bracket progression ────────────────────────────────────────────
+// R32 slot order matches R32_BRACKET index; sequential pairs feed into R16.
+// Bracket assumption: slots (0,1)→R16[0], (2,3)→R16[1], … (14,15)→R16[7].
+
+const R32_BRACKET_UTCS = [
+  '2026-06-28T19:00:00.000Z', // slot 0  Mexico vs Canada
+  '2026-06-28T22:00:00.000Z', // slot 1  Brazil vs Australia
+  '2026-06-29T01:00:00.000Z', // slot 2  Germany vs Japan
+  '2026-06-29T19:00:00.000Z', // slot 3  Belgium vs Cape Verde
+  '2026-06-29T22:00:00.000Z', // slot 4  France vs Austria
+  '2026-06-30T01:00:00.000Z', // slot 5  Colombia vs Croatia
+  '2026-06-30T19:00:00.000Z', // slot 6  South Africa vs Switzerland
+  '2026-06-30T22:00:00.000Z', // slot 7  Morocco vs USA
+  '2026-07-01T01:00:00.000Z', // slot 8  Ivory Coast vs Netherlands
+  '2026-07-01T19:00:00.000Z', // slot 9  Egypt vs Spain
+  '2026-07-01T22:00:00.000Z', // slot 10 Norway vs Argentina
+  '2026-07-02T01:00:00.000Z', // slot 11 Portugal vs England
+  '2026-07-02T19:00:00.000Z', // slot 12 Bosnia-Herzegovina vs Sweden
+  '2026-07-02T22:00:00.000Z', // slot 13 Paraguay vs Ghana
+  '2026-07-03T01:00:00.000Z', // slot 14 Ecuador vs Algeria
+  '2026-07-03T19:00:00.000Z', // slot 15 Senegal vs DR Congo
+]
+
+const R16_IDS = [
+  '9de7fba2-a890-4c02-923d-d38c2a16f9b4', // Jul 07 19:00Z  W(0) vs W(1)
+  'ecd88202-6b7c-429b-8b4f-baea088f57c1', // Jul 07 22:00Z  W(2) vs W(3)
+  'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74', // Jul 08 19:00Z  W(4) vs W(5)
+  '53530c34-c46b-4552-a428-49410b404e04', // Jul 08 22:00Z  W(6) vs W(7)
+  '9097b035-327b-47bc-8470-5f83a1cf9174', // Jul 09 19:00Z  W(8) vs W(9)
+  '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5', // Jul 09 22:00Z  W(10) vs W(11)
+  '61ec5bd8-0241-47ca-ba50-c84c41177eba', // Jul 10 19:00Z  W(12) vs W(13)
+  'f686b918-9d7d-4e05-afec-30ea621a708d', // Jul 10 22:00Z  W(14) vs W(15)
+]
+
+const QF_IDS = [
+  'a02d5d26-9aa1-4f6d-8c2c-d0ef3c22bab0', // Jul 11 21:00Z
+  '959f29e2-9265-4fcc-9bdd-6866c56835de', // Jul 12 01:00Z
+  '72726e9a-a595-4543-aa51-c2d1b2de9d9d', // Jul 13 21:00Z
+  '87784065-417f-4c95-80c8-9d22e8ac4f39', // Jul 14 01:00Z
+]
+
+const SF_IDS = [
+  '6bcfd5c2-da63-46e4-a780-9deecaf6ab3f', // Jul 15 23:00Z
+  '29169d0c-f1a2-41fb-92da-5aa34121a970', // Jul 16 23:00Z
+]
+
+const FINAL_ID = '330240de-5cb9-410c-9c9e-6d432ff62bbc'
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -174,6 +222,47 @@ function getVenueMult(venue = '', city = '', homeTeam = '') {
   return 1.0
 }
 
+// ── Knockout bracket propagation ────────────────────────────────────────────
+
+async function patchTeamField(env, matchId, field, teamName) {
+  await fetch(`${env.SUPABASE_URL}/rest/v1/matches?id=eq.${matchId}`, {
+    method: 'PATCH',
+    headers: { ...sb(env), 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ [field]: teamName }),
+  })
+}
+
+// Call after any knockout match settles. winnerTeam = name of the team advancing.
+async function propagateWinner(env, settledMatchId, settledMatchDate, winnerTeam) {
+  const utc = new Date(settledMatchDate).toISOString()
+
+  const r32Idx = R32_BRACKET_UTCS.indexOf(utc)
+  if (r32Idx >= 0) {
+    const nextId = R16_IDS[Math.floor(r32Idx / 2)]
+    if (nextId) await patchTeamField(env, nextId, r32Idx % 2 === 0 ? 'home_team' : 'away_team', winnerTeam)
+    return
+  }
+
+  const r16Idx = R16_IDS.indexOf(settledMatchId)
+  if (r16Idx >= 0) {
+    const nextId = QF_IDS[Math.floor(r16Idx / 2)]
+    if (nextId) await patchTeamField(env, nextId, r16Idx % 2 === 0 ? 'home_team' : 'away_team', winnerTeam)
+    return
+  }
+
+  const qfIdx = QF_IDS.indexOf(settledMatchId)
+  if (qfIdx >= 0) {
+    const nextId = SF_IDS[Math.floor(qfIdx / 2)]
+    if (nextId) await patchTeamField(env, nextId, qfIdx % 2 === 0 ? 'home_team' : 'away_team', winnerTeam)
+    return
+  }
+
+  const sfIdx = SF_IDS.indexOf(settledMatchId)
+  if (sfIdx >= 0) {
+    await patchTeamField(env, FINAL_ID, sfIdx === 0 ? 'home_team' : 'away_team', winnerTeam)
+  }
+}
+
 // ── Model prediction tracking ───────────────────────────────────────────────
 
 function topOutcome(hw, d, aw) {
@@ -310,7 +399,7 @@ export async function onRequestPost(context) {
 
   let body
   try { body = await request.json() } catch { return res({ error: 'Invalid JSON' }, 400) }
-  const { match_id, home_score, away_score } = body
+  const { match_id, home_score, away_score, penalties_winner } = body
   if (!match_id || !Number.isInteger(home_score) || !Number.isInteger(away_score)) {
     return res({ error: 'match_id and integer home_score/away_score required' }, 400)
   }
@@ -347,5 +436,26 @@ export async function onRequestPost(context) {
   let model_predictions_scored = 0
   try { model_predictions_scored = await trackModelPredictions(env, match_id, home_score, away_score) } catch { /* never block */ }
 
-  return res({ success: true, match_id, home_score, away_score, pending: pending.length, settled, roles_scored, model_predictions_scored })
+  // Propagate winner to next knockout round (non-blocking)
+  let propagated = null
+  try {
+    const mRes = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/matches?id=eq.${match_id}&select=home_team,away_team,group_name,match_date`,
+      { headers: sb(env) }
+    )
+    if (mRes.ok) {
+      const [m] = await mRes.json()
+      if (m?.group_name === null) {
+        const winner = home_score > away_score ? m.home_team
+                     : away_score > home_score ? m.away_team
+                     : (penalties_winner ?? null)
+        if (winner) {
+          await propagateWinner(env, match_id, m.match_date, winner)
+          propagated = winner
+        }
+      }
+    }
+  } catch { /* never block settle */ }
+
+  return res({ success: true, match_id, home_score, away_score, pending: pending.length, settled, roles_scored, model_predictions_scored, propagated })
 }
