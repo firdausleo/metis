@@ -15,24 +15,24 @@ const API_BASE   = 'https://v3.football.api-sports.io'
 const WC_LEAGUE  = 1
 const WC_SEASON  = 2026
 
-// Hardcoded R32 bracket — 16 slots in chronological order (UTC)
+// Hardcoded R32 bracket — actual confirmed WC2026 matchups (16 slots, UTC)
 const R32_BRACKET = [
-  { utc: '2026-06-28T19:00:00Z', home: '1A', away: '2B' }, // Mexico vs Canada
-  { utc: '2026-06-28T22:00:00Z', home: '1C', away: '2D' }, // Brazil vs Australia
-  { utc: '2026-06-29T01:00:00Z', home: '1E', away: '2F' }, // Germany vs Japan
-  { utc: '2026-06-29T19:00:00Z', home: '1G', away: '2H' }, // Belgium vs Cape Verde
-  { utc: '2026-06-29T22:00:00Z', home: '1I', away: '2J' }, // France vs Austria
-  { utc: '2026-06-30T01:00:00Z', home: '1K', away: '2L' }, // Colombia vs Croatia
-  { utc: '2026-06-30T19:00:00Z', home: '2A', away: '1B' }, // South Africa vs Switzerland
-  { utc: '2026-06-30T22:00:00Z', home: '2C', away: '1D' }, // Morocco vs USA
-  { utc: '2026-07-01T01:00:00Z', home: '2E', away: '1F' }, // Ivory Coast vs Netherlands
-  { utc: '2026-07-01T19:00:00Z', home: '2G', away: '1H' }, // Egypt vs Spain
-  { utc: '2026-07-01T22:00:00Z', home: '2I', away: '1J' }, // Norway vs Argentina
-  { utc: '2026-07-02T01:00:00Z', home: '2K', away: '1L' }, // Portugal vs England
-  { utc: '2026-07-02T19:00:00Z', home: '3B', away: '3F' }, // Bosnia-Herzegovina vs Sweden
-  { utc: '2026-07-02T22:00:00Z', home: '3D', away: '3L' }, // Paraguay vs Ghana
-  { utc: '2026-07-03T01:00:00Z', home: '3E', away: '3J' }, // Ecuador vs Algeria
-  { utc: '2026-07-03T19:00:00Z', home: '3I', away: '3K' }, // Senegal vs DR Congo
+  { utc: '2026-06-28T19:00:00Z', home: 'South Africa',        homeCode: 'RSA', away: 'Canada',             awayCode: 'CAN' },
+  { utc: '2026-06-28T22:00:00Z', home: 'Brazil',              homeCode: 'BRA', away: 'Japan',              awayCode: 'JPN' },
+  { utc: '2026-06-29T01:00:00Z', home: 'Germany',             homeCode: 'GER', away: 'Paraguay',            awayCode: 'PAR' },
+  { utc: '2026-06-29T19:00:00Z', home: 'Netherlands',         homeCode: 'NED', away: 'Morocco',             awayCode: 'MAR' },
+  { utc: '2026-06-29T22:00:00Z', home: 'Ivory Coast',         homeCode: 'CIV', away: 'Norway',              awayCode: 'NOR' },
+  { utc: '2026-06-30T01:00:00Z', home: 'France',              homeCode: 'FRA', away: 'Sweden',              awayCode: 'SWE' },
+  { utc: '2026-06-30T19:00:00Z', home: 'Mexico',              homeCode: 'MEX', away: 'Ecuador',             awayCode: 'ECU' },
+  { utc: '2026-06-30T22:00:00Z', home: 'England',             homeCode: 'ENG', away: 'DR Congo',            awayCode: 'COD' },
+  { utc: '2026-07-01T01:00:00Z', home: 'Belgium',             homeCode: 'BEL', away: 'Senegal',             awayCode: 'SEN' },
+  { utc: '2026-07-01T19:00:00Z', home: 'USA',                 homeCode: 'USA', away: 'Bosnia-Herzegovina',  awayCode: 'BIH' },
+  { utc: '2026-07-01T22:00:00Z', home: 'Spain',               homeCode: 'ESP', away: 'Austria',             awayCode: 'AUT' },
+  { utc: '2026-07-02T01:00:00Z', home: 'Portugal',            homeCode: 'POR', away: 'Croatia',             awayCode: 'CRO' },
+  { utc: '2026-07-02T19:00:00Z', home: 'Switzerland',         homeCode: 'SUI', away: 'Algeria',             awayCode: 'ALG' },
+  { utc: '2026-07-02T22:00:00Z', home: 'Australia',           homeCode: 'AUS', away: 'Egypt',               awayCode: 'EGY' },
+  { utc: '2026-07-03T01:00:00Z', home: 'Argentina',           homeCode: 'ARG', away: 'Cape Verde',          awayCode: 'CPV' },
+  { utc: '2026-07-03T19:00:00Z', home: 'Colombia',            homeCode: 'COL', away: 'Ghana',               awayCode: 'GHA' },
 ]
 
 const API_TO_METIS = {
@@ -72,75 +72,10 @@ async function verifyAdmin(request, env) {
   return user?.id === ADMIN_UUID ? user : null
 }
 
-// ── Group standings ───────────────────────────────────────────────────────────
-
-async function computeStandings(env) {
-  const r = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/matches?group_name=not.is.null&status=eq.finished` +
-    `&select=home_team,away_team,home_team_code,away_team_code,home_score,away_score,group_name`,
-    { headers: sbAuth(env) }
-  )
-  if (!r.ok) throw new Error(`standings fetch HTTP ${r.status}`)
-  const matches = await r.json()
-
-  const groups = {}
-  const codes  = {}
-
-  for (const m of matches) {
-    if (m.home_score == null || m.away_score == null) continue
-    const g = m.group_name
-    if (!groups[g]) groups[g] = {}
-    codes[m.home_team] = m.home_team_code
-    codes[m.away_team] = m.away_team_code
-
-    const upd = (team, scored, conceded, pts) => {
-      if (!groups[g][team]) groups[g][team] = { pts: 0, gd: 0, gf: 0 }
-      groups[g][team].gf += scored
-      groups[g][team].gd += scored - conceded
-      groups[g][team].pts += pts
-    }
-
-    if (m.home_score > m.away_score) {
-      upd(m.home_team, m.home_score, m.away_score, 3)
-      upd(m.away_team, m.away_score, m.home_score, 0)
-    } else if (m.away_score > m.home_score) {
-      upd(m.home_team, m.home_score, m.away_score, 0)
-      upd(m.away_team, m.away_score, m.home_score, 3)
-    } else {
-      upd(m.home_team, m.home_score, m.away_score, 1)
-      upd(m.away_team, m.away_score, m.home_score, 1)
-    }
-  }
-
-  const standings = {}
-  for (const [g, teams] of Object.entries(groups)) {
-    const sorted = Object.entries(teams)
-      .sort(([, a], [, b]) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf)
-      .map(([name]) => name)
-    standings[g] = { w: sorted[0], r: sorted[1], third: sorted[2] }
-  }
-
-  return { standings, codes }
-}
-
-// Resolve bracket slot code ('1A', '2B', '3F', …) → team name
-function resolveSlotCode(code, standings) {
-  const rank  = code[0]
-  const group = code.slice(1)
-  const g     = standings[group]
-  if (!g) return 'TBD'
-  if (rank === '1') return g.w     || 'TBD'
-  if (rank === '2') return g.r     || 'TBD'
-  if (rank === '3') return g.third || 'TBD'
-  return 'TBD'
-}
-
 // ── R32 population ────────────────────────────────────────────────────────────
 
 async function populateR32(env) {
-  const { standings, codes } = await computeStandings(env)
-
-  // Load all existing knockout match rows indexed by normalised UTC
+  // Load existing knockout rows indexed by normalised UTC
   const existRes = await fetch(
     `${env.SUPABASE_URL}/rest/v1/matches?group_name=is.null&select=id,match_date`,
     { headers: sbAuth(env) }
@@ -158,12 +93,7 @@ async function populateR32(env) {
   const log    = []
 
   for (const slot of R32_BRACKET) {
-    const utcNorm  = new Date(slot.utc).toISOString()
-    const homeTeam = resolveSlotCode(slot.home, standings)
-    const awayTeam = resolveSlotCode(slot.away, standings)
-    const homeCode = codes[homeTeam] || homeTeam.slice(0, 3).toUpperCase()
-    const awayCode = codes[awayTeam] || awayTeam.slice(0, 3).toUpperCase()
-
+    const utcNorm = new Date(slot.utc).toISOString()
     const existId = existByUTC[utcNorm]
 
     if (existId) {
@@ -172,10 +102,10 @@ async function populateR32(env) {
         {
           method: 'PATCH',
           headers: { ...sbAuth(env), 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ home_team: homeTeam, away_team: awayTeam, home_team_code: homeCode, away_team_code: awayCode }),
+          body: JSON.stringify({ home_team: slot.home, away_team: slot.away, home_team_code: slot.homeCode, away_team_code: slot.awayCode }),
         }
       )
-      if (pRes.ok) { updated++; log.push(`UPDATE ${slot.utc}: ${homeTeam} vs ${awayTeam}`) }
+      if (pRes.ok) { updated++; log.push(`UPDATE ${slot.utc}: ${slot.home} vs ${slot.away}`) }
       else          { errors.push(`UPDATE failed ${slot.utc}: HTTP ${pRes.status}`) }
     } else {
       const iRes = await fetch(
@@ -184,17 +114,17 @@ async function populateR32(env) {
           method: 'POST',
           headers: { ...sbAuth(env), 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
           body: JSON.stringify({
-            home_team:      homeTeam,
-            away_team:      awayTeam,
-            home_team_code: homeCode,
-            away_team_code: awayCode,
+            home_team:      slot.home,
+            away_team:      slot.away,
+            home_team_code: slot.homeCode,
+            away_team_code: slot.awayCode,
             match_date:     slot.utc,
             stage:          'r32',
             status:         'upcoming',
           }),
         }
       )
-      if (iRes.ok) { inserted++; log.push(`INSERT ${slot.utc}: ${homeTeam} vs ${awayTeam}`) }
+      if (iRes.ok) { inserted++; log.push(`INSERT ${slot.utc}: ${slot.home} vs ${slot.away}`) }
       else          { const t = await iRes.text(); errors.push(`INSERT failed ${slot.utc}: ${t.slice(0, 100)}`) }
     }
   }

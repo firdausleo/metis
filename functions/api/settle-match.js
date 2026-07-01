@@ -6,26 +6,26 @@
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
 // ── Knockout bracket progression ────────────────────────────────────────────
-// All three cross-round maps are hardcoded from the official WC2026 bracket.
-// Sequential pairing (floor/mod) is wrong for this tournament's schedule.
+// R32→R16: pairs by same BJ time-slot across consecutive match days.
+// Pattern: (slots 1,4), (3,6), (2,5), (7,10), (8,11), (9,12), (13,16), (14,15)
 
 const R32_TO_R16 = {
-  '2026-06-28T19:00:00Z': { matchId: '9de7fba2-a890-4c02-923d-d38c2a16f9b4', slot: 'home' }, // Mexico/Canada      → R16 Jul08-03BJ home
-  '2026-06-28T22:00:00Z': { matchId: '9097b035-327b-47bc-8470-5f83a1cf9174', slot: 'home' }, // Brazil/Australia   → R16 Jul10-03BJ home
-  '2026-06-29T01:00:00Z': { matchId: 'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74', slot: 'home' }, // Germany/Japan      → R16 Jul09-03BJ home
-  '2026-06-29T19:00:00Z': { matchId: '61ec5bd8-0241-47ca-ba50-c84c41177eba', slot: 'home' }, // Belgium/Cape Verde → R16 Jul11-03BJ home
-  '2026-06-29T22:00:00Z': { matchId: 'ecd88202-6b7c-429b-8b4f-baea088f57c1', slot: 'home' }, // France/Austria     → R16 Jul08-06BJ home
-  '2026-06-30T01:00:00Z': { matchId: '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5', slot: 'home' }, // Colombia/Croatia   → R16 Jul10-06BJ home
-  '2026-06-30T19:00:00Z': { matchId: '53530c34-c46b-4552-a428-49410b404e04', slot: 'home' }, // S.Africa/Swiss     → R16 Jul09-06BJ home
-  '2026-06-30T22:00:00Z': { matchId: 'f686b918-9d7d-4e05-afec-30ea621a708d', slot: 'home' }, // Morocco/USA        → R16 Jul11-06BJ home
-  '2026-07-01T01:00:00Z': { matchId: '9de7fba2-a890-4c02-923d-d38c2a16f9b4', slot: 'away' }, // Ivory Coast/Neth   → R16 Jul08-03BJ away
-  '2026-07-01T19:00:00Z': { matchId: '9097b035-327b-47bc-8470-5f83a1cf9174', slot: 'away' }, // Egypt/Spain        → R16 Jul10-03BJ away
-  '2026-07-01T22:00:00Z': { matchId: 'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74', slot: 'away' }, // Norway/Argentina   → R16 Jul09-03BJ away
-  '2026-07-02T01:00:00Z': { matchId: '61ec5bd8-0241-47ca-ba50-c84c41177eba', slot: 'away' }, // Portugal/England   → R16 Jul11-03BJ away
-  '2026-07-02T19:00:00Z': { matchId: 'ecd88202-6b7c-429b-8b4f-baea088f57c1', slot: 'away' }, // Bosnia/Sweden      → R16 Jul08-06BJ away
-  '2026-07-02T22:00:00Z': { matchId: '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5', slot: 'away' }, // Paraguay/Ghana     → R16 Jul10-06BJ away
-  '2026-07-03T01:00:00Z': { matchId: '53530c34-c46b-4552-a428-49410b404e04', slot: 'away' }, // Ecuador/Algeria    → R16 Jul09-06BJ away
-  '2026-07-03T19:00:00Z': { matchId: 'f686b918-9d7d-4e05-afec-30ea621a708d', slot: 'away' }, // Senegal/DR Congo   → R16 Jul11-06BJ away
+  '2026-06-28T19:00:00Z': { matchId: '9de7fba2-a890-4c02-923d-d38c2a16f9b4', slot: 'home' }, // South Africa/Canada  → R16 Jul04-03BJ home
+  '2026-06-29T19:00:00Z': { matchId: '9de7fba2-a890-4c02-923d-d38c2a16f9b4', slot: 'away' }, // Netherlands/Morocco  → R16 Jul04-03BJ away
+  '2026-06-29T01:00:00Z': { matchId: 'ecd88202-6b7c-429b-8b4f-baea088f57c1', slot: 'home' }, // Germany/Paraguay     → R16 Jul04-06BJ home
+  '2026-06-30T01:00:00Z': { matchId: 'ecd88202-6b7c-429b-8b4f-baea088f57c1', slot: 'away' }, // France/Sweden        → R16 Jul04-06BJ away
+  '2026-06-28T22:00:00Z': { matchId: 'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74', slot: 'home' }, // Brazil/Japan         → R16 Jul05-03BJ home
+  '2026-06-29T22:00:00Z': { matchId: 'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74', slot: 'away' }, // Ivory Coast/Norway   → R16 Jul05-03BJ away
+  '2026-06-30T19:00:00Z': { matchId: '53530c34-c46b-4552-a428-49410b404e04', slot: 'home' }, // Mexico/Ecuador       → R16 Jul05-06BJ home
+  '2026-07-01T19:00:00Z': { matchId: '53530c34-c46b-4552-a428-49410b404e04', slot: 'away' }, // USA/Bosnia-Herz      → R16 Jul05-06BJ away
+  '2026-06-30T22:00:00Z': { matchId: '9097b035-327b-47bc-8470-5f83a1cf9174', slot: 'home' }, // England/DR Congo     → R16 Jul06-03BJ home
+  '2026-07-01T22:00:00Z': { matchId: '9097b035-327b-47bc-8470-5f83a1cf9174', slot: 'away' }, // Spain/Austria        → R16 Jul06-03BJ away
+  '2026-07-01T01:00:00Z': { matchId: '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5', slot: 'home' }, // Belgium/Senegal      → R16 Jul06-06BJ home
+  '2026-07-02T01:00:00Z': { matchId: '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5', slot: 'away' }, // Portugal/Croatia     → R16 Jul06-06BJ away
+  '2026-07-02T19:00:00Z': { matchId: '61ec5bd8-0241-47ca-ba50-c84c41177eba', slot: 'home' }, // Switzerland/Algeria  → R16 Jul07-03BJ home
+  '2026-07-03T19:00:00Z': { matchId: '61ec5bd8-0241-47ca-ba50-c84c41177eba', slot: 'away' }, // Colombia/Ghana       → R16 Jul07-03BJ away
+  '2026-07-02T22:00:00Z': { matchId: 'f686b918-9d7d-4e05-afec-30ea621a708d', slot: 'home' }, // Australia/Egypt      → R16 Jul07-06BJ home
+  '2026-07-03T01:00:00Z': { matchId: 'f686b918-9d7d-4e05-afec-30ea621a708d', slot: 'away' }, // Argentina/Cape Verde → R16 Jul07-06BJ away
 }
 
 const R16_TO_QF = {
@@ -398,10 +398,10 @@ export async function onRequestPost(context) {
     return res({ error: 'match_id and integer home_score/away_score required' }, 400)
   }
 
-  // Mark match finished
+  // Mark match finished (penalties_winner stored if column exists)
   const mu = await fetch(`${env.SUPABASE_URL}/rest/v1/matches?id=eq.${match_id}`, {
     method: 'PATCH', headers: { ...sb(env), 'Prefer': 'return=minimal' },
-    body: JSON.stringify({ home_score, away_score, status: 'finished' }),
+    body: JSON.stringify({ home_score, away_score, status: 'finished', penalties_winner: penalties_winner ?? null }),
   })
   if (!mu.ok) return res({ error: 'Match update failed', detail: await mu.text() }, 502)
 
