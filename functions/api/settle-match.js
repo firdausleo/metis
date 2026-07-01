@@ -6,26 +6,31 @@
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
 // ── Knockout bracket progression ────────────────────────────────────────────
-// R32→R16: pairs by same BJ time-slot across consecutive match days.
-// Pattern: (slots 1,4), (3,6), (2,5), (7,10), (8,11), (9,12), (13,16), (14,15)
+// R32→R16 keyed by R32 match UTC. 6 entries confirmed from official R16 matchups;
+// remaining 10 marked [P] are provisional until more R16 pairings are announced.
 
 const R32_TO_R16 = {
-  '2026-06-28T19:00:00Z': { matchId: '9de7fba2-a890-4c02-923d-d38c2a16f9b4', slot: 'home' }, // South Africa/Canada  → R16 Jul04-03BJ home
-  '2026-06-29T19:00:00Z': { matchId: '9de7fba2-a890-4c02-923d-d38c2a16f9b4', slot: 'away' }, // Netherlands/Morocco  → R16 Jul04-03BJ away
-  '2026-06-29T01:00:00Z': { matchId: 'ecd88202-6b7c-429b-8b4f-baea088f57c1', slot: 'home' }, // Germany/Paraguay     → R16 Jul04-06BJ home
-  '2026-06-30T01:00:00Z': { matchId: 'ecd88202-6b7c-429b-8b4f-baea088f57c1', slot: 'away' }, // France/Sweden        → R16 Jul04-06BJ away
-  '2026-06-28T22:00:00Z': { matchId: 'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74', slot: 'home' }, // Brazil/Japan         → R16 Jul05-03BJ home
-  '2026-06-29T22:00:00Z': { matchId: 'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74', slot: 'away' }, // Ivory Coast/Norway   → R16 Jul05-03BJ away
-  '2026-06-30T19:00:00Z': { matchId: '53530c34-c46b-4552-a428-49410b404e04', slot: 'home' }, // Mexico/Ecuador       → R16 Jul05-06BJ home
-  '2026-07-01T19:00:00Z': { matchId: '53530c34-c46b-4552-a428-49410b404e04', slot: 'away' }, // USA/Bosnia-Herz      → R16 Jul05-06BJ away
-  '2026-06-30T22:00:00Z': { matchId: '9097b035-327b-47bc-8470-5f83a1cf9174', slot: 'home' }, // England/DR Congo     → R16 Jul06-03BJ home
-  '2026-07-01T22:00:00Z': { matchId: '9097b035-327b-47bc-8470-5f83a1cf9174', slot: 'away' }, // Spain/Austria        → R16 Jul06-03BJ away
-  '2026-07-01T01:00:00Z': { matchId: '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5', slot: 'home' }, // Belgium/Senegal      → R16 Jul06-06BJ home
-  '2026-07-02T01:00:00Z': { matchId: '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5', slot: 'away' }, // Portugal/Croatia     → R16 Jul06-06BJ away
-  '2026-07-02T19:00:00Z': { matchId: '61ec5bd8-0241-47ca-ba50-c84c41177eba', slot: 'home' }, // Switzerland/Algeria  → R16 Jul07-03BJ home
-  '2026-07-03T19:00:00Z': { matchId: '61ec5bd8-0241-47ca-ba50-c84c41177eba', slot: 'away' }, // Colombia/Ghana       → R16 Jul07-03BJ away
-  '2026-07-02T22:00:00Z': { matchId: 'f686b918-9d7d-4e05-afec-30ea621a708d', slot: 'home' }, // Australia/Egypt      → R16 Jul07-06BJ home
-  '2026-07-03T01:00:00Z': { matchId: 'f686b918-9d7d-4e05-afec-30ea621a708d', slot: 'away' }, // Argentina/Cape Verde → R16 Jul07-06BJ away
+  // CONFIRMED ── Canada vs Morocco (R16 Jul04-03BJ)
+  '2026-06-28T19:00:00Z': { matchId: '9de7fba2-a890-4c02-923d-d38c2a16f9b4', slot: 'home' }, // South Africa/Canada → home (Canada)
+  '2026-06-29T19:00:00Z': { matchId: '9de7fba2-a890-4c02-923d-d38c2a16f9b4', slot: 'away' }, // Netherlands/Morocco → away (Morocco)
+  // CONFIRMED ── Paraguay vs France (R16 Jul04-06BJ)
+  '2026-06-29T01:00:00Z': { matchId: 'ecd88202-6b7c-429b-8b4f-baea088f57c1', slot: 'home' }, // Germany/Paraguay    → home (Paraguay)
+  '2026-06-29T22:00:00Z': { matchId: 'ecd88202-6b7c-429b-8b4f-baea088f57c1', slot: 'away' }, // France/Sweden       → away (France)
+  // CONFIRMED ── Brazil vs Norway (R16 Jul05-03BJ)
+  '2026-06-28T22:00:00Z': { matchId: 'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74', slot: 'home' }, // Brazil/Japan        → home (Brazil)
+  '2026-07-01T01:00:00Z': { matchId: 'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74', slot: 'away' }, // Ivory Coast/Norway  → away (Norway)
+  // CONFIRMED home slot ── Mexico confirmed in R16 Jul05-06BJ
+  '2026-06-30T01:00:00Z': { matchId: '53530c34-c46b-4552-a428-49410b404e04', slot: 'home' }, // Mexico/Ecuador      → home (Mexico)
+  // [P] PROVISIONAL ── remaining 9 entries, update when R16 pairings announced
+  '2026-07-01T19:00:00Z': { matchId: '53530c34-c46b-4552-a428-49410b404e04', slot: 'away' }, // [P] Spain/Austria   → away
+  '2026-06-30T19:00:00Z': { matchId: '9097b035-327b-47bc-8470-5f83a1cf9174', slot: 'home' }, // [P] Australia/Egypt → home
+  '2026-07-01T22:00:00Z': { matchId: '9097b035-327b-47bc-8470-5f83a1cf9174', slot: 'away' }, // [P] Portugal/Croatia → away
+  '2026-06-30T22:00:00Z': { matchId: '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5', slot: 'home' }, // [P] Colombia/Ghana  → home
+  '2026-07-02T01:00:00Z': { matchId: '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5', slot: 'away' }, // [P] Switzerland/Alg → away
+  '2026-07-02T19:00:00Z': { matchId: '61ec5bd8-0241-47ca-ba50-c84c41177eba', slot: 'home' }, // [P] England/DR Congo → home
+  '2026-07-03T19:00:00Z': { matchId: '61ec5bd8-0241-47ca-ba50-c84c41177eba', slot: 'away' }, // [P] Argentina/CV    → away
+  '2026-07-02T22:00:00Z': { matchId: 'f686b918-9d7d-4e05-afec-30ea621a708d', slot: 'home' }, // [P] Belgium/Senegal → home
+  '2026-07-03T01:00:00Z': { matchId: 'f686b918-9d7d-4e05-afec-30ea621a708d', slot: 'away' }, // [P] USA/Bosnia-Herz → away
 }
 
 const R16_TO_QF = {

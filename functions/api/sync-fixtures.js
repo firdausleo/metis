@@ -17,22 +17,22 @@ const WC_SEASON  = 2026
 
 // Hardcoded R32 bracket — actual confirmed WC2026 matchups (16 slots, UTC)
 const R32_BRACKET = [
-  { utc: '2026-06-28T19:00:00Z', home: 'South Africa',        homeCode: 'RSA', away: 'Canada',             awayCode: 'CAN' },
-  { utc: '2026-06-28T22:00:00Z', home: 'Brazil',              homeCode: 'BRA', away: 'Japan',              awayCode: 'JPN' },
-  { utc: '2026-06-29T01:00:00Z', home: 'Germany',             homeCode: 'GER', away: 'Paraguay',            awayCode: 'PAR' },
-  { utc: '2026-06-29T19:00:00Z', home: 'Netherlands',         homeCode: 'NED', away: 'Morocco',             awayCode: 'MAR' },
-  { utc: '2026-06-29T22:00:00Z', home: 'Ivory Coast',         homeCode: 'CIV', away: 'Norway',              awayCode: 'NOR' },
-  { utc: '2026-06-30T01:00:00Z', home: 'France',              homeCode: 'FRA', away: 'Sweden',              awayCode: 'SWE' },
-  { utc: '2026-06-30T19:00:00Z', home: 'Mexico',              homeCode: 'MEX', away: 'Ecuador',             awayCode: 'ECU' },
-  { utc: '2026-06-30T22:00:00Z', home: 'England',             homeCode: 'ENG', away: 'DR Congo',            awayCode: 'COD' },
-  { utc: '2026-07-01T01:00:00Z', home: 'Belgium',             homeCode: 'BEL', away: 'Senegal',             awayCode: 'SEN' },
-  { utc: '2026-07-01T19:00:00Z', home: 'USA',                 homeCode: 'USA', away: 'Bosnia-Herzegovina',  awayCode: 'BIH' },
-  { utc: '2026-07-01T22:00:00Z', home: 'Spain',               homeCode: 'ESP', away: 'Austria',             awayCode: 'AUT' },
-  { utc: '2026-07-02T01:00:00Z', home: 'Portugal',            homeCode: 'POR', away: 'Croatia',             awayCode: 'CRO' },
-  { utc: '2026-07-02T19:00:00Z', home: 'Switzerland',         homeCode: 'SUI', away: 'Algeria',             awayCode: 'ALG' },
-  { utc: '2026-07-02T22:00:00Z', home: 'Australia',           homeCode: 'AUS', away: 'Egypt',               awayCode: 'EGY' },
-  { utc: '2026-07-03T01:00:00Z', home: 'Argentina',           homeCode: 'ARG', away: 'Cape Verde',          awayCode: 'CPV' },
-  { utc: '2026-07-03T19:00:00Z', home: 'Colombia',            homeCode: 'COL', away: 'Ghana',               awayCode: 'GHA' },
+  { utc: '2026-06-28T19:00:00Z', home: 'South Africa',       homeCode: 'RSA', away: 'Canada',            awayCode: 'CAN' }, // Jun29 03BJ
+  { utc: '2026-06-28T22:00:00Z', home: 'Brazil',             homeCode: 'BRA', away: 'Japan',             awayCode: 'JPN' }, // Jun29 06BJ
+  { utc: '2026-06-29T01:00:00Z', home: 'Germany',            homeCode: 'GER', away: 'Paraguay',           awayCode: 'PAR' }, // Jun29 09BJ
+  { utc: '2026-06-29T19:00:00Z', home: 'Netherlands',        homeCode: 'NED', away: 'Morocco',            awayCode: 'MAR' }, // Jun30 03BJ
+  { utc: '2026-06-29T22:00:00Z', home: 'France',             homeCode: 'FRA', away: 'Sweden',             awayCode: 'SWE' }, // Jun30 06BJ
+  { utc: '2026-06-30T01:00:00Z', home: 'Mexico',             homeCode: 'MEX', away: 'Ecuador',            awayCode: 'ECU' }, // Jun30 09BJ
+  { utc: '2026-06-30T19:00:00Z', home: 'Australia',          homeCode: 'AUS', away: 'Egypt',              awayCode: 'EGY' }, // Jul01 03BJ
+  { utc: '2026-06-30T22:00:00Z', home: 'Colombia',           homeCode: 'COL', away: 'Ghana',              awayCode: 'GHA' }, // Jul01 06BJ
+  { utc: '2026-07-01T01:00:00Z', home: 'Ivory Coast',        homeCode: 'CIV', away: 'Norway',             awayCode: 'NOR' }, // Jul01 09BJ
+  { utc: '2026-07-01T19:00:00Z', home: 'Spain',              homeCode: 'ESP', away: 'Austria',            awayCode: 'AUT' }, // Jul02 03BJ
+  { utc: '2026-07-01T22:00:00Z', home: 'Portugal',           homeCode: 'POR', away: 'Croatia',            awayCode: 'CRO' }, // Jul02 06BJ
+  { utc: '2026-07-02T01:00:00Z', home: 'Switzerland',        homeCode: 'SUI', away: 'Algeria',            awayCode: 'ALG' }, // Jul02 09BJ
+  { utc: '2026-07-02T19:00:00Z', home: 'England',            homeCode: 'ENG', away: 'DR Congo',           awayCode: 'COD' }, // Jul03 03BJ
+  { utc: '2026-07-02T22:00:00Z', home: 'Belgium',            homeCode: 'BEL', away: 'Senegal',            awayCode: 'SEN' }, // Jul03 06BJ
+  { utc: '2026-07-03T01:00:00Z', home: 'USA',                homeCode: 'USA', away: 'Bosnia-Herzegovina', awayCode: 'BIH' }, // Jul03 09BJ
+  { utc: '2026-07-03T19:00:00Z', home: 'Argentina',          homeCode: 'ARG', away: 'Cape Verde',         awayCode: 'CPV' }, // Jul04 03BJ
 ]
 
 const API_TO_METIS = {
