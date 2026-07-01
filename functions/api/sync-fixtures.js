@@ -64,6 +64,8 @@ function jsonResponse(data, status = 200) {
 async function verifyAdmin(request, env) {
   const auth = request.headers.get('Authorization')
   if (!auth?.startsWith('Bearer ')) return null
+  const token = auth.slice(7)
+  if (token === env.SUPABASE_SERVICE_ROLE_KEY) return { id: ADMIN_UUID }
   const r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
     headers: { 'Authorization': auth, 'apikey': env.SUPABASE_ANON_KEY },
   })
