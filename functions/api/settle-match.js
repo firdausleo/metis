@@ -6,51 +6,47 @@
 const ADMIN_UUID = '4a6e1f29-e18b-4fd3-9a7e-cec54501db54'
 
 // ── Knockout bracket progression ────────────────────────────────────────────
-// R32 slot order matches R32_BRACKET index; sequential pairs feed into R16.
-// Bracket assumption: slots (0,1)→R16[0], (2,3)→R16[1], … (14,15)→R16[7].
+// All three cross-round maps are hardcoded from the official WC2026 bracket.
+// Sequential pairing (floor/mod) is wrong for this tournament's schedule.
 
-const R32_BRACKET_UTCS = [
-  '2026-06-28T19:00:00.000Z', // slot 0  Mexico vs Canada
-  '2026-06-28T22:00:00.000Z', // slot 1  Brazil vs Australia
-  '2026-06-29T01:00:00.000Z', // slot 2  Germany vs Japan
-  '2026-06-29T19:00:00.000Z', // slot 3  Belgium vs Cape Verde
-  '2026-06-29T22:00:00.000Z', // slot 4  France vs Austria
-  '2026-06-30T01:00:00.000Z', // slot 5  Colombia vs Croatia
-  '2026-06-30T19:00:00.000Z', // slot 6  South Africa vs Switzerland
-  '2026-06-30T22:00:00.000Z', // slot 7  Morocco vs USA
-  '2026-07-01T01:00:00.000Z', // slot 8  Ivory Coast vs Netherlands
-  '2026-07-01T19:00:00.000Z', // slot 9  Egypt vs Spain
-  '2026-07-01T22:00:00.000Z', // slot 10 Norway vs Argentina
-  '2026-07-02T01:00:00.000Z', // slot 11 Portugal vs England
-  '2026-07-02T19:00:00.000Z', // slot 12 Bosnia-Herzegovina vs Sweden
-  '2026-07-02T22:00:00.000Z', // slot 13 Paraguay vs Ghana
-  '2026-07-03T01:00:00.000Z', // slot 14 Ecuador vs Algeria
-  '2026-07-03T19:00:00.000Z', // slot 15 Senegal vs DR Congo
-]
+const R32_TO_R16 = {
+  '2026-06-28T19:00:00Z': { matchId: '9de7fba2-a890-4c02-923d-d38c2a16f9b4', slot: 'home' }, // Mexico/Canada      → R16 Jul08-03BJ home
+  '2026-06-28T22:00:00Z': { matchId: '9097b035-327b-47bc-8470-5f83a1cf9174', slot: 'home' }, // Brazil/Australia   → R16 Jul10-03BJ home
+  '2026-06-29T01:00:00Z': { matchId: 'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74', slot: 'home' }, // Germany/Japan      → R16 Jul09-03BJ home
+  '2026-06-29T19:00:00Z': { matchId: '61ec5bd8-0241-47ca-ba50-c84c41177eba', slot: 'home' }, // Belgium/Cape Verde → R16 Jul11-03BJ home
+  '2026-06-29T22:00:00Z': { matchId: 'ecd88202-6b7c-429b-8b4f-baea088f57c1', slot: 'home' }, // France/Austria     → R16 Jul08-06BJ home
+  '2026-06-30T01:00:00Z': { matchId: '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5', slot: 'home' }, // Colombia/Croatia   → R16 Jul10-06BJ home
+  '2026-06-30T19:00:00Z': { matchId: '53530c34-c46b-4552-a428-49410b404e04', slot: 'home' }, // S.Africa/Swiss     → R16 Jul09-06BJ home
+  '2026-06-30T22:00:00Z': { matchId: 'f686b918-9d7d-4e05-afec-30ea621a708d', slot: 'home' }, // Morocco/USA        → R16 Jul11-06BJ home
+  '2026-07-01T01:00:00Z': { matchId: '9de7fba2-a890-4c02-923d-d38c2a16f9b4', slot: 'away' }, // Ivory Coast/Neth   → R16 Jul08-03BJ away
+  '2026-07-01T19:00:00Z': { matchId: '9097b035-327b-47bc-8470-5f83a1cf9174', slot: 'away' }, // Egypt/Spain        → R16 Jul10-03BJ away
+  '2026-07-01T22:00:00Z': { matchId: 'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74', slot: 'away' }, // Norway/Argentina   → R16 Jul09-03BJ away
+  '2026-07-02T01:00:00Z': { matchId: '61ec5bd8-0241-47ca-ba50-c84c41177eba', slot: 'away' }, // Portugal/England   → R16 Jul11-03BJ away
+  '2026-07-02T19:00:00Z': { matchId: 'ecd88202-6b7c-429b-8b4f-baea088f57c1', slot: 'away' }, // Bosnia/Sweden      → R16 Jul08-06BJ away
+  '2026-07-02T22:00:00Z': { matchId: '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5', slot: 'away' }, // Paraguay/Ghana     → R16 Jul10-06BJ away
+  '2026-07-03T01:00:00Z': { matchId: '53530c34-c46b-4552-a428-49410b404e04', slot: 'away' }, // Ecuador/Algeria    → R16 Jul09-06BJ away
+  '2026-07-03T19:00:00Z': { matchId: 'f686b918-9d7d-4e05-afec-30ea621a708d', slot: 'away' }, // Senegal/DR Congo   → R16 Jul11-06BJ away
+}
 
-const R16_IDS = [
-  '9de7fba2-a890-4c02-923d-d38c2a16f9b4', // Jul 07 19:00Z  W(0) vs W(1)
-  'ecd88202-6b7c-429b-8b4f-baea088f57c1', // Jul 07 22:00Z  W(2) vs W(3)
-  'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74', // Jul 08 19:00Z  W(4) vs W(5)
-  '53530c34-c46b-4552-a428-49410b404e04', // Jul 08 22:00Z  W(6) vs W(7)
-  '9097b035-327b-47bc-8470-5f83a1cf9174', // Jul 09 19:00Z  W(8) vs W(9)
-  '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5', // Jul 09 22:00Z  W(10) vs W(11)
-  '61ec5bd8-0241-47ca-ba50-c84c41177eba', // Jul 10 19:00Z  W(12) vs W(13)
-  'f686b918-9d7d-4e05-afec-30ea621a708d', // Jul 10 22:00Z  W(14) vs W(15)
-]
+const R16_TO_QF = {
+  '9de7fba2-a890-4c02-923d-d38c2a16f9b4': { matchId: 'a02d5d26-9aa1-4f6d-8c2c-d0ef3c22bab0', slot: 'home' }, // R16 Jul08-03BJ → QF Jul12-05BJ home
+  'ecd88202-6b7c-429b-8b4f-baea088f57c1': { matchId: '959f29e2-9265-4fcc-9bdd-6866c56835de', slot: 'home' }, // R16 Jul08-06BJ → QF Jul12-09BJ home
+  'e6e6060b-d1c9-4ae9-bfd6-f88b5cc0ec74': { matchId: 'a02d5d26-9aa1-4f6d-8c2c-d0ef3c22bab0', slot: 'away' }, // R16 Jul09-03BJ → QF Jul12-05BJ away
+  '53530c34-c46b-4552-a428-49410b404e04': { matchId: '959f29e2-9265-4fcc-9bdd-6866c56835de', slot: 'away' }, // R16 Jul09-06BJ → QF Jul12-09BJ away
+  '9097b035-327b-47bc-8470-5f83a1cf9174': { matchId: '72726e9a-a595-4543-aa51-c2d1b2de9d9d', slot: 'home' }, // R16 Jul10-03BJ → QF Jul14-05BJ home
+  '7eb4b04d-70c9-4e65-aa5f-11a1959f16c5': { matchId: '87784065-417f-4c95-80c8-9d22e8ac4f39', slot: 'home' }, // R16 Jul10-06BJ → QF Jul14-09BJ home
+  '61ec5bd8-0241-47ca-ba50-c84c41177eba': { matchId: '72726e9a-a595-4543-aa51-c2d1b2de9d9d', slot: 'away' }, // R16 Jul11-03BJ → QF Jul14-05BJ away
+  'f686b918-9d7d-4e05-afec-30ea621a708d': { matchId: '87784065-417f-4c95-80c8-9d22e8ac4f39', slot: 'away' }, // R16 Jul11-06BJ → QF Jul14-09BJ away
+}
 
-const QF_IDS = [
-  'a02d5d26-9aa1-4f6d-8c2c-d0ef3c22bab0', // Jul 11 21:00Z
-  '959f29e2-9265-4fcc-9bdd-6866c56835de', // Jul 12 01:00Z
-  '72726e9a-a595-4543-aa51-c2d1b2de9d9d', // Jul 13 21:00Z
-  '87784065-417f-4c95-80c8-9d22e8ac4f39', // Jul 14 01:00Z
-]
+const QF_TO_SF = {
+  'a02d5d26-9aa1-4f6d-8c2c-d0ef3c22bab0': { matchId: '6bcfd5c2-da63-46e4-a780-9deecaf6ab3f', slot: 'home' }, // QF Jul12-05BJ → SF Jul16-07BJ home
+  '959f29e2-9265-4fcc-9bdd-6866c56835de': { matchId: '29169d0c-f1a2-41fb-92da-5aa34121a970', slot: 'home' }, // QF Jul12-09BJ → SF Jul17-07BJ home
+  '72726e9a-a595-4543-aa51-c2d1b2de9d9d': { matchId: '6bcfd5c2-da63-46e4-a780-9deecaf6ab3f', slot: 'away' }, // QF Jul14-05BJ → SF Jul16-07BJ away
+  '87784065-417f-4c95-80c8-9d22e8ac4f39': { matchId: '29169d0c-f1a2-41fb-92da-5aa34121a970', slot: 'away' }, // QF Jul14-09BJ → SF Jul17-07BJ away
+}
 
-const SF_IDS = [
-  '6bcfd5c2-da63-46e4-a780-9deecaf6ab3f', // Jul 15 23:00Z
-  '29169d0c-f1a2-41fb-92da-5aa34121a970', // Jul 16 23:00Z
-]
-
+const SF_IDS  = ['6bcfd5c2-da63-46e4-a780-9deecaf6ab3f', '29169d0c-f1a2-41fb-92da-5aa34121a970']
 const FINAL_ID = '330240de-5cb9-410c-9c9e-6d432ff62bbc'
 
 const CORS = {
@@ -232,28 +228,26 @@ async function patchTeamField(env, matchId, field, teamName) {
   })
 }
 
-// Call after any knockout match settles. winnerTeam = name of the team advancing.
+// Call after any knockout match settles. winnerTeam = name of the advancing team.
 async function propagateWinner(env, settledMatchId, settledMatchDate, winnerTeam) {
-  const utc = new Date(settledMatchDate).toISOString()
+  // Normalise to 'YYYY-MM-DDTHH:MM:SSZ' to match R32_TO_R16 keys
+  const utc = new Date(settledMatchDate).toISOString().replace('.000Z', 'Z')
 
-  const r32Idx = R32_BRACKET_UTCS.indexOf(utc)
-  if (r32Idx >= 0) {
-    const nextId = R16_IDS[Math.floor(r32Idx / 2)]
-    if (nextId) await patchTeamField(env, nextId, r32Idx % 2 === 0 ? 'home_team' : 'away_team', winnerTeam)
+  const r32 = R32_TO_R16[utc]
+  if (r32) {
+    await patchTeamField(env, r32.matchId, r32.slot + '_team', winnerTeam)
     return
   }
 
-  const r16Idx = R16_IDS.indexOf(settledMatchId)
-  if (r16Idx >= 0) {
-    const nextId = QF_IDS[Math.floor(r16Idx / 2)]
-    if (nextId) await patchTeamField(env, nextId, r16Idx % 2 === 0 ? 'home_team' : 'away_team', winnerTeam)
+  const r16 = R16_TO_QF[settledMatchId]
+  if (r16) {
+    await patchTeamField(env, r16.matchId, r16.slot + '_team', winnerTeam)
     return
   }
 
-  const qfIdx = QF_IDS.indexOf(settledMatchId)
-  if (qfIdx >= 0) {
-    const nextId = SF_IDS[Math.floor(qfIdx / 2)]
-    if (nextId) await patchTeamField(env, nextId, qfIdx % 2 === 0 ? 'home_team' : 'away_team', winnerTeam)
+  const qf = QF_TO_SF[settledMatchId]
+  if (qf) {
+    await patchTeamField(env, qf.matchId, qf.slot + '_team', winnerTeam)
     return
   }
 
