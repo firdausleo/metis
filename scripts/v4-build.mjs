@@ -151,7 +151,6 @@ async function buildCorrections() {
       attack_bias:    Math.round(attack_bias    * 10000) / 10000,
       defense_bias:   Math.round(defense_bias   * 10000) / 10000,
       confidence:     Math.round(confidence     * 10000) / 10000,
-      lambda_multiplier: Math.round(lambda_multiplier * 10000) / 10000,
       last_updated:   new Date().toISOString(),
       match_history,
     })
@@ -164,13 +163,33 @@ async function buildCorrections() {
     team: t.padEnd(20), N: d.N, attack_bias: d.attack_bias, confidence: d.confidence
   })))
 
-  // UPSERT into team_wc_corrections
-  const { error: uErr } = await supabase
+  // Check which teams already have rows
+  const teamNames = corrRows.map(r => r.team_name)
+  const { data: existingRows } = await supabase
     .from('team_wc_corrections')
-    .upsert(corrRows, { onConflict: 'team_name' })
+    .select('team_name')
+    .in('team_name', teamNames)
+  const existingSet = new Set((existingRows || []).map(r => r.team_name))
 
-  if (uErr) { console.error('upsert error:', uErr.message); process.exit(1) }
-  console.log(`✅ Upserted ${corrRows.length} team corrections`)
+  const toInsert = corrRows.filter(r => !existingSet.has(r.team_name))
+  const toUpdate = corrRows.filter(r =>  existingSet.has(r.team_name))
+
+  let upsertFail = 0
+  if (toInsert.length) {
+    const { error } = await supabase.from('team_wc_corrections').insert(toInsert)
+    if (error) { console.error('insert error:', error.message); upsertFail++ }
+    else console.log(`  Inserted ${toInsert.length} new team rows`)
+  }
+  for (const row of toUpdate) {
+    const { error } = await supabase
+      .from('team_wc_corrections')
+      .update({ ...row })
+      .eq('team_name', row.team_name)
+    if (error) { console.error(`  update error for ${row.team_name}:`, error.message); upsertFail++ }
+  }
+  if (toUpdate.length) console.log(`  Updated ${toUpdate.length} existing team rows`)
+  if (upsertFail) { console.error(`❌ ${upsertFail} failures`); process.exit(1) }
+  console.log(`✅ team_wc_corrections: ${corrRows.length} teams synced`)
 
   return corrRows
 }
