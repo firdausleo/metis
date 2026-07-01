@@ -415,8 +415,8 @@ function predLambdasV1(hs, as_, vMult) {
   const dHF = predClamp(PRED_LEAGUE_AVG / defHI, PRED_DEF_MIN, PRED_DEF_MAX)
   const dAF = predClamp(PRED_LEAGUE_AVG / defAI, PRED_DEF_MIN, PRED_DEF_MAX)
   return {
-    lambdaHome: Math.max(attH * dAF * vMult, 0.01),
-    lambdaAway: Math.max(attA * dHF, 0.01),
+    lambdaHome: Math.min(Math.max(attH * dAF * vMult, 0.01), 4.0),
+    lambdaAway: Math.min(Math.max(attA * dHF, 0.01), 4.0),
   }
 }
 
@@ -428,7 +428,7 @@ function predLambdasV2(hs, as_, vMult) {
     if (!suspicious) awayFactor = as_.away_goals_avg / as_.goals_scored_avg
   }
   awayFactor = predClamp(awayFactor, 0.4, 1.4)
-  return { lambdaHome: v1.lambdaHome, lambdaAway: Math.max(v1.lambdaAway * awayFactor, 0.01) }
+  return { lambdaHome: v1.lambdaHome, lambdaAway: Math.min(Math.max(v1.lambdaAway * awayFactor, 0.01), 4.0) }
 }
 
 function predBuildMatrix(lh, la) {
@@ -508,52 +508,74 @@ async function logPredictions(env, matches, statsRows) {
     if (settledIds.has(m.id)) continue
     const hs  = statsRows.find(r => r.team_code === m.home_team_code && r.match_id === m.id)
     const as_ = statsRows.find(r => r.team_code === m.away_team_code && r.match_id === m.id)
-    if (!hs?.goals_scored_avg || !hs?.goals_conceded_avg ||
-        !as_?.goals_scored_avg || !as_?.goals_conceded_avg) continue
+    // Build row incrementally — push only when at least one model produces data
+    const predRow = { match_id: m.id, predicted_at: now }
 
+    // V1 + V2: form-based pure Poisson
+    let lhV1 = null, laV1 = null
     try {
+      if (!hs?.goals_scored_avg || !hs?.goals_conceded_avg ||
+          !as_?.goals_scored_avg || !as_?.goals_conceded_avg) throw new Error('missing team stats')
       const vMult = predVenueMult(m.home_team)
       const v1 = predLambdasV1(hs, as_, vMult)
       const v2 = predLambdasV2(hs, as_, vMult)
-
-      // V3: 65% DC historical + 35% V1 recent form
-      const homeIsHost = isWC2026Host(m.home_team)
-      const { lh: dcH, la: dcA } = dcLambdas(m.home_team, m.away_team, homeIsHost)
-      const lhV3 = 0.65 * dcH + 0.35 * v1.lambdaHome
-      const laV3 = 0.65 * dcA + 0.35 * v1.lambdaAway
-
-      // V4: V3 + bias corrections from WC2026 match history
-      const hCorr = v4Corrections[m.home_team]
-      const aCorr = v4Corrections[m.away_team]
-      const lhV4 = Math.max(0.20, Math.min(5.0, lhV3 + (hCorr?.confidence ?? 0) * (hCorr?.attack_bias ?? 0)))
-      const laV4 = Math.max(0.20, Math.min(5.0, laV3 + (aCorr?.confidence ?? 0) * (aCorr?.attack_bias ?? 0)))
-
       const matV1 = predBuildMatrix(v1.lambdaHome, v1.lambdaAway)
       const matV2 = predBuildMatrix(v2.lambdaHome, v2.lambdaAway)
-      const matV3 = predBuildMatrix(lhV3, laV3)
-      const matV4 = predBuildMatrix(lhV4, laV4)
       const pV1 = predCalcProbs(matV1)
       const pV2 = predCalcProbs(matV2)
-      const pV3 = predCalcProbs(matV3)
-      const pV4 = predCalcProbs(matV4)
-
-      predRows.push({
-        match_id: m.id,
-        predicted_at: now,
+      lhV1 = v1.lambdaHome; laV1 = v1.lambdaAway
+      Object.assign(predRow, {
         v1_home_win:    +pV1.home.toFixed(3), v1_draw: +pV1.draw.toFixed(3), v1_away_win: +pV1.away.toFixed(3),
         v1_lambda_home: +v1.lambdaHome.toFixed(3), v1_lambda_away: +v1.lambdaAway.toFixed(3),
         v1_top_score:   predTopScore(matV1),
         v2_home_win:    +pV2.home.toFixed(3), v2_draw: +pV2.draw.toFixed(3), v2_away_win: +pV2.away.toFixed(3),
         v2_lambda_home: +v2.lambdaHome.toFixed(3), v2_lambda_away: +v2.lambdaAway.toFixed(3),
         v2_top_score:   predTopScore(matV2),
+      })
+    } catch (e) {
+      if (e.message !== 'missing team stats') {
+        console.error(`[sync-stats] V1/V2 failed for ${m.home_team} vs ${m.away_team}: ${e.message}`)
+      }
+    }
+
+    // V3: 65% DC historical + 35% V1 recent form (DC-only fallback when V1 unavailable)
+    let lhV3 = null, laV3 = null
+    try {
+      const homeIsHost = isWC2026Host(m.home_team)
+      const { lh: dcH, la: dcA } = dcLambdas(m.home_team, m.away_team, homeIsHost)
+      lhV3 = lhV1 != null ? 0.65 * dcH + 0.35 * lhV1 : dcH
+      laV3 = laV1 != null ? 0.65 * dcA + 0.35 * laV1 : dcA
+      const matV3 = predBuildMatrix(lhV3, laV3)
+      const pV3 = predCalcProbs(matV3)
+      Object.assign(predRow, {
         v3_home_win:    +pV3.home.toFixed(3), v3_draw: +pV3.draw.toFixed(3), v3_away_win: +pV3.away.toFixed(3),
         v3_lambda_home: +lhV3.toFixed(3), v3_lambda_away: +laV3.toFixed(3),
         v3_top_score:   predTopScore(matV3),
         anchor_line:    predAnchorLine(lhV3 + laV3),
-        v4_lambda_home: +lhV4.toFixed(3), v4_lambda_away: +laV4.toFixed(3),
-        v4_home_win:    +pV4.home.toFixed(3), v4_draw: +pV4.draw.toFixed(3), v4_away_win: +pV4.away.toFixed(3),
       })
-    } catch { /* skip this match — never block stats sync */ }
+    } catch (e) {
+      console.error(`[sync-stats] V3 failed for ${m.home_team} vs ${m.away_team}: ${e.message}`)
+    }
+
+    // V4: V3 + bias corrections from WC2026 match history
+    try {
+      if (lhV3 != null) {
+        const hCorr = v4Corrections[m.home_team]
+        const aCorr = v4Corrections[m.away_team]
+        const lhV4 = Math.max(0.20, Math.min(5.0, lhV3 + (hCorr?.confidence ?? 0) * (hCorr?.attack_bias ?? 0)))
+        const laV4 = Math.max(0.20, Math.min(5.0, laV3 + (aCorr?.confidence ?? 0) * (aCorr?.attack_bias ?? 0)))
+        const matV4 = predBuildMatrix(lhV4, laV4)
+        const pV4 = predCalcProbs(matV4)
+        Object.assign(predRow, {
+          v4_lambda_home: +lhV4.toFixed(3), v4_lambda_away: +laV4.toFixed(3),
+          v4_home_win:    +pV4.home.toFixed(3), v4_draw: +pV4.draw.toFixed(3), v4_away_win: +pV4.away.toFixed(3),
+        })
+      }
+    } catch (e) {
+      console.error(`[sync-stats] V4 failed for ${m.home_team} vs ${m.away_team}: ${e.message}`)
+    }
+
+    if (lhV1 != null || lhV3 != null) predRows.push(predRow)
   }
 
   if (!predRows.length) return 0
