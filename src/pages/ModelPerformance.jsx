@@ -1145,7 +1145,9 @@ export default function ModelPerformance() {
                         const m = row.match
                         const hs = m?.home_score, as_ = m?.away_score
                         const scoreStr = hs != null ? `${hs}–${as_}` : null
-                        const outcomeLabel = row.actual_outcome === 'H' ? 'H' : row.actual_outcome === 'A' ? 'A' : 'D'
+                        const outcomeLabel = hs != null && as_ != null
+                          ? (hs > as_ ? 'H' : hs < as_ ? 'A' : 'D')
+                          : (row.actual_outcome ?? '?')
                         const topScore = row.v3_top_score || null
 
                         // Layer 2: Total Goals

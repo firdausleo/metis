@@ -68,7 +68,8 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 async function verifyAdmin(request, env) {
   const authHeader = request.headers.get('Authorization')
   if (!authHeader?.startsWith('Bearer ')) return null
-
+  const token = authHeader.slice(7)
+  if (token === env.SUPABASE_SERVICE_ROLE_KEY) return { id: ADMIN_UUID }
   const response = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
     headers: {
       'Authorization': authHeader,
