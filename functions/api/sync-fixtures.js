@@ -79,7 +79,7 @@ async function verifyAdmin(request, env) {
 async function populateR32(env) {
   // Load existing knockout rows indexed by normalised UTC
   const existRes = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/matches?group_name=is.null&select=id,match_date`,
+    `${env.SUPABASE_URL}/rest/v1/matches?group_name=is.null&stage=eq.r32&select=id,match_date`,
     { headers: sbAuth(env) }
   )
   if (!existRes.ok) throw new Error('Failed to fetch knockout matches')
