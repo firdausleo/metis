@@ -3822,11 +3822,18 @@ function SettlementPanel({ match, onSyncComplete }) {
   const { t } = useTranslation()
   const [h, setH] = useState(match.home_score ?? '')
   const [a, setA] = useState(match.away_score ?? '')
+  const [penaltiesWinner, setPenaltiesWinner] = useState('')
   const [msg, setMsg] = useState('')
   const [syncMsg, setSyncMsg] = useState('')
   const save = async () => {
     const hs = parseInt(h, 10), as = parseInt(a, 10)
     if (Number.isNaN(hs) || Number.isNaN(as)) return
+    const isKnockout = ['r32', 'r16', 'qf', 'sf', 'final'].includes(match.stage)
+    const isDraw = hs === as
+    if (isKnockout && isDraw && !penaltiesWinner) {
+      alert('Please select the penalty shootout winner for this knockout draw.')
+      return
+    }
     setMsg(t('settle.settling'))
     setSyncMsg('')
     const { data: { session } } = await supabase.auth.getSession()
@@ -3834,11 +3841,17 @@ function SettlementPanel({ match, onSyncComplete }) {
       const r = await fetch('/api/settle-match', {
         method: 'POST',
         headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ match_id: match.id, home_score: hs, away_score: as }),
+        body: JSON.stringify({
+          match_id: match.id,
+          home_score: hs,
+          away_score: as,
+          penalties_winner: (isKnockout && isDraw && penaltiesWinner) ? penaltiesWinner : null,
+        }),
       })
       const d = await r.json()
       if (!r.ok) { setMsg(`Failed: ${d.error}${d.detail ? ' — ' + d.detail : ''}`); return }
       setMsg(`✓ Settled: ${match.home_team} ${hs} – ${as} ${match.away_team} · ${d.settled}/${d.pending} bets settled`)
+      setPenaltiesWinner('')
       setSyncMsg('Syncing predictions…')
       try {
         const ctrl = new AbortController()
@@ -3863,6 +3876,9 @@ function SettlementPanel({ match, onSyncComplete }) {
   }
   const inp = { width: 56, fontSize: 18, fontWeight: 700, minHeight: 44, textAlign: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }
   const teamLabel = { fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 100 }
+  const showPenalties = !Number.isNaN(parseInt(h, 10)) && !Number.isNaN(parseInt(a, 10))
+    && parseInt(h, 10) === parseInt(a, 10)
+    && ['r32', 'r16', 'qf', 'sf', 'final'].includes(match.stage)
   return (
     <div style={{ marginTop: 20, background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '14px 16px' }}>
       <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-muted)', letterSpacing: '0.06em', marginBottom: 12 }}>{t('settle.title').toUpperCase()}</p>
@@ -3878,6 +3894,22 @@ function SettlementPanel({ match, onSyncComplete }) {
         </div>
         <button onClick={save} style={{ minHeight: 44, padding: '0 16px', fontWeight: 700, background: 'var(--color-accent)', color: 'var(--color-bg)', border: 'none', borderRadius: 'var(--radius-sm)', alignSelf: 'flex-end' }}>{t('settle.save')}</button>
       </div>
+      {showPenalties && (
+        <div style={{ marginTop: 12 }}>
+          <label style={{ fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+            Penalty Shootout Winner
+          </label>
+          <select
+            value={penaltiesWinner}
+            onChange={e => setPenaltiesWinner(e.target.value)}
+            style={{ width: '100%', padding: '8px 10px', background: 'var(--color-bg)', border: '0.5px solid var(--color-border-active)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)', fontSize: 13 }}
+          >
+            <option value=''>— Select winner —</option>
+            <option value={match.home_team}>{match.home_team}</option>
+            <option value={match.away_team}>{match.away_team}</option>
+          </select>
+        </div>
+      )}
       {msg && <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 8 }}>{msg}</p>}
       {syncMsg && <p style={{ fontSize: 13, color: syncMsg.startsWith('✓') ? 'var(--color-success)' : 'var(--color-text-muted)', marginTop: 4 }}>{syncMsg}</p>}
     </div>
