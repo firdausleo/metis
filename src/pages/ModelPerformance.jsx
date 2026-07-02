@@ -505,7 +505,7 @@ export default function ModelPerformance() {
       const [predsRes, accRes, rolesRes, refitRes, betsRes, oddsRes] = await Promise.all([
         supabase
           .from('model_predictions')
-          .select('*, match:matches(home_team,away_team,home_score,away_score,match_date,stage,group_name,venue,city)')
+          .select('*, match:matches(home_team,away_team,home_score,away_score,match_date,stage,group_name,venue,city,status)')
           .not('actual_outcome', 'is', null)
           .order('settled_at', { ascending: false }),
         supabase
@@ -695,6 +695,7 @@ export default function ModelPerformance() {
 
   // ── Filter & table ────────────────────────────────────────────────────────────
   const filteredRows = rows.filter(r => {
+    if (r.match?.status !== 'finished') return false
     if (filter === 'correct') return r.correct_v3 === true
     if (filter === 'wrong') return r.correct_v3 === false
     if (filter === 'warn') return !!r.quality_warning
@@ -1151,7 +1152,7 @@ export default function ModelPerformance() {
                         <th style={{ ...TH, textAlign: 'center' }}>Margin</th>
                         <th style={{ ...TH, textAlign: 'center' }}>TG Pred</th>
                         <th style={{ ...TH, textAlign: 'center' }}>TG✓</th>
-                        <th style={{ ...TH, textAlign: 'center' }}>Top Score</th>
+                        <th style={{ ...TH, textAlign: 'center' }}>Top Scores</th>
                         <th style={{ ...TH, textAlign: 'center' }}>Score✓</th>
                       </tr>
                     </thead>
@@ -1184,8 +1185,11 @@ export default function ModelPerformance() {
                           const t2 = row.v3_top_score_2 || top3Scores[1]
                           const t3 = row.v3_top_score_3 || top3Scores[2]
                           scoreRank = t1 === actual ? 1 : t2 === actual ? 2 : t3 === actual ? 3 : 0
-                        } else if (topScore && hs != null) {
-                          scoreRank = topScore === `${Number(hs)}-${Number(as_)}` ? 1 : 0
+                        } else if (hs != null && row.v3_top_score != null) {
+                          const actual = `${Number(hs)}-${Number(as_)}`
+                          scoreRank = row.v3_top_score   === actual ? 1
+                            : row.v3_top_score_2 === actual ? 2
+                            : row.v3_top_score_3 === actual ? 3 : 0
                         }
 
                         // Margin
@@ -1238,12 +1242,27 @@ export default function ModelPerformance() {
                                   ? <span style={{ color: '#791F1F' }}>✗</span>
                                   : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
                             </td>
-                            {/* Top Score Predicted */}
-                            <td style={{ ...TD, textAlign: 'center', fontSize: 11, fontFamily: "'IBM Plex Mono', monospace",
-                              color: scoreRank === 1 ? '#D4AF37' : 'var(--color-text-muted)',
-                              fontWeight: scoreRank === 1 ? 700 : 400,
-                            }}>
-                              {top3Scores?.[0] || topScore || '—'}
+                            {/* Top Scores — all 3 stored, hit highlighted */}
+                            <td style={{ ...TD, textAlign: 'center', fontFamily: "'IBM Plex Mono', monospace" }}>
+                              {(() => {
+                                const actual = hs != null && as_ != null ? `${Number(hs)}-${Number(as_)}` : null
+                                const scores = [row.v3_top_score, row.v3_top_score_2, row.v3_top_score_3].filter(Boolean)
+                                if (!scores.length) return <span style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>—</span>
+                                return scores.map((s, i) => {
+                                  const isHit = actual != null && s === actual
+                                  return (
+                                    <span key={i} style={{
+                                      display: 'inline-block',
+                                      fontSize: 11,
+                                      marginRight: i < scores.length - 1 ? 6 : 0,
+                                      color: isHit ? '#D4AF37' : 'var(--color-text-muted)',
+                                      fontWeight: isHit ? 700 : 400,
+                                    }}>
+                                      {isHit && i === 0 ? '★ ' : ''}{s}
+                                    </span>
+                                  )
+                                })
+                              })()}
                             </td>
                             {/* Score Rank */}
                             <td style={{ ...TD, textAlign: 'center', fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>
