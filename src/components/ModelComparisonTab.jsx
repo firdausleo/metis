@@ -8,6 +8,7 @@ const MONO   = "'IBM Plex Mono', monospace"
 const MODEL_V1 = '#6b7280'
 const MODEL_DC = '#0F3460'
 const MODEL_V3 = '#D4AF37'
+const MODEL_V4 = '#7C3AED'
 const TIER_COLOR = { STRONG: '#22c55e', MODERATE: '#3b82f6', WEAK: '#f59e0b', FLAT: '#ef4444' }
 const TIER_SPLIT = { STRONG: '50/25/15/10', MODERATE: '45/25/20/10', WEAK: '40/30/20/10', FLAT: '35/30/25/10' }
 
@@ -139,8 +140,8 @@ function HitIcon({ hit }) {
 }
 
 // Summary table row — highlights winner (green bg)
-function SumRow({ metric, v1, dc, v3, higher = true }) {
-  const items = [v1, dc, v3]
+function SumRow({ metric, v1, dc, v3, v4, higher = true }) {
+  const items = v4 ? [v1, dc, v3, v4] : [v1, dc, v3]
   const vals  = items.map(it => it.raw)
   const allEq = vals.every(v => v === vals[0])
   const best  = higher ? Math.max(...vals) : Math.min(...vals)
@@ -255,7 +256,7 @@ function TrendChart({ groups }) {
         ))}
       </div>
       <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
-        {[['V1', MODEL_V1], ['DC-only', MODEL_DC], ['V3', MODEL_V3]].map(([l, c]) => (
+        {[['V1', MODEL_V1], ['DC-only', MODEL_DC], ['V3', MODEL_V3], ['V4', MODEL_V4]].map(([l, c]) => (
           <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontFamily: MONO }}>
             <div style={{ width: 10, height: 10, background: c, borderRadius: 2 }} />
             <span style={{ color: 'var(--color-text-muted)' }}>{l}</span>
@@ -287,14 +288,20 @@ export default function ModelComparisonTab({ rows }) {
         const v1S = matStats(v1M)
         const dcS = matStats(dcM)
         const v3S = matStats(v3M)
+        const hasV4 = r.v4_lambda_home != null && r.v4_lambda_away != null
+        const lhV4 = hasV4 ? Number(r.v4_lambda_home) : null
+        const laV4 = hasV4 ? Number(r.v4_lambda_away) : null
+        const v4M = (hasV4 && isFinite(lhV4) && lhV4 > 0) ? buildDC(lhV4, laV4) : null
+        const v4S = v4M ? matStats(v4M) : null
         return {
           id: r.id, row: r, match: r.match,
-          lh, la, hs, as_,
-          v1M, dcM, v3M,
-          v1S, dcS, v3S,
+          lh, la, hs, as_, lhV4, laV4,
+          v1M, dcM, v3M, v4M,
+          v1S, dcS, v3S, v4S,
           v1Sc: scoreM(v1S, hs, as_),
           dcSc: scoreM(dcS, hs, as_),
           v3Sc: scoreM(v3S, hs, as_),
+          v4Sc: v4S ? scoreM(v4S, hs, as_) : null,
           isLow: hs + as_ <= 2,
         }
       })
@@ -305,10 +312,10 @@ export default function ModelComparisonTab({ rows }) {
   const summary = useMemo(() => {
     const n = matchData.length
     if (!n) return null
-    let v1d=0,dcd=0,v3d=0, v1p=0,dcp=0,v3p=0, v1s=0,dcs=0,v3s=0
-    let v1t=0,dct=0,v3t=0, v1a=0,dca=0,v3a=0, v1e=0,dce=0,v3e=0
-    let v1str=0,dcstr=0,v3str=0, v1fl=0,dcfl=0,v3fl=0
-    let nLow=0,nHigh=0, v1dL=0,dcdL=0,v3dL=0, v1dH=0,dcdH=0,v3dH=0
+    let v1d=0,dcd=0,v3d=0,v4d=0, v1p=0,dcp=0,v3p=0,v4p=0, v1s=0,dcs=0,v3s=0,v4s=0
+    let v1t=0,dct=0,v3t=0,v4t=0, v1a=0,dca=0,v3a=0,v4a=0, v1e=0,dce=0,v3e=0,v4e=0
+    let v1str=0,dcstr=0,v3str=0,v4str=0, v1fl=0,dcfl=0,v3fl=0,v4fl=0
+    let nLow=0,nHigh=0, v1dL=0,dcdL=0,v3dL=0,v4dL=0, v1dH=0,dcdH=0,v3dH=0,v4dH=0, nV4=0
     for (const d of matchData) {
       if (d.v1Sc.dirHit)  v1d++;  if (d.dcSc.dirHit)  dcd++;  if (d.v3Sc.dirHit)  v3d++
       if (d.v1Sc.primHit) v1p++;  if (d.dcSc.primHit) dcp++;  if (d.v3Sc.primHit) v3p++
@@ -318,26 +325,36 @@ export default function ModelComparisonTab({ rows }) {
       v1e += d.v1Sc.goalsErr; dce += d.dcSc.goalsErr; v3e += d.v3Sc.goalsErr
       if (d.v1S.tier === 'STRONG') v1str++; if (d.dcS.tier === 'STRONG') dcstr++; if (d.v3S.tier === 'STRONG') v3str++
       if (d.v1S.tier === 'FLAT')   v1fl++;  if (d.dcS.tier === 'FLAT')   dcfl++;  if (d.v3S.tier === 'FLAT')   v3fl++
+      if (d.v4Sc) {
+        nV4++
+        if (d.v4Sc.dirHit)  v4d++;  if (d.v4Sc.primHit) v4p++;  if (d.v4Sc.secHit)  v4s++
+        if (d.v4Sc.top3Hit) v4t++;  if (d.v4Sc.ancHit)  v4a++;  v4e += d.v4Sc.goalsErr
+        if (d.v4S.tier === 'STRONG') v4str++; if (d.v4S.tier === 'FLAT') v4fl++
+      }
       if (d.isLow) {
         nLow++
         if (d.v1Sc.dirHit) v1dL++; if (d.dcSc.dirHit) dcdL++; if (d.v3Sc.dirHit) v3dL++
+        if (d.v4Sc?.dirHit) v4dL++
       } else {
         nHigh++
         if (d.v1Sc.dirHit) v1dH++; if (d.dcSc.dirHit) dcdH++; if (d.v3Sc.dirHit) v3dH++
+        if (d.v4Sc?.dirHit) v4dH++
       }
     }
+    const nV4Low = matchData.filter(d => d.isLow && d.v4Sc).length
+    const nV4High = matchData.filter(d => !d.isLow && d.v4Sc).length
     return {
-      n,
-      dir:  [mkVal(v1d,n),  mkVal(dcd,n),  mkVal(v3d,n)],
-      prim: [mkVal(v1p,n),  mkVal(dcp,n),  mkVal(v3p,n)],
-      sec:  [mkVal(v1s,n),  mkVal(dcs,n),  mkVal(v3s,n)],
-      top3: [mkVal(v1t,n),  mkVal(dct,n),  mkVal(v3t,n)],
-      anc:  [mkVal(v1a,n),  mkVal(dca,n),  mkVal(v3a,n)],
-      err:  [mkErr(v1e,n),  mkErr(dce,n),  mkErr(v3e,n)],
-      str:  [mkN(v1str),    mkN(dcstr),    mkN(v3str)],
-      flat: [mkN(v1fl),     mkN(dcfl),     mkN(v3fl)],
-      low:  [mkVal(v1dL,nLow),  mkVal(dcdL,nLow),  mkVal(v3dL,nLow)],
-      high: [mkVal(v1dH,nHigh), mkVal(dcdH,nHigh), mkVal(v3dH,nHigh)],
+      n, nV4,
+      dir:  [mkVal(v1d,n),  mkVal(dcd,n),  mkVal(v3d,n),  mkVal(v4d,nV4)],
+      prim: [mkVal(v1p,n),  mkVal(dcp,n),  mkVal(v3p,n),  mkVal(v4p,nV4)],
+      sec:  [mkVal(v1s,n),  mkVal(dcs,n),  mkVal(v3s,n),  mkVal(v4s,nV4)],
+      top3: [mkVal(v1t,n),  mkVal(dct,n),  mkVal(v3t,n),  mkVal(v4t,nV4)],
+      anc:  [mkVal(v1a,n),  mkVal(dca,n),  mkVal(v3a,n),  mkVal(v4a,nV4)],
+      err:  [mkErr(v1e,n),  mkErr(dce,n),  mkErr(v3e,n),  mkErr(v4e,nV4)],
+      str:  [mkN(v1str),    mkN(dcstr),    mkN(v3str),    mkN(v4str)],
+      flat: [mkN(v1fl),     mkN(dcfl),     mkN(v3fl),     mkN(v4fl)],
+      low:  [mkVal(v1dL,nLow),  mkVal(dcdL,nLow),  mkVal(v3dL,nLow),  mkVal(v4dL,nV4Low)],
+      high: [mkVal(v1dH,nHigh), mkVal(dcdH,nHigh), mkVal(v3dH,nHigh), mkVal(v4dH,nV4High)],
       nLow, nHigh,
     }
   }, [matchData])
@@ -458,7 +475,7 @@ export default function ModelComparisonTab({ rows }) {
                 <th style={{ padding: '8px 12px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: MONO, color: 'var(--color-text-muted)', textAlign: 'left', borderBottom: '0.5px solid var(--color-border)' }}>
                   Metric
                 </th>
-                {[['V1', MODEL_V1], ['DC-only', MODEL_DC], ['V3', MODEL_V3]].map(([l, c]) => (
+                {[['V1', MODEL_V1], ['DC-only', MODEL_DC], ['V3', MODEL_V3], ['V4', MODEL_V4]].map(([l, c]) => (
                   <th key={l} style={{ padding: '8px 12px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: MONO, color: c, textAlign: 'center', borderBottom: '0.5px solid var(--color-border)' }}>
                     {l}
                   </th>
@@ -473,18 +490,21 @@ export default function ModelComparisonTab({ rows }) {
                     {n}
                   </td>
                 ))}
+                <td style={{ padding: '8px 12px', textAlign: 'center', fontFamily: MONO, fontSize: 12, borderBottom: '0.5px solid var(--color-border)', color: MODEL_V4, fontWeight: 600 }}>
+                  {summary?.nV4 ?? 0}
+                </td>
               </tr>
               {summary && <>
-                <SumRow metric="Direction accuracy"   v1={summary.dir[0]}  dc={summary.dir[1]}  v3={summary.dir[2]} />
-                <SumRow metric="Primary score hit"    v1={summary.prim[0]} dc={summary.prim[1]} v3={summary.prim[2]} />
-                <SumRow metric="Secondary score hit"  v1={summary.sec[0]}  dc={summary.sec[1]}  v3={summary.sec[2]} />
-                <SumRow metric="Top-3 hit"            v1={summary.top3[0]} dc={summary.top3[1]} v3={summary.top3[2]} />
-                <SumRow metric="Anchor hit"           v1={summary.anc[0]}  dc={summary.anc[1]}  v3={summary.anc[2]} />
-                <SumRow metric="Mean goals error"     v1={summary.err[0]}  dc={summary.err[1]}  v3={summary.err[2]} higher={false} />
-                <SumRow metric="STRONG anchors"       v1={summary.str[0]}  dc={summary.str[1]}  v3={summary.str[2]} />
-                <SumRow metric="FLAT anchors"         v1={summary.flat[0]} dc={summary.flat[1]} v3={summary.flat[2]} higher={false} />
-                <SumRow metric={`Low-score dir accuracy (x+y ≤ 2, n=${summary.nLow})`}  v1={summary.low[0]}  dc={summary.low[1]}  v3={summary.low[2]} />
-                <SumRow metric={`High-score dir accuracy (x+y ≥ 3, n=${summary.nHigh})`} v1={summary.high[0]} dc={summary.high[1]} v3={summary.high[2]} />
+                <SumRow metric="Direction accuracy"   v1={summary.dir[0]}  dc={summary.dir[1]}  v3={summary.dir[2]}  v4={summary.dir[3]} />
+                <SumRow metric="Primary score hit"    v1={summary.prim[0]} dc={summary.prim[1]} v3={summary.prim[2]} v4={summary.prim[3]} />
+                <SumRow metric="Secondary score hit"  v1={summary.sec[0]}  dc={summary.sec[1]}  v3={summary.sec[2]}  v4={summary.sec[3]} />
+                <SumRow metric="Top-3 hit"            v1={summary.top3[0]} dc={summary.top3[1]} v3={summary.top3[2]} v4={summary.top3[3]} />
+                <SumRow metric="Anchor hit"           v1={summary.anc[0]}  dc={summary.anc[1]}  v3={summary.anc[2]}  v4={summary.anc[3]} />
+                <SumRow metric="Mean goals error"     v1={summary.err[0]}  dc={summary.err[1]}  v3={summary.err[2]}  v4={summary.err[3]} higher={false} />
+                <SumRow metric="STRONG anchors"       v1={summary.str[0]}  dc={summary.str[1]}  v3={summary.str[2]}  v4={summary.str[3]} />
+                <SumRow metric="FLAT anchors"         v1={summary.flat[0]} dc={summary.flat[1]} v3={summary.flat[2]} v4={summary.flat[3]} higher={false} />
+                <SumRow metric={`Low-score dir accuracy (x+y ≤ 2, n=${summary.nLow})`}  v1={summary.low[0]}  dc={summary.low[1]}  v3={summary.low[2]}  v4={summary.low[3]} />
+                <SumRow metric={`High-score dir accuracy (x+y ≥ 3, n=${summary.nHigh})`} v1={summary.high[0]} dc={summary.high[1]} v3={summary.high[2]} v4={summary.high[3]} />
               </>}
             </tbody>
           </table>
@@ -578,15 +598,15 @@ export default function ModelComparisonTab({ rows }) {
                 {/* Right: hit badges + toggle */}
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 9, fontFamily: MONO, color: 'var(--color-text-muted)' }}>Dir:</span>
-                  {[d.v1Sc, d.dcSc, d.v3Sc].map((sc, i) => (
-                    <span key={i} style={{ fontSize: 10, fontFamily: MONO, fontWeight: 700, color: sc.dirHit ? '#22c55e' : '#ef4444' }}>
-                      {['V1','DC','V3'][i]}{sc.dirHit ? '✓' : '✗'}
+                  {([d.v1Sc, d.dcSc, d.v3Sc, d.v4Sc]).map((sc, i) => sc && (
+                    <span key={i} style={{ fontSize: 10, fontFamily: MONO, fontWeight: 700, color: sc.dirHit ? (i === 3 ? MODEL_V4 : '#22c55e') : '#ef4444' }}>
+                      {['V1','DC','V3','V4'][i]}{sc.dirHit ? '✓' : '✗'}
                     </span>
                   ))}
                   <span style={{ fontSize: 9, fontFamily: MONO, color: 'var(--color-text-muted)', marginLeft: 4 }}>Prim:</span>
-                  {[d.v1Sc, d.dcSc, d.v3Sc].map((sc, i) => (
-                    <span key={i} style={{ fontSize: 10, fontFamily: MONO, fontWeight: 700, color: sc.primHit ? '#22c55e' : '#ef4444' }}>
-                      {['V1','DC','V3'][i]}{sc.primHit ? '✓' : '✗'}
+                  {([d.v1Sc, d.dcSc, d.v3Sc, d.v4Sc]).map((sc, i) => sc && (
+                    <span key={i} style={{ fontSize: 10, fontFamily: MONO, fontWeight: 700, color: sc.primHit ? (i === 3 ? MODEL_V4 : '#22c55e') : '#ef4444' }}>
+                      {['V1','DC','V3','V4'][i]}{sc.primHit ? '✓' : '✗'}
                     </span>
                   ))}
                   <span style={{ fontSize: 11, color: 'var(--color-text-muted)', marginLeft: 4 }}>
@@ -598,7 +618,8 @@ export default function ModelComparisonTab({ rows }) {
                 <div style={{ display: 'flex' }}>
                   <ModelCol label="V1" color={MODEL_V1} stats={d.v1S} score={d.v1Sc} v1M={null} dcM={null} isLast={false} />
                   <ModelCol label="DC-only" color={MODEL_DC} stats={d.dcS} score={d.dcSc} v1M={d.v1M} dcM={d.dcM} isLast={false} />
-                  <ModelCol label="V3" color={MODEL_V3} stats={d.v3S} score={d.v3Sc} v1M={null} dcM={null} isLast={true} />
+                  <ModelCol label="V3" color={MODEL_V3} stats={d.v3S} score={d.v3Sc} v1M={null} dcM={null} isLast={!d.v4M} />
+                  {d.v4M && <ModelCol label="V4" color={MODEL_V4} stats={d.v4S} score={d.v4Sc} v1M={null} dcM={null} isLast={true} />}
                 </div>
               )}
             </div>
