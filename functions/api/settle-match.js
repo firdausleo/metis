@@ -324,6 +324,10 @@ async function trackModelPredictions(env, matchId, h, a) {
       top3Patch.v3_top_score_3 = t3[2]
     }
 
+    const actualScore = `${h}-${a}`
+    const v3s1 = existing.v3_top_score, v3s2 = existing.v3_top_score_2 || top3Patch.v3_top_score_2, v3s3 = existing.v3_top_score_3 || top3Patch.v3_top_score_3
+    const v4s1 = existing.v4_top_score, v4s2 = existing.v4_top_score_2, v4s3 = existing.v4_top_score_3
+
     const patchRes = await fetch(
       `${env.SUPABASE_URL}/rest/v1/model_predictions?match_id=eq.${matchId}`,
       {
@@ -334,6 +338,15 @@ async function trackModelPredictions(env, matchId, h, a) {
           correct_v1: topOutcome(existing.v1_home_win, existing.v1_draw, existing.v1_away_win) === actualOutcome,
           correct_v2: topOutcome(existing.v2_home_win, existing.v2_draw, existing.v2_away_win) === actualOutcome,
           correct_v3: topOutcome(v3hw, v3d, v3aw) === actualOutcome,
+          correct_v4: existing.v4_home_win != null
+            ? topOutcome(existing.v4_home_win, existing.v4_draw, existing.v4_away_win) === actualOutcome
+            : null,
+          correct_v3_top3: (v3s1 || v3s2 || v3s3)
+            ? (v3s1 === actualScore || v3s2 === actualScore || v3s3 === actualScore)
+            : null,
+          correct_v4_top3: v4s1
+            ? (v4s1 === actualScore || v4s2 === actualScore || v4s3 === actualScore)
+            : null,
           brier_score: brier,
           rps_score: rps,
           settled_at: now,

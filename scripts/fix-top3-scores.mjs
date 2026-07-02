@@ -1,9 +1,8 @@
 /**
  * scripts/fix-top3-scores.mjs
  *
- * Backfills v3_top_score, v3_top_score_2, v3_top_score_3 for all finished
- * matches in model_predictions. Uses the same DC-blended matrix as
- * fix-v3-predictions.mjs so all three fields are internally consistent.
+ * Backfills v3_top_score/_2/_3 (DC-blended matrix) and v4_top_score/_2/_3
+ * (pure DC matrix from v4 lambdas) + correct_v4_top3 for all finished matches.
  *
  * Usage:
  *   HTTPS_PROXY=http://127.0.0.1:7890 node scripts/fix-top3-scores.mjs
@@ -128,10 +127,10 @@ async function run() {
   console.log(`Mode: ${COMMIT ? '✅  COMMIT' : '🔍  DRY RUN (first 10 shown) — pass --commit to apply'}`)
   console.log(`Proxy: set HTTPS_PROXY=http://127.0.0.1:7890 in your shell if needed\n`)
 
-  // 1. Fetch all finished matches
+  // 1. Fetch all finished matches (with scores for correct_v4_top3 computation)
   const { data: matches, error: mErr } = await supabase
     .from('matches')
-    .select('id, home_team, away_team, home_team_code, away_team_code, match_date')
+    .select('id, home_team, away_team, home_team_code, away_team_code, match_date, home_score, away_score')
     .eq('status', 'finished')
     .order('match_date', { ascending: true })
 
@@ -139,17 +138,18 @@ async function run() {
   if (!matches.length) { console.log('No finished matches found.'); return }
   console.log(`Finished matches: ${matches.length}`)
 
-  // 2. Fetch model_predictions to filter to rows that have V3 lambdas
+  // 2. Fetch model_predictions (V3 and V4 lambdas)
   const allIds = matches.map(m => m.id)
   const { data: preds, error: pErr } = await supabase
     .from('model_predictions')
-    .select('match_id, v3_lambda_home, v3_lambda_away')
+    .select('match_id, v3_lambda_home, v3_lambda_away, v4_lambda_home, v4_lambda_away')
     .in('match_id', allIds)
     .not('v3_lambda_home', 'is', null)
 
   if (pErr) { console.error('❌ predictions fetch failed:', pErr.message); process.exit(1) }
-  const predSet = new Set((preds || []).map(p => p.match_id))
-  console.log(`Predictions with V3 lambdas: ${predSet.size}`)
+  const predIdx = {}
+  for (const p of (preds || [])) predIdx[p.match_id] = p
+  console.log(`Predictions with V3 lambdas: ${Object.keys(predIdx).length}`)
 
   // 3. Bulk-fetch team_stats
   const { data: statsRows, error: sErr } = await supabase
@@ -168,16 +168,17 @@ async function run() {
 
   // 4. Compute top3 for each match that has a V3 prediction
   const updates = []
-  let fullCount = 0, dcOnlyCount = 0
+  let fullCount = 0, dcOnlyCount = 0, v4Count = 0
 
   console.log(
     'Home'.padEnd(22) + 'Away'.padEnd(22) +
-    '  #1      #2      #3      src'
+    '  V3#1    V3#2    V3#3    V4#1    V4#2    V4#3    src'
   )
-  console.log('─'.repeat(97))
+  console.log('─'.repeat(118))
 
   for (const m of matches) {
-    if (!predSet.has(m.id)) continue
+    const pred = predIdx[m.id]
+    if (!pred) continue
 
     const homeIsHost            = isWC2026Host(m.home_team)
     const { lh: dcH, la: dcA } = dcLambdas(m.home_team, m.away_team, homeIsHost)
@@ -210,21 +211,35 @@ async function run() {
     const v3 = blendMat(dc, v1)
     const [s1, s2, s3] = matTop3(v3)
 
+    // V4: pure DC matrix using stored v4 lambdas (bias-corrected, no V1 blend)
+    const lhV4 = pred.v4_lambda_home != null ? Number(pred.v4_lambda_home) : null
+    const laV4 = pred.v4_lambda_away != null ? Number(pred.v4_lambda_away) : null
+    let v4s1 = null, v4s2 = null, v4s3 = null, correct_v4_top3 = null
+    if (lhV4 != null && laV4 != null) {
+      const v4M = dcMat(lhV4, laV4)
+      ;[v4s1, v4s2, v4s3] = matTop3(v4M)
+      const actualScore = `${Number(m.home_score)}-${Number(m.away_score)}`
+      correct_v4_top3 = v4s1 === actualScore || v4s2 === actualScore || v4s3 === actualScore
+      v4Count++
+    }
+
     if (updates.length < 10) {
       console.log(
         `${m.home_team.padEnd(22)}${m.away_team.padEnd(22)}` +
-        `  ${s1.padEnd(6)} ${s2.padEnd(6)} ${s3.padEnd(6)} ${src}`
+        `  ${s1.padEnd(6)} ${s2.padEnd(6)} ${s3.padEnd(6)}` +
+        `  ${(v4s1||'—').padEnd(6)} ${(v4s2||'—').padEnd(6)} ${(v4s3||'—').padEnd(6)}` +
+        `  ${src}`
       )
     }
 
-    updates.push({ matchId: m.id, s1, s2, s3 })
+    updates.push({ matchId: m.id, s1, s2, s3, v4s1, v4s2, v4s3, correct_v4_top3 })
   }
 
   if (updates.length > 10) {
     console.log(`  … and ${updates.length - 10} more`)
   }
-  console.log('─'.repeat(97))
-  console.log(`\n${fullCount} dc+stats  |  ${dcOnlyCount} dc-only  |  ${updates.length} total`)
+  console.log('─'.repeat(118))
+  console.log(`\n${fullCount} dc+stats  |  ${dcOnlyCount} dc-only  |  ${updates.length} total  |  ${v4Count} with V4`)
 
   if (!COMMIT) {
     console.log(`\n[DRY RUN] ${updates.length} rows would be updated — no changes made.`)
@@ -236,10 +251,17 @@ async function run() {
   console.log(`\nApplying ${updates.length} UPDATEs to model_predictions…`)
   let ok = 0, fail = 0
 
-  for (const { matchId, s1, s2, s3 } of updates) {
+  for (const { matchId, s1, s2, s3, v4s1, v4s2, v4s3, correct_v4_top3 } of updates) {
+    const payload = { v3_top_score: s1, v3_top_score_2: s2, v3_top_score_3: s3 }
+    if (v4s1 != null) {
+      payload.v4_top_score   = v4s1
+      payload.v4_top_score_2 = v4s2
+      payload.v4_top_score_3 = v4s3
+      payload.correct_v4_top3 = correct_v4_top3
+    }
     const { error } = await supabase
       .from('model_predictions')
-      .update({ v3_top_score: s1, v3_top_score_2: s2, v3_top_score_3: s3 })
+      .update(payload)
       .eq('match_id', matchId)
     if (error) { console.error(`  ❌ ${matchId}: ${error.message}`); fail++ }
     else ok++

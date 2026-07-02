@@ -441,6 +441,26 @@ function predBuildMatrix(lh, la) {
   return m
 }
 
+const PRED_DC_RHO = -0.0612
+function predBuildDCMatrix(lh, la) {
+  const N = PRED_SCORE_MAX + 1
+  const m = Array.from({ length: N }, () => new Array(N).fill(0))
+  let t = 0
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      let tau = 1
+      if (i === 0 && j === 0) tau = 1 - lh * la * PRED_DC_RHO
+      else if (i === 0 && j === 1) tau = 1 + lh * PRED_DC_RHO
+      else if (i === 1 && j === 0) tau = 1 + la * PRED_DC_RHO
+      else if (i === 1 && j === 1) tau = 1 - PRED_DC_RHO
+      m[i][j] = Math.max(predPmf(i, lh) * predPmf(j, la) * tau, 0)
+      t += m[i][j]
+    }
+  }
+  if (t > 0) for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) m[i][j] /= t
+  return m
+}
+
 function predCalcProbs(matrix) {
   let home = 0, draw = 0, away = 0
   for (let i = 0; i < matrix.length; i++)
@@ -579,9 +599,11 @@ async function logPredictions(env, matches, statsRows) {
         const laV4 = Math.max(0.20, Math.min(5.0, laV3 + (aCorr?.confidence ?? 0) * (aCorr?.attack_bias ?? 0)))
         const matV4 = predBuildMatrix(lhV4, laV4)
         const pV4 = predCalcProbs(matV4)
+        const v4T = predTop3Scores(predBuildDCMatrix(lhV4, laV4))
         Object.assign(predRow, {
           v4_lambda_home: +lhV4.toFixed(3), v4_lambda_away: +laV4.toFixed(3),
           v4_home_win:    +pV4.home.toFixed(3), v4_draw: +pV4.draw.toFixed(3), v4_away_win: +pV4.away.toFixed(3),
+          v4_top_score:   v4T[0], v4_top_score_2: v4T[1], v4_top_score_3: v4T[2],
         })
       }
     } catch (e) {
