@@ -572,7 +572,7 @@ export default function ModelPerformance() {
     let highConvTotal = 0, highConvCorrect = 0
     let brierSum = 0, brierCount = 0
     let rpsSum = 0, rpsCount = 0
-    let v1TgC=0,dcTgC=0,v3TgC=0, v1ScC=0,dcScC=0,v3ScC=0,v3ScC2=0,v3ScC3=0, v1T3C=0,dcT3C=0,v3T3C=0, lambdaN=0
+    let v1TgC=0,dcTgC=0,v3TgC=0, v1ScC=0,dcScC=0,v3ScC=0,v3ScC2=0,v3ScC3=0, v1T3C=0,dcT3C=0,v3T3C=0, lambdaN=0, v4Correct=0, v4T3C=0, v4T3Total=0
 
     for (const row of rows) {
       const m = row.match
@@ -583,6 +583,8 @@ export default function ModelPerformance() {
       if (row.correct_v2) v2Correct++
       const v3Hit = !!row.correct_v3
       if (v3Hit) v3Correct++
+      if (row.correct_v4) v4Correct++
+      if (row.v4_top_score != null) { v4T3Total++; if (row.correct_v4_top3 === true) v4T3C++ }
 
       if (row.brier_score != null) { brierSum += Number(row.brier_score); brierCount++ }
       if (row.rps_score != null) { rpsSum += Number(row.rps_score); rpsCount++ }
@@ -644,10 +646,11 @@ export default function ModelPerformance() {
 
     return {
       total,
-      v1Correct, v2Correct, v3Correct,
+      v1Correct, v2Correct, v3Correct, v4Correct,
       v1Acc: total > 0 ? (v1Correct / total * 100).toFixed(1) : null,
       v2Acc: total > 0 ? (v2Correct / total * 100).toFixed(1) : null,
       v3Acc: total > 0 ? (v3Correct / total * 100).toFixed(1) : null,
+      v4Acc: total > 0 ? (v4Correct / total * 100).toFixed(1) : null,
       tgCorrect, tgTotal,
       tgAcc: tgTotal > 0 ? (tgCorrect / tgTotal * 100).toFixed(1) : null,
       scoreCorrect, scoreTotal,
@@ -666,10 +669,12 @@ export default function ModelPerformance() {
       v1ScAcc: lambdaN ? (v1ScC/lambdaN*100).toFixed(1) : null,
       dcScAcc: lambdaN ? (dcScC/lambdaN*100).toFixed(1) : null,
       v3ScAcc: lambdaN ? (v3ScC/lambdaN*100).toFixed(1) : null,
-      v1T3C, dcT3C, v3T3C,
+      v1T3C, dcT3C, v3T3C, v4T3C,
       v1T3Acc: lambdaN ? (v1T3C/lambdaN*100).toFixed(1) : null,
       dcT3Acc: lambdaN ? (dcT3C/lambdaN*100).toFixed(1) : null,
       v3T3Acc: lambdaN ? (v3T3C/lambdaN*100).toFixed(1) : null,
+      v4T3Acc: v4T3Total > 0 ? (v4T3C/v4T3Total*100).toFixed(1) : null,
+      v4T3Total,
     }
   }, [rows])
 
@@ -915,6 +920,12 @@ export default function ModelPerformance() {
                         valueColor={hitColor(modelPerf.v3Acc ? parseFloat(modelPerf.v3Acc) / 100 : null)}
                       />
                       <MetricCard
+                        label="V4 Direction"
+                        value={modelPerf.v4Acc ? `${modelPerf.v4Acc}%` : '—'}
+                        sub={`${modelPerf.v4Correct}/${modelPerf.total} correct`}
+                        valueColor={hitColor(modelPerf.v4Acc ? parseFloat(modelPerf.v4Acc) / 100 : null)}
+                      />
+                      <MetricCard
                         label={lang === 'zh' ? '高确信度' : 'High Conviction'}
                         value={modelPerf.highConvAcc ? `${modelPerf.highConvAcc}%` : '—'}
                         sub={`${modelPerf.highConvCorrect}/${modelPerf.highConvTotal} ${lang === 'zh' ? '≥10pp优势' : 'calls ≥10pp margin'}`}
@@ -1015,10 +1026,11 @@ export default function ModelPerformance() {
                         { label: 'V1 Top-3 Acc',    acc: modelPerf.v1T3Acc, n: modelPerf.v1T3C, gold: false, vc: null },
                         { label: 'DC Top-3 Acc',    acc: modelPerf.dcT3Acc, n: modelPerf.dcT3C, gold: false, vc: '#0F3460' },
                         { label: 'V3 Top-3 Acc ★', acc: modelPerf.v3T3Acc, n: modelPerf.v3T3C, gold: true,  vc: null },
-                      ].map(({ label, acc, n: nc, gold, vc }) => (
+                        { label: 'V4 Top-3 Acc',   acc: modelPerf.v4T3Acc, n: modelPerf.v4T3C, gold: false, vc: '#7C3AED', tot: modelPerf.v4T3Total },
+                      ].map(({ label, acc, n: nc, gold, vc, tot }) => (
                         <MetricCard key={label} label={label}
                           value={acc ? `${acc}%` : '—'}
-                          sub={`${nc ?? 0}/${modelPerf.lambdaN ?? 0} in top 3`}
+                          sub={`${nc ?? 0}/${tot ?? modelPerf.lambdaN ?? 0} in top 3`}
                           gold={gold}
                           valueColor={vc || (acc ? parseFloat(acc) >= 20 ? 'var(--color-success)' : parseFloat(acc) >= 12 ? '#BA7517' : 'var(--color-danger)' : undefined)}
                         />
@@ -1126,7 +1138,7 @@ export default function ModelPerformance() {
             ) : (
               <>
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 920 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}>
                     <thead>
                       <tr>
                         <th style={TH}>Date</th>
@@ -1135,6 +1147,7 @@ export default function ModelPerformance() {
                         <th style={{ ...TH, textAlign: 'center' }}>V1</th>
                         <th style={{ ...TH, textAlign: 'center' }}>V2</th>
                         <th style={{ ...TH, textAlign: 'center' }}>V3 ★</th>
+                        <th style={{ ...TH, textAlign: 'center', color: '#7C3AED' }}>V4</th>
                         <th style={{ ...TH, textAlign: 'center' }}>Margin</th>
                         <th style={{ ...TH, textAlign: 'center' }}>TG Pred</th>
                         <th style={{ ...TH, textAlign: 'center' }}>TG✓</th>
@@ -1200,6 +1213,11 @@ export default function ModelPerformance() {
                                   : <span style={{ color: c ? 'var(--color-success)' : 'var(--color-danger)' }}>{c ? '✓' : '✗'}</span>}
                               </td>
                             ))}
+                            <td style={{ ...TD, textAlign: 'center', fontSize: 14, fontWeight: 700 }}>
+                              {row.correct_v4 == null
+                                ? <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                                : <span style={{ color: row.correct_v4 ? '#7C3AED' : 'var(--color-danger)' }}>{row.correct_v4 ? '✓' : '✗'}</span>}
+                            </td>
                             {/* Margin */}
                             <td style={{ ...TD, textAlign: 'center', fontSize: 10, fontFamily: "'IBM Plex Mono', monospace",
                               color: margin == null ? 'var(--color-text-muted)'
