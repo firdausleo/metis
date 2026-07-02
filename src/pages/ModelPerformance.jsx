@@ -610,15 +610,17 @@ export default function ModelPerformance() {
         const v1T = _top3(v1M)
         const dcT = _top3(dcM)
         const v3T = _top3(v3M)
-        const v3Top1 = row.v3_top_score || v3T[0]
+        const v3Top1 = row.v3_top_score   || v3T[0]
+        const v3Top2 = row.v3_top_score_2 || v3T[1]
+        const v3Top3 = row.v3_top_score_3 || v3T[2]
         if (v1T[0] === actual) v1ScC++
         if (dcT[0] === actual) dcScC++
         if (v3Top1 === actual) v3ScC++
-        if (v3T[1] === actual) v3ScC2++
-        if (v3T[2] === actual) v3ScC3++
+        if (v3Top2 === actual) v3ScC2++
+        if (v3Top3 === actual) v3ScC3++
         if (v1T.includes(actual)) v1T3C++
         if (dcT.includes(actual)) dcT3C++
-        if (v3T.includes(actual)) v3T3C++
+        if (v3Top1 === actual || v3Top2 === actual || v3Top3 === actual) v3T3C++
       }
 
       // Layer 3: Exact Score
@@ -1165,9 +1167,10 @@ export default function ModelPerformance() {
                           const lhN = Number(predLH), laN = Number(predLA)
                           top3Scores = _top3(_blend(_dc(lhN, laN), _v1(lhN, laN)))
                           const actual = `${Number(hs)}-${Number(as_)}`
-                          scoreRank = top3Scores[0] === actual ? 1
-                                    : top3Scores[1] === actual ? 2
-                                    : top3Scores[2] === actual ? 3 : 0
+                          const t1 = row.v3_top_score   || top3Scores[0]
+                          const t2 = row.v3_top_score_2 || top3Scores[1]
+                          const t3 = row.v3_top_score_3 || top3Scores[2]
+                          scoreRank = t1 === actual ? 1 : t2 === actual ? 2 : t3 === actual ? 3 : 0
                         } else if (topScore && hs != null) {
                           scoreRank = topScore === `${Number(hs)}-${Number(as_)}` ? 1 : 0
                         }

@@ -460,6 +460,15 @@ function predTopScore(mat) {
   return `${bi}-${bj}`
 }
 
+function predTop3Scores(mat) {
+  const cells = []
+  for (let i = 0; i <= PRED_SCORE_MAX; i++)
+    for (let j = 0; j <= PRED_SCORE_MAX; j++)
+      cells.push({ s: `${i}-${j}`, p: mat[i][j] })
+  cells.sort((a, b) => b.p - a.p)
+  return cells.slice(0, 3).map(c => c.s)
+}
+
 function predAnchorLine(lt) {
   if (lt < 2.0) return 1.5
   if (lt < 2.8) return 2.5
@@ -547,11 +556,14 @@ async function logPredictions(env, matches, statsRows) {
       lhV3 = lhV1 != null ? 0.65 * dcH + 0.35 * lhV1 : dcH
       laV3 = laV1 != null ? 0.65 * dcA + 0.35 * laV1 : dcA
       const matV3 = predBuildMatrix(lhV3, laV3)
-      const pV3 = predCalcProbs(matV3)
+      const pV3   = predCalcProbs(matV3)
+      const v3T   = predTop3Scores(matV3)
       Object.assign(predRow, {
         v3_home_win:    +pV3.home.toFixed(3), v3_draw: +pV3.draw.toFixed(3), v3_away_win: +pV3.away.toFixed(3),
         v3_lambda_home: +lhV3.toFixed(3), v3_lambda_away: +laV3.toFixed(3),
-        v3_top_score:   predTopScore(matV3),
+        v3_top_score:   v3T[0],
+        v3_top_score_2: v3T[1],
+        v3_top_score_3: v3T[2],
         anchor_line:    predAnchorLine(lhV3 + laV3),
       })
     } catch (e) {

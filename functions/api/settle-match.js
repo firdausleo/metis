@@ -284,6 +284,15 @@ function topScore(mat) {
   return `${bi}-${bj}`
 }
 
+function topScore3(mat) {
+  const cells = []
+  for (let i = 0; i <= SCORE_MAX; i++)
+    for (let j = 0; j <= SCORE_MAX; j++)
+      cells.push({ s: `${i}-${j}`, p: mat[i][j] })
+  cells.sort((a, b) => b.p - a.p)
+  return cells.slice(0, 3).map(c => c.s)
+}
+
 async function trackModelPredictions(env, matchId, h, a) {
   const actualOutcome = h > a ? 'H' : h < a ? 'A' : 'D'
   const now = new Date().toISOString()
@@ -307,6 +316,14 @@ async function trackModelPredictions(env, matchId, h, a) {
     const brier = +((v3hw - Ih)**2 + (v3d - Id)**2 + (v3aw - Ia)**2).toFixed(4)
     const rps   = +(0.5 * ((v3hw - Ih)**2 + (v3hw + v3d - Ih - Id)**2)).toFixed(4)
 
+    // Backfill top2/top3 on old rows that pre-date the top-3 feature
+    const top3Patch = {}
+    if (existing.v3_top_score_2 == null && existing.v3_lambda_home != null) {
+      const t3 = topScore3(buildMatrix(Number(existing.v3_lambda_home), Number(existing.v3_lambda_away)))
+      top3Patch.v3_top_score_2 = t3[1]
+      top3Patch.v3_top_score_3 = t3[2]
+    }
+
     const patchRes = await fetch(
       `${env.SUPABASE_URL}/rest/v1/model_predictions?match_id=eq.${matchId}`,
       {
@@ -320,6 +337,7 @@ async function trackModelPredictions(env, matchId, h, a) {
           brier_score: brier,
           rps_score: rps,
           settled_at: now,
+          ...top3Patch,
         }),
       }
     )
@@ -355,8 +373,9 @@ async function trackModelPredictions(env, matchId, h, a) {
   // Compute each model's matrix ONCE — λ values are consistent across all prediction types
   const matV1 = buildMatrix(v1.lambdaHome, v1.lambdaAway)
   const matV2 = buildMatrix(v2.lambdaHome, v2.lambdaAway)
-  const pV1 = calcProbs(matV1)
-  const pV2 = calcProbs(matV2)
+  const pV1   = calcProbs(matV1)
+  const pV2   = calcProbs(matV2)
+  const v2T3  = topScore3(matV2)   // V2 used as V3 proxy in fallback
 
   const actualOutcomeV = h > a ? 'H' : h < a ? 'A' : 'D'
   const Ih = actualOutcomeV === 'H' ? 1 : 0
@@ -377,7 +396,10 @@ async function trackModelPredictions(env, matchId, h, a) {
     v1_top_score:   topScore(matV1),
     v2_home_win:    +pV2.home.toFixed(3), v2_draw: +pV2.draw.toFixed(3), v2_away_win: +pV2.away.toFixed(3),
     v2_lambda_home: +v2.lambdaHome.toFixed(3), v2_lambda_away: +v2.lambdaAway.toFixed(3),
-    v2_top_score:   topScore(matV2),
+    v2_top_score:   v2T3[0],
+    v3_top_score:   v2T3[0],
+    v3_top_score_2: v2T3[1],
+    v3_top_score_3: v2T3[2],
     correct_v1: topOutcome(pV1.home, pV1.draw, pV1.away) === actualOutcomeV,
     correct_v2: topOutcome(pV2.home, pV2.draw, pV2.away) === actualOutcomeV,
     brier_score: brier, rps_score: rps,
