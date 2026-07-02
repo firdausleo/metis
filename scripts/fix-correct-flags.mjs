@@ -57,6 +57,7 @@ async function run() {
       'v2_home_win', 'v2_draw', 'v2_away_win',
       'v3_home_win', 'v3_draw', 'v3_away_win',
       'v4_home_win', 'v4_draw', 'v4_away_win',
+      'v3_top_score', 'v3_top_score_2', 'v3_top_score_3',
       'correct_v1', 'correct_v2', 'correct_v3', 'correct_v4',
     ].join(','))
     .in('match_id', allIds)
@@ -85,6 +86,8 @@ async function run() {
     const newV2 = v2Flag(p, actual)
     const newV3 = v3Flag(p, actual)
     const newV4 = v4Flag(p, actual)
+    const actualScore = `${Number(m.home_score)}-${Number(m.away_score)}`
+    const newV3Top3 = top3Flag(p.v3_top_score, p.v3_top_score_2, p.v3_top_score_3, actualScore)
 
     // Report every match where correct_v3 changes
     const oldV3 = p.correct_v3
@@ -102,7 +105,7 @@ async function run() {
 
     updates.push({
       matchId: m.id,
-      payload: { correct_v1: newV1, correct_v2: newV2, correct_v3: newV3, correct_v4: newV4 },
+      payload: { correct_v1: newV1, correct_v2: newV2, correct_v3: newV3, correct_v4: newV4, correct_v3_top3: newV3Top3 },
     })
   }
 
@@ -110,21 +113,24 @@ async function run() {
   console.log(`\ncorrect_v3 changes: ${changesV3} / ${updates.length} matches`)
 
   // Tally per-model counts for dry-run summary
-  let v1t = 0, v2t = 0, v3t = 0, v4t = 0, v1n = 0, v3n = 0
+  let v1t = 0, v2t = 0, v3t = 0, v4t = 0, v3top3t = 0, v1n = 0, v3n = 0, v3t3n = 0
   for (const { payload } of updates) {
-    if (payload.correct_v1 === true) v1t++
-    if (payload.correct_v2 === true) v2t++
-    if (payload.correct_v3 === true) v3t++
-    if (payload.correct_v4 === true) v4t++
-    if (payload.correct_v1 == null)  v1n++
-    if (payload.correct_v3 == null)  v3n++
+    if (payload.correct_v1       === true) v1t++
+    if (payload.correct_v2       === true) v2t++
+    if (payload.correct_v3       === true) v3t++
+    if (payload.correct_v4       === true) v4t++
+    if (payload.correct_v3_top3  === true) v3top3t++
+    if (payload.correct_v1       == null)  v1n++
+    if (payload.correct_v3       == null)  v3n++
+    if (payload.correct_v3_top3  == null)  v3t3n++
   }
   const total = updates.length
   console.log(`\nProjected accuracy after commit (${total} finished matches):`)
-  console.log(`  V1: ${v1t}/${total - v1n} = ${pct(v1t, total - v1n)}%  (${v1n} null)`)
-  console.log(`  V2: ${v2t}/${total - v1n} = ${pct(v2t, total - v1n)}%`)
-  console.log(`  V3: ${v3t}/${total - v3n} = ${pct(v3t, total - v3n)}%  (${v3n} null)`)
-  console.log(`  V4: ${v4t}/${total - v3n} = ${pct(v4t, total - v3n)}%`)
+  console.log(`  V1 direction:  ${v1t}/${total - v1n} = ${pct(v1t, total - v1n)}%  (${v1n} null)`)
+  console.log(`  V2 direction:  ${v2t}/${total - v1n} = ${pct(v2t, total - v1n)}%`)
+  console.log(`  V3 direction:  ${v3t}/${total - v3n} = ${pct(v3t, total - v3n)}%  (${v3n} null)`)
+  console.log(`  V4 direction:  ${v4t}/${total - v3n} = ${pct(v4t, total - v3n)}%`)
+  console.log(`  V3 top-3 score: ${v3top3t}/${total - v3t3n} = ${pct(v3top3t, total - v3t3n)}%  (${v3t3n} null)`)
 
   if (!COMMIT) {
     console.log(`\n[DRY RUN] No changes made. Rerun with --commit to apply.`)
@@ -143,6 +149,11 @@ async function run() {
     else ok++
   }
   console.log(`\n✅ ${ok} updated  |  ❌ ${fail} failed`)
+}
+
+function top3Flag(s1, s2, s3, actual) {
+  if (!s1 && !s2 && !s3) return null
+  return s1 === actual || s2 === actual || s3 === actual
 }
 
 function v1Flag(p, actual) {
