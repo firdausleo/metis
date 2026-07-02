@@ -3824,7 +3824,6 @@ function SettlementPanel({ match, onSyncComplete }) {
   const [a, setA] = useState(match.away_score ?? '')
   const [penaltiesWinner, setPenaltiesWinner] = useState('')
   const [msg, setMsg] = useState('')
-  const [syncMsg, setSyncMsg] = useState('')
   const save = async () => {
     const hs = parseInt(h, 10), as = parseInt(a, 10)
     if (Number.isNaN(hs) || Number.isNaN(as)) return
@@ -3835,7 +3834,6 @@ function SettlementPanel({ match, onSyncComplete }) {
       return
     }
     setMsg(t('settle.settling'))
-    setSyncMsg('')
     const { data: { session } } = await supabase.auth.getSession()
     try {
       const r = await fetch('/api/settle-match', {
@@ -3852,26 +3850,7 @@ function SettlementPanel({ match, onSyncComplete }) {
       if (!r.ok) { setMsg(`Failed: ${d.error}${d.detail ? ' — ' + d.detail : ''}`); return }
       setMsg(`✓ Settled: ${match.home_team} ${hs} – ${as} ${match.away_team} · ${d.settled}/${d.pending} bets settled`)
       setPenaltiesWinner('')
-      setSyncMsg('Syncing predictions…')
-      try {
-        const ctrl = new AbortController()
-        const timer = setTimeout(() => ctrl.abort(), 25000)
-        const syncRes = await fetch('/api/sync-stats', {
-          method: 'POST',
-          signal: ctrl.signal,
-          headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ match_ids: [match.id] }),
-        })
-        clearTimeout(timer)
-        if (syncRes.ok) {
-          setSyncMsg('✓ Predictions updated')
-          onSyncComplete?.()
-        } else {
-          setSyncMsg('Result saved. Predictions will update on next sync.')
-        }
-      } catch {
-        setSyncMsg('Result saved. Predictions will update on next sync.')
-      }
+      onSyncComplete?.()
     } catch { setMsg('Save failed') }
   }
   const inp = { width: 56, fontSize: 18, fontWeight: 700, minHeight: 44, textAlign: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '0.5px solid var(--color-border-active)' }
@@ -3911,7 +3890,6 @@ function SettlementPanel({ match, onSyncComplete }) {
         </div>
       )}
       {msg && <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginTop: 8 }}>{msg}</p>}
-      {syncMsg && <p style={{ fontSize: 13, color: syncMsg.startsWith('✓') ? 'var(--color-success)' : 'var(--color-text-muted)', marginTop: 4 }}>{syncMsg}</p>}
     </div>
   )
 }

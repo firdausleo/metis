@@ -611,10 +611,9 @@ export default function ModelPerformance() {
         if (v3Anc === actualTotal) v3TgC++
         const v1T = _top3(v1M)
         const dcT = _top3(dcM)
-        const v3T = _top3(v3M)
-        const v3Top1 = row.v3_top_score   || v3T[0]
-        const v3Top2 = row.v3_top_score_2 || v3T[1]
-        const v3Top3 = row.v3_top_score_3 || v3T[2]
+        const v3Top1 = row.v3_top_score
+        const v3Top2 = row.v3_top_score_2
+        const v3Top3 = row.v3_top_score_3
         if (v1T[0] === actual) v1ScC++
         if (dcT[0] === actual) dcScC++
         if (v3Top1 === actual) v3ScC++
@@ -1174,18 +1173,9 @@ export default function ModelPerformance() {
                         const tgActual = hs != null ? Number(hs) + Number(as_) : null
                         const tgHit = tgPred != null && tgActual != null ? tgPred === tgActual : null
 
-                        // Layer 3: Exact Score rank (1/2/3 = hit, 0 = miss, null = no data)
+                        // Layer 3: Exact Score rank — stored DB values only
                         let scoreRank = null
-                        let top3Scores = null
-                        if (predLH != null && predLA != null && hs != null) {
-                          const lhN = Number(predLH), laN = Number(predLA)
-                          top3Scores = _top3(_blend(_dc(lhN, laN), _v1(lhN, laN)))
-                          const actual = `${Number(hs)}-${Number(as_)}`
-                          const t1 = row.v3_top_score   || top3Scores[0]
-                          const t2 = row.v3_top_score_2 || top3Scores[1]
-                          const t3 = row.v3_top_score_3 || top3Scores[2]
-                          scoreRank = t1 === actual ? 1 : t2 === actual ? 2 : t3 === actual ? 3 : 0
-                        } else if (hs != null && row.v3_top_score != null) {
+                        if (hs != null && (row.v3_top_score || row.v3_top_score_2 || row.v3_top_score_3)) {
                           const actual = `${Number(hs)}-${Number(as_)}`
                           scoreRank = row.v3_top_score   === actual ? 1
                             : row.v3_top_score_2 === actual ? 2

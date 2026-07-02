@@ -461,18 +461,20 @@ export default function PredictionTab({
   const [stratCtx, setStratCtx] = useState(null)
   const [stratLoading, setStratLoading] = useState(false)
   const [v4Pred, setV4Pred] = useState(null)
+  const [storedPred, setStoredPred] = useState(null)
   const [scoresModel, setScoresModel] = useState('v3')
 
-  // V4 predictions from DB
+  // Stored predictions from DB (V4 + V3 frozen pre-match data)
   useEffect(() => {
     if (!match?.id) return
     supabase.from('model_predictions')
-      .select('v4_home_win, v4_draw, v4_away_win, v4_lambda_home, v4_lambda_away')
+      .select('v4_home_win, v4_draw, v4_away_win, v4_lambda_home, v4_lambda_away, v3_home_win, v3_draw, v3_away_win, v3_lambda_home, v3_lambda_away, v3_top_score, v3_top_score_2, v3_top_score_3, predicted_at')
       .eq('match_id', match.id)
       .maybeSingle()
       .then(({ data }) => {
         if (data?.v4_home_win != null) setV4Pred(data)
         else setV4Pred(null)
+        setStoredPred(data || null)
       })
       .catch(() => {})
   }, [match?.id])
@@ -584,6 +586,44 @@ export default function PredictionTab({
     return cells.slice(0, 6)
   }, [v4Pred])
 
+  const isFinished = match?.status === 'finished'
+
+  // Frozen pre-match scorelines for finished matches — computed from stored lambdas
+  const frozenTopScores = useMemo(() => {
+    if (!isFinished || !storedPred?.v3_top_score) return null
+    const scores = [storedPred.v3_top_score, storedPred.v3_top_score_2, storedPred.v3_top_score_3].filter(Boolean)
+    const lh = storedPred.v3_lambda_home != null ? Number(storedPred.v3_lambda_home) : null
+    const la = storedPred.v3_lambda_away != null ? Number(storedPred.v3_lambda_away) : null
+    if (lh == null || la == null) return scores.map(s => ({ score: s, prob: 0 }))
+    const RHO = -0.0612, MG = SCORE_MAX
+    const dcM = [], v1M = []; let dcT = 0, v1T = 0
+    for (let x = 0; x <= MG; x++) {
+      dcM[x] = []; v1M[x] = []
+      for (let y = 0; y <= MG; y++) {
+        let tau = 1
+        if (x === 0 && y === 0) tau = 1 - lh * la * RHO
+        else if (x === 0 && y === 1) tau = 1 + lh * RHO
+        else if (x === 1 && y === 0) tau = 1 + la * RHO
+        else if (x === 1 && y === 1) tau = 1 - RHO
+        dcM[x][y] = Math.max(poissonPMF(x, lh) * poissonPMF(y, la) * tau, 0)
+        v1M[x][y] = poissonPMF(x, lh) * poissonPMF(y, la)
+        dcT += dcM[x][y]; v1T += v1M[x][y]
+      }
+    }
+    if (dcT > 0) for (let x = 0; x <= MG; x++) for (let y = 0; y <= MG; y++) dcM[x][y] /= dcT
+    if (v1T > 0) for (let x = 0; x <= MG; x++) for (let y = 0; y <= MG; y++) v1M[x][y] /= v1T
+    const blendM = []; let bT = 0
+    for (let x = 0; x <= MG; x++) {
+      blendM[x] = []
+      for (let y = 0; y <= MG; y++) { blendM[x][y] = 0.65 * dcM[x][y] + 0.35 * v1M[x][y]; bT += blendM[x][y] }
+    }
+    if (bT > 0) for (let x = 0; x <= MG; x++) for (let y = 0; y <= MG; y++) blendM[x][y] /= bT
+    return scores.map(s => {
+      const [gx, gy] = s.split('-').map(Number)
+      return { score: s, prob: blendM[gx]?.[gy] ?? 0 }
+    })
+  }, [isFinished, storedPred])
+
   // ── AI Verdict section ──────────────────────────────────────────────────
   const rawRec = aiComposite?.recommendation
   const normRec =
@@ -622,9 +662,15 @@ export default function PredictionTab({
   const role10ForCheck = roleOutputs?.find(r => r.ai_roles?.role_number === 10)
   const hasAiResult = Array.isArray(roleOutputs) && roleOutputs.length > 0 && !!role10ForCheck
 
-  const dominant = v3?.probs
-    ? v3.probs.home >= v3.probs.away && v3.probs.home >= v3.probs.draw ? 'home'
-    : v3.probs.away > v3.probs.home && v3.probs.away >= v3.probs.draw ? 'away'
+  const frozenProbs = (isFinished && storedPred?.v3_home_win != null)
+    ? { home: Number(storedPred.v3_home_win), draw: Number(storedPred.v3_draw), away: Number(storedPred.v3_away_win) }
+    : null
+  const activeProbs = frozenProbs ?? v3?.probs
+  const activeLambdaHome = (isFinished && storedPred?.v3_lambda_home != null) ? Number(storedPred.v3_lambda_home) : v3?.lambdaHome
+  const activeLambdaAway = (isFinished && storedPred?.v3_lambda_away != null) ? Number(storedPred.v3_lambda_away) : v3?.lambdaAway
+  const dominant = activeProbs
+    ? activeProbs.home >= activeProbs.away && activeProbs.home >= activeProbs.draw ? 'home'
+    : activeProbs.away > activeProbs.home && activeProbs.away >= activeProbs.draw ? 'away'
     : 'draw'
     : null
 
@@ -747,7 +793,7 @@ export default function PredictionTab({
                 <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
                   {lang === 'zh' ? '模型预测：' : 'Model predicts: '}
                 </span>
-                <strong style={{ fontSize: 14, color: edgeColour(v3.probs[dominant]) }}>
+                <strong style={{ fontSize: 14, color: edgeColour(activeProbs?.[dominant] ?? 0) }}>
                   {dominant === 'home'
                     ? `${getFlag(match.home_team)} ${match.home_team}`
                     : dominant === 'away'
@@ -760,7 +806,7 @@ export default function PredictionTab({
                   </span>
                 )}
                 <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
-                  {' '}({(v3.probs[dominant] * 100).toFixed(1)}%)
+                  {' '}({((activeProbs?.[dominant] ?? 0) * 100).toFixed(1)}%)
                 </span>
               </div>
             )}
@@ -770,7 +816,7 @@ export default function PredictionTab({
                 { key: 'draw', label: 'Draw', flag: '—' },
                 { key: 'away', label: match.away_team, flag: getFlag(match.away_team) },
               ].map(({ key, label, flag }) => {
-                const p = v3.probs[key]
+                const p = activeProbs?.[key] ?? 0
                 const col = edgeColour(p)
                 return (
                   <div key={key} style={{
@@ -794,7 +840,7 @@ export default function PredictionTab({
                     )}
                     {key !== 'draw' && v3 && (
                       <p style={{ fontSize: 12, fontFamily: mono, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                        λ = {key === 'home' ? v3.lambdaHome.toFixed(2) : v3.lambdaAway.toFixed(2)}
+                        λ = {key === 'home' ? (activeLambdaHome ?? 0).toFixed(2) : (activeLambdaAway ?? 0).toFixed(2)}
                       </p>
                     )}
                   </div>
@@ -972,7 +1018,21 @@ export default function PredictionTab({
           })()}
 
           {/* ── Top Scorelines grid ── */}
-          {v3.topScores?.length > 0 && (
+          {(v3 || (isFinished && storedPred?.v3_top_score)) && (
+            <div style={{
+              padding: '7px 12px',
+              background: isFinished ? 'rgba(180,120,0,0.10)' : 'rgba(59,130,246,0.08)',
+              border: `0.5px solid ${isFinished ? '#D97706' : '#3B82F6'}`,
+              borderRadius: 'var(--radius-sm)',
+              fontSize: 11, fontWeight: 600, letterSpacing: '0.04em',
+              color: isFinished ? '#92400E' : '#1D4ED8',
+            }}>
+              {isFinished
+                ? `📋 Pre-match prediction · Locked at ${storedPred?.predicted_at ? new Date(storedPred.predicted_at).toLocaleString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) + ' UTC' : '—'}`
+                : '🔄 Live model · Updates with latest data'}
+            </div>
+          )}
+          {((v3?.topScores?.length > 0) || (isFinished && frozenTopScores?.length > 0)) && (
             <div style={{ background: 'var(--color-bg-card)', border: `0.5px solid ${scoresModel === 'v4' ? '#7C3AED' : 'var(--color-border)'}`, borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                 <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: scoresModel === 'v4' ? '#7C3AED' : 'var(--color-text-muted)', margin: 0 }}>
@@ -996,7 +1056,7 @@ export default function PredictionTab({
                 )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                {(scoresModel === 'v4' ? v4TopScores : v3.topScores).slice(0, 6).map(({ score, prob }, i) => {
+                {(scoresModel === 'v4' ? v4TopScores : (isFinished && frozenTopScores ? frozenTopScores : v3?.topScores) ?? []).slice(0, 6).map(({ score, prob }, i) => {
                   const isTop = i === 0
                   const isV4 = scoresModel === 'v4'
                   const topColor = isV4 ? '#7C3AED' : 'var(--color-accent)'
@@ -1010,7 +1070,7 @@ export default function PredictionTab({
                   const outcome = homeG > awayG ? 'home' : awayG > homeG ? 'away' : 'draw'
                   const probs = isV4 && v4Pred
                     ? { home: Number(v4Pred.v4_home_win), draw: Number(v4Pred.v4_draw), away: Number(v4Pred.v4_away_win) }
-                    : v3.probs
+                    : (activeProbs ?? v3?.probs)
                   const outcomePct = outcome === 'home' ? probs?.home
                     : outcome === 'away' ? probs?.away
                     : probs?.draw
