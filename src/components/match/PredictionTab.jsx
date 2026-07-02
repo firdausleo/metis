@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from '../../lib/i18n'
 import { useUser } from '../../context/UserContext'
 import { getFlag } from '../../lib/teamFlags'
-import { SCORE_MAX } from '../../lib/poisson'
+import { SCORE_MAX, poissonPMF } from '../../lib/poisson'
 import { getRangeProbabilities } from '../../utils/pasp'
 import InfoTooltip from '../InfoTooltip'
 import { supabase } from '../../lib/supabase'
@@ -461,6 +461,7 @@ export default function PredictionTab({
   const [stratCtx, setStratCtx] = useState(null)
   const [stratLoading, setStratLoading] = useState(false)
   const [v4Pred, setV4Pred] = useState(null)
+  const [scoresModel, setScoresModel] = useState('v3')
 
   // V4 predictions from DB
   useEffect(() => {
@@ -556,6 +557,32 @@ export default function PredictionTab({
     const v3Anchor = _getModelAnchor(lh, la)
     return { ...computeTacticalSignal(stratCtx.hMot, stratCtx.aMot, v3Anchor), v3Anchor }
   }, [stratCtx, v3])
+
+  // ── V4 top scorelines (pure DC, computed client-side from v4 lambdas) ────
+  const v4TopScores = useMemo(() => {
+    if (!v4Pred?.v4_lambda_home || !v4Pred?.v4_lambda_away) return null
+    const lh = Number(v4Pred.v4_lambda_home), la = Number(v4Pred.v4_lambda_away)
+    const RHO = -0.0612, MG = SCORE_MAX
+    const raw = Array.from({ length: MG + 1 }, () => new Array(MG + 1).fill(0))
+    let total = 0
+    for (let x = 0; x <= MG; x++) {
+      for (let y = 0; y <= MG; y++) {
+        let tau = 1
+        if (x === 0 && y === 0) tau = 1 - lh * la * RHO
+        else if (x === 0 && y === 1) tau = 1 + lh * RHO
+        else if (x === 1 && y === 0) tau = 1 + la * RHO
+        else if (x === 1 && y === 1) tau = 1 - RHO
+        raw[x][y] = Math.max(poissonPMF(x, lh) * poissonPMF(y, la) * tau, 0)
+        total += raw[x][y]
+      }
+    }
+    const cells = []
+    for (let x = 0; x <= MG; x++)
+      for (let y = 0; y <= MG; y++)
+        cells.push({ score: `${x}-${y}`, prob: total > 0 ? raw[x][y] / total : 0 })
+    cells.sort((a, b) => b.prob - a.prob)
+    return cells.slice(0, 6)
+  }, [v4Pred])
 
   // ── AI Verdict section ──────────────────────────────────────────────────
   const rawRec = aiComposite?.recommendation
@@ -946,22 +973,47 @@ export default function PredictionTab({
 
           {/* ── Top Scorelines grid ── */}
           {v3.topScores?.length > 0 && (
-            <div style={{ background: 'var(--color-bg-card)', border: '0.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
-              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: 10 }}>
-                {lang === 'zh' ? '最可能比分 · V3' : 'TOP SCORELINES · V3'}
-              </p>
+            <div style={{ background: 'var(--color-bg-card)', border: `0.5px solid ${scoresModel === 'v4' ? '#7C3AED' : 'var(--color-border)'}`, borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: scoresModel === 'v4' ? '#7C3AED' : 'var(--color-text-muted)', margin: 0 }}>
+                  {lang === 'zh' ? `最可能比分 · ${scoresModel.toUpperCase()}` : `TOP SCORELINES · ${scoresModel.toUpperCase()}`}
+                </p>
+                {v4TopScores && (
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {['v3', 'v4'].map(m => (
+                      <button key={m} onClick={() => setScoresModel(m)} style={{
+                        background: scoresModel === m ? (m === 'v4' ? '#7C3AED' : 'var(--color-accent)') : 'none',
+                        border: `0.5px solid ${m === 'v4' ? '#7C3AED' : 'var(--color-accent-border)'}`,
+                        color: scoresModel === m ? '#fff' : m === 'v4' ? '#7C3AED' : 'var(--color-accent)',
+                        borderRadius: 4, padding: '3px 10px', cursor: 'pointer',
+                        fontSize: 11, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace",
+                        minHeight: 26,
+                      }}>
+                        {m.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                {v3.topScores.slice(0, 6).map(({ score, prob }, i) => {
+                {(scoresModel === 'v4' ? v4TopScores : v3.topScores).slice(0, 6).map(({ score, prob }, i) => {
                   const isTop = i === 0
+                  const isV4 = scoresModel === 'v4'
+                  const topColor = isV4 ? '#7C3AED' : 'var(--color-accent)'
+                  const topBg    = isV4 ? 'rgba(124,58,237,0.08)' : 'var(--color-accent-dim)'
+                  const topBorder = isV4 ? 'rgba(124,58,237,0.35)' : 'var(--color-accent-border)'
                   const [homeG, awayG] = score.split('-').map(Number)
                   const totalG = homeG + awayG
                   const totalProb = getGoalP(totalG)
                   const totalRank = rankMap[totalG] ?? 99
                   const rankColor = getRankColor(totalRank)
                   const outcome = homeG > awayG ? 'home' : awayG > homeG ? 'away' : 'draw'
-                  const outcomePct = outcome === 'home' ? v3.probs?.home
-                    : outcome === 'away' ? v3.probs?.away
-                    : v3.probs?.draw
+                  const probs = isV4 && v4Pred
+                    ? { home: Number(v4Pred.v4_home_win), draw: Number(v4Pred.v4_draw), away: Number(v4Pred.v4_away_win) }
+                    : v3.probs
+                  const outcomePct = outcome === 'home' ? probs?.home
+                    : outcome === 'away' ? probs?.away
+                    : probs?.draw
                   const outcomeBg = outcome === 'home' ? '#E6F1FB'
                     : outcome === 'away' ? '#FCEBEB'
                     : 'var(--color-bg-elevated)'
@@ -978,14 +1030,14 @@ export default function PredictionTab({
                   return (
                     <div key={score} style={{
                       padding: '10px 10px',
-                      background: isTop ? 'var(--color-accent-dim)' : 'var(--color-bg-elevated)',
-                      border: isTop ? '0.5px solid var(--color-accent-border)' : '0.5px solid var(--color-border)',
+                      background: isTop ? topBg : 'var(--color-bg-elevated)',
+                      border: isTop ? `0.5px solid ${topBorder}` : '0.5px solid var(--color-border)',
                       borderRadius: 'var(--radius-sm)',
                       display: 'flex', flexDirection: 'column', gap: '4px',
                     }}>
                       {/* Row 1: Score + outcome badge */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: isTop ? 800 : 600, color: isTop ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>
+                        <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: isTop ? 800 : 600, color: isTop ? topColor : 'var(--color-text-primary)' }}>
                           {score}
                         </span>
                         <span style={{ fontSize: '10px', fontWeight: 500, padding: '2px 5px', borderRadius: '99px', background: outcomeBg, color: outcomeColor }}>
@@ -993,7 +1045,7 @@ export default function PredictionTab({
                         </span>
                       </div>
                       {/* Row 2: Scoreline probability */}
-                      <div style={{ fontSize: 12, color: isTop ? 'var(--color-accent)' : 'var(--color-text-muted)', fontWeight: isTop ? 500 : 400 }}>
+                      <div style={{ fontSize: 12, color: isTop ? topColor : 'var(--color-text-muted)', fontWeight: isTop ? 500 : 400 }}>
                         {(prob * 100).toFixed(1)}%
                       </div>
                       {/* Divider */}
